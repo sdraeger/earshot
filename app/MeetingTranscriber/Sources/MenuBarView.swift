@@ -55,7 +55,7 @@ struct MenuBarView: View {
     // Sections are separate properties so each is type-checked on its own
     // budget (the analyze build fails a getter over 300 ms).
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 16) {
             statusHeader
             consentPrompt
             actions
@@ -63,8 +63,9 @@ struct MenuBarView: View {
             updateSection
             footer
         }
-        .padding(14)
-        .frame(width: 320)
+        .padding(16)
+        .frame(width: 340)
+        .background(CenterUnderClick())
     }
 
     // MARK: - Body sections
@@ -145,7 +146,7 @@ struct MenuBarView: View {
             .controlSize(.small)
             .keyboardShortcut("s")
             .padding(.horizontal, 8)
-            .padding(.vertical, 5)
+            .padding(.vertical, 7)
 
             if let onNameSpeakers {
                 PanelRow("Name speakers…", systemImage: "person.2.fill", action: onNameSpeakers)
@@ -397,7 +398,7 @@ private struct PanelRowStyle: ButtonStyle {
         var body: some View {
             configuration.label
                 .padding(.horizontal, 8)
-                .padding(.vertical, 5)
+                .padding(.vertical, 7)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
                         .fill(Color.primary.opacity(fillOpacity)),
@@ -411,6 +412,55 @@ private struct PanelRowStyle: ButtonStyle {
             guard isEnabled else { return 0 }
             if configuration.isPressed { return 0.14 }
             return hovering ? 0.08 : 0
+        }
+    }
+}
+
+/// SwiftUI placed the `.window` panel about 235 pt right of the menu-bar icon
+/// (measured on macOS 26 with the icon on a second display), so each time the
+/// panel shows, this centers it under the click that opened it.
+private struct CenterUnderClick: NSViewRepresentable {
+    func makeNSView(context _: Context) -> NSView {
+        Anchor()
+    }
+
+    func updateNSView(_: NSView, context _: Context) {}
+
+    final class Anchor: NSView {
+        private var observers: [any NSObjectProtocol] = []
+        /// The click's x, kept so a resize (a job appearing) re-centers on the
+        /// same point after the pointer has moved on.
+        private var clickX: CGFloat?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            observers.forEach(NotificationCenter.default.removeObserver)
+            observers = []
+            guard let window else { return }
+            let center = NotificationCenter.default
+            observers = [
+                center.addObserver(forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.place(atClick: true) }
+                },
+                center.addObserver(forName: NSWindow.didResizeNotification, object: window, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.place(atClick: false) }
+                },
+            ]
+        }
+
+        private func place(atClick: Bool) {
+            guard let window else { return }
+            let mouse = NSEvent.mouseLocation
+            // Only a click in the menu bar, above the panel, says where the icon is.
+            if atClick, mouse.y >= window.frame.maxY { clickX = mouse.x }
+            guard let clickX,
+                  let visible = (NSScreen.screens.first { $0.frame.contains(mouse) } ?? window.screen)?.visibleFrame
+            else { return }
+            let width = window.frame.width
+            let x = min(max(clickX - width / 2, visible.minX + 8), visible.maxX - width - 8)
+            if abs(window.frame.minX - x) > 0.5 {
+                window.setFrameOrigin(NSPoint(x: x, y: window.frame.minY))
+            }
         }
     }
 }
