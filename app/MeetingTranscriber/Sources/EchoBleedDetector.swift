@@ -184,7 +184,7 @@ enum EchoBleedDetector {
         return rms > 0 ? 20 * log10(rms) : -.infinity
     }
 
-    private static func envelope(_ samples: [Float], count: Int, samplesPerFrame: Int) -> [Double] {
+    static func envelope(_ samples: [Float], count: Int, samplesPerFrame: Int) -> [Double] {
         let frames = count / samplesPerFrame
         var out = [Double](repeating: 0, count: frames)
         for f in 0 ..< frames {

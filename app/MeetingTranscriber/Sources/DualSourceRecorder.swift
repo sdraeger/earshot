@@ -536,13 +536,6 @@ class DualSourceRecorder: RecordingProvider {
         )
     }
 
-    /// Downmix interleaved multi-channel audio to mono. Passthrough if already
-    /// mono. Delegates to the AudioTapLib implementation so the averaging logic
-    /// lives once (the capture-time resampler uses the same function).
-    nonisolated static func downmixToMono(_ samples: [Float], channels: Int) -> [Float] {
-        AudioTapLib.downmixToMono(samples, channels: channels)
-    }
-
     /// Cross-check the device-reported sample rate against raw file size and mic duration.
     /// Returns the corrected rate (snapped to standard), or the device rate if cross-check
     /// is unavailable or agrees.

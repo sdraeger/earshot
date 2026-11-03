@@ -24,22 +24,10 @@ final class MenuBarViewTests: XCTestCase {
 
     private func makeStatus(
         state: TranscriberState = .idle,
-        detail: String = "",
         meeting: MeetingInfo? = nil,
-        protocolPath: String? = nil,
         error: String? = nil,
     ) -> TranscriberStatus {
-        TranscriberStatus(
-            version: 1,
-            timestamp: "2024-01-01T00:00:00",
-            state: state,
-            detail: detail,
-            meeting: meeting,
-            protocolPath: protocolPath,
-            error: error,
-            audioPath: nil,
-            pid: nil,
-        )
+        TranscriberStatus(state: state, meeting: meeting, error: error)
     }
 
     private func makeView(
@@ -95,7 +83,7 @@ final class MenuBarViewTests: XCTestCase {
     // MARK: - Meeting info
 
     func testMeetingInfoShownWhenRecording() throws {
-        let meeting = MeetingInfo(app: "Teams", title: "Standup", pid: 123)
+        let meeting = MeetingInfo(app: "Teams", title: "Standup")
         let sut = try makeView(status: makeStatus(state: .recording, meeting: meeting))
         let body = try sut.inspect()
         XCTAssertNoThrow(try body.find(text: "Standup"))
@@ -125,7 +113,7 @@ final class MenuBarViewTests: XCTestCase {
 
     func testNameSpeakersButtonShownWhenWaiting() throws {
         // swiftlint:disable:next trailing_closure
-        let sut = try makeView(status: makeStatus(state: .waitingForSpeakerNames), onNameSpeakers: {})
+        let sut = try makeView(status: makeStatus(state: .watching), onNameSpeakers: {})
         let body = try sut.inspect()
         XCTAssertNoThrow(try body.find(text: "Name speakers…"))
     }
@@ -156,27 +144,7 @@ final class MenuBarViewTests: XCTestCase {
         XCTAssertThrowsError(try body.find(viewWithAccessibilityIdentifier: A11yID.menuRecordPendingConsent))
     }
 
-    // MARK: - Detail text
-
-    func testDetailShownWhenNonEmpty() throws {
-        let sut = try makeView(status: makeStatus(state: .watching, detail: "Checking Teams..."))
-        let body = try sut.inspect()
-        XCTAssertNoThrow(try body.find(text: "Checking Teams..."))
-    }
-
-    func testDetailHiddenWhenEmpty() throws {
-        let sut = try makeView(status: makeStatus(state: .watching, detail: ""))
-        let body = try sut.inspect()
-        XCTAssertThrowsError(try body.find(text: "Checking Teams..."))
-    }
-
     // MARK: - Protocol link
-
-    func testOpenLastProtocolShownWhenPathPresent() throws {
-        let sut = try makeView(status: makeStatus(state: .protocolReady, protocolPath: "/tmp/p.md"))
-        let body = try sut.inspect()
-        XCTAssertNoThrow(try body.find(text: "Open last notes"))
-    }
 
     func testOpenLastProtocolHiddenWhenNoPath() throws {
         let sut = try makeView(status: makeStatus(state: .idle))
@@ -365,35 +333,29 @@ final class MenuBarViewTests: XCTestCase {
     }
 
     func testOpenLastProtocolButtonCallsCallback() throws {
-        var openedURL: URL?
-        let sut = try MenuBarView(
-            status: makeStatus(state: .protocolReady, protocolPath: "/tmp/p.md"),
-            isWatching: false,
-            pipelineQueue: makeIsolatedQueue(),
-            updateChecker: nil,
-            onStartStop: {},
-            onRecordApp: {},
-            onRecordMicrophone: {},
-            noMic: false,
-            manualRecordingPendingOrActive: false,
-            onStopManualRecording: nil,
-            onOpenProtocol: { openedURL = $0.url },
-            onOpenProtocolsFolder: {},
-            onOpenSettings: {},
-            onNameSpeakers: nil,
-            onProcessFiles: {},
-            onDismissJob: { _ in },
-            onQuit: {},
+        let dir = try makeTempDirectory(prefix: "menu_open_last_callback")
+        let markdown = dir.appendingPathComponent("protocol.md")
+        try "# Protocol".write(to: markdown, atomically: true, encoding: .utf8)
+        let queue = try makeIsolatedQueue()
+        var job = PipelineJob(
+            meetingTitle: "Sprint", appName: "Zoom", mixPath: URL(fileURLWithPath: "/tmp/mix.wav"),
+            appPath: nil, micPath: nil, micDelay: 0,
         )
-        let body = try sut.inspect()
-        try body.find(button: "Open last notes").tap()
-        XCTAssertEqual(openedURL, URL(fileURLWithPath: "/tmp/p.md"))
+        job.protocolPath = markdown
+        queue.enqueue(job)
+        queue.updateJobState(id: job.id, to: .done)
+        var openedURL: URL?
+        let sut = try makeView(
+            status: makeStatus(), pipelineQueue: queue, onOpenProtocol: { openedURL = $0 }, noMic: false,
+        )
+        try sut.inspect().find(button: "Open last notes").tap()
+        XCTAssertEqual(openedURL, markdown)
     }
 
     func testNameSpeakersButtonCallsCallback() throws {
         var called = false
         let sut = try MenuBarView(
-            status: makeStatus(state: .waitingForSpeakerNames),
+            status: makeStatus(state: .watching),
             isWatching: false,
             pipelineQueue: makeIsolatedQueue(),
             updateChecker: nil,
@@ -424,8 +386,8 @@ final class MenuBarViewTests: XCTestCase {
         XCTAssertNoThrow(try body.find(text: "Idle"))
     }
 
-    func testMeetingAppAndPidShown() throws {
-        let meeting = MeetingInfo(app: "Zoom", title: "Retro", pid: 456)
+    func testMeetingAppShown() throws {
+        let meeting = MeetingInfo(app: "Zoom", title: "Retro")
         let sut = try makeView(status: makeStatus(state: .recording, meeting: meeting))
         let body = try sut.inspect()
         let texts = body.findAll(ViewType.Text.self)
@@ -938,7 +900,6 @@ final class MenuBarViewTests: XCTestCase {
         XCTAssertNoThrow(try body.find(button: "Cancel"))
     }
 
-
     func testCompletedQueueShowsCompletedHeader() throws {
         let dir = try makeTempDirectory(prefix: "menubar_completed_test")
         let queue = PipelineQueue(logDir: dir)
@@ -972,7 +933,6 @@ final class MenuBarViewTests: XCTestCase {
         XCTAssertNoThrow(try body.find(text: "Waiting…"))
         XCTAssertFalse(try body.find(button: "Cancel").isDisabled())
     }
-
 
     func testCancelButtonCancelsOnlyItsOwnJob() throws {
         let dir = try makeTempDirectory(prefix: "menubar_cancel_test")
@@ -1305,8 +1265,7 @@ final class MenuBarViewTests: XCTestCase {
 
     func testAllTranscriberStateLabelsRendered() throws {
         let states: [TranscriberState] = [
-            .idle, .watching, .recording, .transcribing,
-            .generatingProtocol, .protocolReady, .error,
+            .idle, .watching, .recording, .error,
         ]
         for state in states {
             let sut = try makeView(status: makeStatus(state: state))

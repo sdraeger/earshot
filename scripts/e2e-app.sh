@@ -773,9 +773,9 @@ WAV_VERDICT_FIXTURE_MIN_ACTIVE_S=25
 # Observed worst case on Mini is ~1 s; 2 s is honest margin.
 RECORDER_FINALIZE_WAIT_S=2
 
-# WatchLoop's per-app cooldown (`MeetingDetector.swift` cooldownDuration
-# = 5 s) plus a 3 s buffer so the second meeting isn't suppressed as a
-# re-detection. Bump if MeetingDetector.cooldownDuration grows.
+# The detectors' per-app cooldown (`cooldownDuration` = 5 s in
+# PowerAssertionDetector and MicInputDetector) plus a 3 s buffer so the second
+# meeting isn't suppressed as a re-detection. Bump if that cooldown grows.
 INTER_MEETING_COOLDOWN_S=8
 
 # --- helpers --------------------------------------------------------------

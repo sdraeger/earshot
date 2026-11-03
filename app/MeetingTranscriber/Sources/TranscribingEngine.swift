@@ -5,7 +5,6 @@ import Foundation
 protocol TranscribingEngine: AnyObject {
     var modelState: EngineModelState { get }
     var downloadProgress: Double { get }
-    var transcriptionProgress: Double { get } // swiftlint:disable:this unused_declaration
 
     /// Whether `transcribeSegments` returns per-utterance timestamps fine-grained
     /// enough to drive speaker diarization. WhisperKit and Parakeet do (default

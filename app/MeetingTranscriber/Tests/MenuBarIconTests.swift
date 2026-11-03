@@ -2,7 +2,7 @@
 import XCTest
 
 @MainActor
-final class MenuBarIconTests: XCTestCase { // swiftlint:disable:this type_body_length
+final class MenuBarIconTests: XCTestCase {
     func testImageWithNoBadgeIsTemplate() {
         let image = MenuBarIcon.image(badge: .inactive)
         XCTAssertTrue(image.isTemplate)
@@ -225,47 +225,11 @@ final class MenuBarIconTests: XCTestCase { // swiftlint:disable:this type_body_l
         let result = BadgeKind.compute(
             watchLoopActive: true,
             watchLoopState: .recording,
-            transcriberState: .transcribing,
+            transcriberState: .watching,
             activeJobState: nil,
             updateAvailable: false,
         )
         XCTAssertEqual(result, .recording)
-    }
-
-    // 3. UserAction for waitingForSpeakerCount
-    func testCompute_waitingForSpeakerCount_returnsUserAction() {
-        let result = BadgeKind.compute(
-            watchLoopActive: true,
-            watchLoopState: .watching,
-            transcriberState: .waitingForSpeakerCount,
-            activeJobState: nil,
-            updateAvailable: false,
-        )
-        XCTAssertEqual(result, .userAction)
-    }
-
-    // 4. UserAction for waitingForSpeakerNames
-    func testCompute_waitingForSpeakerNames_returnsUserAction() {
-        let result = BadgeKind.compute(
-            watchLoopActive: true,
-            watchLoopState: .watching,
-            transcriberState: .waitingForSpeakerNames,
-            activeJobState: nil,
-            updateAvailable: false,
-        )
-        XCTAssertEqual(result, .userAction)
-    }
-
-    // 5. Done for protocolReady
-    func testCompute_protocolReady_returnsDone() {
-        let result = BadgeKind.compute(
-            watchLoopActive: true,
-            watchLoopState: .watching,
-            transcriberState: .protocolReady,
-            activeJobState: nil,
-            updateAvailable: false,
-        )
-        XCTAssertEqual(result, .done)
     }
 
     // 6. Error for transcriberError
@@ -278,42 +242,6 @@ final class MenuBarIconTests: XCTestCase { // swiftlint:disable:this type_body_l
             updateAvailable: false,
         )
         XCTAssertEqual(result, .error)
-    }
-
-    // 7. Transcribing for transcriberTranscribing
-    func testCompute_transcriberTranscribing_returnsTranscribing() {
-        let result = BadgeKind.compute(
-            watchLoopActive: true,
-            watchLoopState: .watching,
-            transcriberState: .transcribing,
-            activeJobState: nil,
-            updateAvailable: false,
-        )
-        XCTAssertEqual(result, .transcribing)
-    }
-
-    // 8. Transcribing for recordingDone
-    func testCompute_recordingDone_returnsTranscribing() {
-        let result = BadgeKind.compute(
-            watchLoopActive: true,
-            watchLoopState: .watching,
-            transcriberState: .recordingDone,
-            activeJobState: nil,
-            updateAvailable: false,
-        )
-        XCTAssertEqual(result, .transcribing)
-    }
-
-    // 9. Processing for generatingProtocol
-    func testCompute_generatingProtocol_returnsProcessing() {
-        let result = BadgeKind.compute(
-            watchLoopActive: true,
-            watchLoopState: .watching,
-            transcriberState: .generatingProtocol,
-            activeJobState: nil,
-            updateAvailable: false,
-        )
-        XCTAssertEqual(result, .processing)
     }
 
     // 10. ActiveJob transcribing (watchLoop inactive)

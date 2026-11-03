@@ -16,7 +16,7 @@ final class SampleRateDriftDetectorTests: XCTestCase {
             samples: [Float](repeating: 0, count: actualFramesPerCallback),
             channelCount: 1,
             sampleRate: claimedRate,
-            hostTime: SampleRateDriftDetector.secondsToMachTicks(seconds),
+            hostTime: secondsToMachTicks(seconds),
         )
     }
 
@@ -126,27 +126,5 @@ final class SampleRateDriftDetectorTests: XCTestCase {
             }
         }
         XCTAssertNil(report, "a zero claimed rate must not produce a drift report")
-    }
-
-    // MARK: - mach-tick helpers (pure)
-
-    /// Round-trip across the helper pair must be exact to within the
-    /// representation precision (sub-nanosecond on modern Macs). The
-    /// detector compares `hostTime`-derived seconds, so any drift in
-    /// these helpers would directly distort the observedRate calculation.
-    func testMachTicksRoundTripsThroughHelpers() {
-        for seconds in [0.0, 0.001, 0.5, 1.0, 5.0, 60.0, 3600.0] {
-            let ticks = SampleRateDriftDetector.secondsToMachTicks(seconds)
-            let back = SampleRateDriftDetector.machTicksToSeconds(ticks)
-            XCTAssertEqual(back, seconds, accuracy: 0.000_001)
-        }
-    }
-
-    func testZeroTicksConvertsToZeroSeconds() {
-        XCTAssertEqual(SampleRateDriftDetector.machTicksToSeconds(0), 0.0)
-    }
-
-    func testZeroSecondsConvertsToZeroTicks() {
-        XCTAssertEqual(SampleRateDriftDetector.secondsToMachTicks(0), 0)
     }
 }

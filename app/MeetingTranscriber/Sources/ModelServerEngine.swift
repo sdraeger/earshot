@@ -1,4 +1,3 @@
-import AppKit
 import Foundation
 import Observation
 
@@ -15,7 +14,6 @@ import Observation
 final class ModelServerEngine: TranscribingEngine {
     private(set) var modelState: EngineModelState = .unloaded
     let downloadProgress: Double = 0
-    let transcriptionProgress: Double = 0
     /// Why the last load or transcription failed, shown under the engine status.
     private(set) var loadFailureReason: String?
     /// False after a response without segments: one block of text cannot be
@@ -38,11 +36,6 @@ final class ModelServerEngine: TranscribingEngine {
 
     init(session: URLSession = .shared) {
         self.session = session
-        NotificationCenter.default.addObserver(
-            forName: NSApplication.willTerminateNotification, object: nil, queue: .main,
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.stopServer() }
-        }
     }
 
     // MARK: - Loading
@@ -50,7 +43,8 @@ final class ModelServerEngine: TranscribingEngine {
     func loadModel() async {
         loadFailureReason = nil
         guard let base = URL(string: baseURL), base.scheme != nil else {
-            return fail("Enter the server address, for example http://127.0.0.1:8000/v1.")
+            fail("Enter the server address, for example http://127.0.0.1:8000/v1.")
+            return
         }
         modelState = .loading
         if await isReachable(base) {
@@ -59,12 +53,14 @@ final class ModelServerEngine: TranscribingEngine {
         }
         let command = launchCommand.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !command.isEmpty else {
-            return fail("No server answers at \(baseURL). Start one, or add a launch command.")
+            fail("No server answers at \(baseURL). Start one, or add a launch command.")
+            return
         }
         do {
             try startServer(command.replacingOccurrences(of: "{model}", with: model))
         } catch {
-            return fail("Could not run the launch command: \(error.localizedDescription)")
+            fail("Could not run the launch command: \(error.localizedDescription)")
+            return
         }
         let deadline = ContinuousClock.now + Self.startupTimeout
         while ContinuousClock.now < deadline {
@@ -73,7 +69,8 @@ final class ModelServerEngine: TranscribingEngine {
                 return
             }
             if let status = exitStatusIfExited() {
-                return fail("The server exited with status \(status). \(logTail())")
+                fail("The server exited with status \(status). \(logTail())")
+                return
             }
             try? await Task.sleep(for: .seconds(1))
         }
@@ -89,7 +86,7 @@ final class ModelServerEngine: TranscribingEngine {
     private func isReachable(_ base: URL) async -> Bool {
         var request = URLRequest(url: base.appendingPathComponent("models"))
         request.timeoutInterval = 3
-        return (try? await session.data(for: request).1) is HTTPURLResponse
+        return await (try? session.data(for: request).1) is HTTPURLResponse
     }
 
     /// Runs through a login shell so tools on the user's PATH (Homebrew, uv,
@@ -177,14 +174,19 @@ final class ModelServerEngine: TranscribingEngine {
         }
 
         let text: String?
+        // Optional because servers omit the key when they have no timestamps.
+        // swiftlint:disable:next discouraged_optional_collection
         let segments: [Segment]?
         let duration: Double?
 
         /// Segments when the server sends them, else the whole text as one segment.
         var timestampedSegments: [TimestampedSegment] {
             if let segments, !segments.isEmpty {
-                return segments.map {
-                    TimestampedSegment(start: $0.start, end: $0.end, text: $0.text.trimmingCharacters(in: .whitespaces))
+                return segments.map { segment in
+                    TimestampedSegment(
+                        start: segment.start, end: segment.end,
+                        text: segment.text.trimmingCharacters(in: .whitespaces),
+                    )
                 }
             }
             guard let text, !text.isEmpty else { return [] }
@@ -194,10 +196,14 @@ final class ModelServerEngine: TranscribingEngine {
 
     static func multipartBody(fields: [String: String], file: URL, boundary: String) throws -> Data {
         var body = Data()
-        for (name, value) in fields.sorted(by: { $0.key < $1.key }) where !value.isEmpty {
-            body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(name)\"\r\n\r\n\(value)\r\n".utf8))
+        func header(_ disposition: String, contentType: String = "") {
+            body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; \(disposition)\r\n\(contentType)\r\n".utf8))
         }
-        body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"\(file.lastPathComponent)\"\r\nContent-Type: audio/wav\r\n\r\n".utf8))
+        for (name, value) in fields.sorted(by: { $0.key < $1.key }) where !value.isEmpty {
+            header("name=\"\(name)\"")
+            body.append(Data("\(value)\r\n".utf8))
+        }
+        header("name=\"file\"; filename=\"\(file.lastPathComponent)\"", contentType: "Content-Type: audio/wav\r\n")
         try body.append(Data(contentsOf: file))
         body.append(Data("\r\n--\(boundary)--\r\n".utf8))
         return body

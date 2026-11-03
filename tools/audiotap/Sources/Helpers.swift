@@ -14,13 +14,13 @@ private let machTimebaseInfo: mach_timebase_info_data_t = {
 }()
 
 /// Convert mach_absolute_time() ticks to seconds.
-func machTicksToSeconds(_ ticks: UInt64) -> Double {
+public func machTicksToSeconds(_ ticks: UInt64) -> Double {
     let nanos = Double(ticks) * Double(machTimebaseInfo.numer) / Double(machTimebaseInfo.denom)
     return nanos / 1_000_000_000.0
 }
 
 /// Convert seconds to mach_absolute_time() ticks (inverse of machTicksToSeconds).
-func secondsToMachTicks(_ seconds: Double) -> UInt64 {
+public func secondsToMachTicks(_ seconds: Double) -> UInt64 {
     let nanos = seconds * 1_000_000_000
     return UInt64(nanos * Double(machTimebaseInfo.denom) / Double(machTimebaseInfo.numer))
 }
@@ -109,28 +109,8 @@ func deviceIDForUID(_ uid: String) -> AudioDeviceID {
 
 /// Get the UID of the current default output device.
 func getDefaultOutputDeviceUID() -> String? {
-    var address = AudioObjectPropertyAddress(
-        mSelector: kAudioHardwarePropertyDefaultOutputDevice,
-        mScope: kAudioObjectPropertyScopeGlobal,
-        mElement: kAudioObjectPropertyElementMain,
-    )
-    var deviceID = AudioObjectID(kAudioObjectUnknown)
-    var size = UInt32(MemoryLayout<AudioObjectID>.size)
-    let status = AudioObjectGetPropertyData(
-        AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &deviceID,
-    )
-    guard status == noErr, deviceID != kAudioObjectUnknown else { return nil }
-
-    var uidAddress = AudioObjectPropertyAddress(
-        mSelector: kAudioDevicePropertyDeviceUID,
-        mScope: kAudioObjectPropertyScopeGlobal,
-        mElement: kAudioObjectPropertyElementMain,
-    )
-    var uid: Unmanaged<CFString>?
-    var uidSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
-    let uidStatus = AudioObjectGetPropertyData(deviceID, &uidAddress, 0, nil, &uidSize, &uid)
-    guard uidStatus == noErr, let cfUID = uid?.takeRetainedValue() else { return nil }
-    return cfUID as String
+    resolveDefaultDevice(selector: kAudioHardwarePropertyDefaultOutputDevice)
+        .flatMap { readCFStringAudioProperty($0, kAudioDevicePropertyDeviceUID) }
 }
 
 /// Read a CFString-valued audio property. Returns nil if the property is unavailable.
@@ -158,18 +138,8 @@ public func getProcessBundleID(_ processObjectID: AudioObjectID) -> String? {
 
 /// Human-readable name of the default output device (e.g. "AirPods Pro", "MacBook Pro Speakers").
 public func getDefaultOutputDeviceName() -> String? {
-    var address = AudioObjectPropertyAddress(
-        mSelector: kAudioHardwarePropertyDefaultOutputDevice,
-        mScope: kAudioObjectPropertyScopeGlobal,
-        mElement: kAudioObjectPropertyElementMain,
-    )
-    var deviceID = AudioObjectID(kAudioObjectUnknown)
-    var size = UInt32(MemoryLayout<AudioObjectID>.size)
-    let status = AudioObjectGetPropertyData(
-        AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &deviceID,
-    )
-    guard status == noErr, deviceID != kAudioObjectUnknown else { return nil }
-    return readCFStringAudioProperty(deviceID, kAudioObjectPropertyName)
+    resolveDefaultDevice(selector: kAudioHardwarePropertyDefaultOutputDevice)
+        .flatMap { readCFStringAudioProperty($0, kAudioObjectPropertyName) }
 }
 
 /// Process executable name (e.g. "MSTeams") for a PID. Returns "?" on lookup failure.
@@ -301,16 +271,7 @@ private let transportTypeNames: [UInt32: String] = [
 ]
 
 func getDefaultOutputDeviceSampleRate() -> Double? {
-    guard let deviceID = resolveDefaultDevice(selector: kAudioHardwarePropertyDefaultOutputDevice) else {
-        return nil
-    }
-    var addr = AudioObjectPropertyAddress(
-        mSelector: kAudioDevicePropertyNominalSampleRate,
-        mScope: kAudioObjectPropertyScopeGlobal,
-        mElement: kAudioObjectPropertyElementMain,
-    )
-    var rate: Float64 = 0
-    var size = UInt32(MemoryLayout<Float64>.size)
-    guard AudioObjectGetPropertyData(deviceID, &addr, 0, nil, &size, &rate) == noErr else { return nil }
-    return rate
+    guard let deviceID = resolveDefaultDevice(selector: kAudioHardwarePropertyDefaultOutputDevice),
+          case let .value(rate) = nominalSampleRateReading(deviceID: deviceID) else { return nil }
+    return Double(rate)
 }

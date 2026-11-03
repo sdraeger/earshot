@@ -123,9 +123,7 @@ struct MeetingTranscriberApp: App {
         // `MEETINGTRANSCRIBER_DEBUG_SUPPRESS_AUTOWATCH=1` so a +3 s
         // `toggleWatching` doesn't reset the forced flag through the
         // normal `channelHealth.stop()` path.
-        if (CommandLine.arguments.contains("--auto-watch")
-            || UserDefaults.standard.bool(forKey: "autoWatch"))
-            && !suppressAutoWatch {
+        if CommandLine.arguments.contains("--auto-watch") || state.settings.autoWatch, !suppressAutoWatch {
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
                 NotificationCenter.default.post(name: .autoWatchStart, object: nil)
             }
@@ -182,11 +180,11 @@ struct MeetingTranscriberApp: App {
             onQuit: quit,
             pendingConsentApp: appState.pendingConsentApp,
             onAnswerPendingConsent: appState.answerPendingConsent,
-            notionExportEnabled: appState.settings.notionExportEnabled,
             onNameSpeakersForJob: { id in
                 appState.selectedNamingJobID = id
                 showNamingWindow()
             },
+            notionExportEnabled: appState.settings.notionExportEnabled,
         )
     }
 
@@ -511,18 +509,5 @@ struct MeetingTranscriberApp: App {
             // follow-up if this proves too easy to miss.
             notifier.notify(title: PreviousExitNotice.title, body: notice.body, urgency: .standard)
         }
-    }
-
-    /// Whether auto-watch should be enabled based on CLI flags or user settings.
-    static func shouldAutoWatch(
-        commandLineArgs: [String] = CommandLine.arguments,
-        autoWatchSetting: Bool = UserDefaults.standard.bool(forKey: "autoWatch"),
-    ) -> Bool {
-        commandLineArgs.contains("--auto-watch") || autoWatchSetting
-    }
-
-    /// Returns the protocol path from the last completed job, if any.
-    static func lastCompletedProtocolPath(completedJobs: [PipelineJob]) -> URL? {
-        completedJobs.last?.protocolPath
     }
 }

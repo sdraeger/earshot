@@ -19,7 +19,6 @@ class WatchLoop {
     private(set) var state: State = .idle
     private(set) var currentMeeting: DetectedMeeting?
     private(set) var lastError: String?
-    private(set) var detail: String = ""
 
     // Manual recording
     private(set) var manualRecordingInfo: ManualRecordingInfo?
@@ -176,7 +175,6 @@ class WatchLoop {
 
         update { next in
             next.phase = .watching
-            next.detail = "Polling for meetings..."
         }
         logger.info("Watch mode started (poll: \(self.pollInterval)s, grace: \(self.endGracePeriod)s)")
 
@@ -197,7 +195,6 @@ class WatchLoop {
         update { next in
             next.phase = .idle
             next.currentMeeting = nil
-            next.detail = ""
         }
         logger.info("Watch mode stopped")
     }
@@ -293,7 +290,6 @@ class WatchLoop {
         update { next in
             next.phase = .recording
             next.manualRecordingInfo = ManualRecordingInfo(pid: pid, appName: appName, title: title)
-            next.detail = "Recording: \(title)"
         }
 
         manualRecordingTask = Task { [weak self] in
@@ -346,7 +342,6 @@ class WatchLoop {
         update { next in
             next.phase = .idle
             next.manualRecordingInfo = nil
-            next.detail = ""
             if let failureMessage { next.lastError = failureMessage }
         }
     }
@@ -400,7 +395,6 @@ class WatchLoop {
             update { next in
                 next.phase = .error
                 next.lastError = error.localizedDescription
-                next.detail = "Recording error: \(error.localizedDescription)"
             }
             try? await sleepProvider(10)
         }
@@ -423,7 +417,6 @@ class WatchLoop {
             update { next in
                 next.phase = .watching
                 next.currentMeeting = nil
-                next.detail = "Polling for meetings..."
             }
         }
         return false
@@ -442,7 +435,6 @@ class WatchLoop {
         update { next in
             next.phase = .recording
             next.currentMeeting = meeting
-            next.detail = "Recording: \(title)"
         }
 
         let recorder = await recorderFactory()
@@ -535,7 +527,7 @@ class WatchLoop {
     /// Build the next snapshot, hand it to `apply` to commit only the
     /// fields that actually changed, and let `apply` fire `onStateChange`
     /// on a phase transition. Co-located mutations stay coherent
-    /// (a phase-change-plus-detail-update is one funnel call, not two
+    /// (a phase change plus its meeting update is one funnel call, not two
     /// separate property writes that consumers could observe mid-flight).
     /// Internal so the extensions in `WatchLoop+*.swift` write through it too.
     func update(_ transform: (inout WatchLoopState) -> Void) {
@@ -552,7 +544,6 @@ class WatchLoop {
         if state != next.phase { state = next.phase }
         if currentMeeting != next.currentMeeting { currentMeeting = next.currentMeeting }
         if lastError != next.lastError { lastError = next.lastError }
-        if detail != next.detail { detail = next.detail }
         if manualRecordingInfo != next.manualRecordingInfo {
             manualRecordingInfo = next.manualRecordingInfo
         }

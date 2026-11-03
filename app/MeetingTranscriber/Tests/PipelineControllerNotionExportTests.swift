@@ -339,7 +339,7 @@ final class PipelineControllerNotionExportTests: XCTestCase {
             return
         }
         XCTAssertEqual(dto.state, .done)
-        XCTAssertEqual(dto.export?.isInProgress, true, "the status must still say the export is pending")
+        XCTAssertEqual(dto.export?.status, NotionExportStatus.inProgress.rawValue, "the status must still say the export is pending")
         XCTAssertLessThan(started.duration(to: .now), .seconds(10), "the call waited for the export")
         await exporter.release()
         await queue.awaitNotionExports()

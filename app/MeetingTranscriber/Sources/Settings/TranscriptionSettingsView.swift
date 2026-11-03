@@ -460,38 +460,11 @@ struct TranscriptionSettingsView: View {
         }
     }
 
-    // MARK: - Model server
-
     @ViewBuilder private var modelServerFields: some View {
         if settings.transcriptionEngine == .server {
-            TextField("Server address", text: $settings.modelServerURL, prompt: Text("http://127.0.0.1:8000/v1"))
-            HStack {
-                TextField("Model", text: $settings.modelServerModel, prompt: Text("Hugging Face id or model folder"))
-                Button("Choose\u{2026}") {
-                    let panel = NSOpenPanel()
-                    panel.canChooseDirectories = true
-                    panel.canChooseFiles = false
-                    if panel.runModal() == .OK, let url = panel.url {
-                        settings.modelServerModel = url.path
-                    }
-                }
-            }
-            TextField(
-                "Launch command",
-                text: $settings.modelServerLaunchCommand,
-                prompt: Text("Optional command that starts the server"),
-                axis: .vertical,
-            )
-            Text(Self.modelServerHelpText)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            ModelServerSettingsFields(settings: settings)
         }
     }
-
-    static let modelServerHelpText = "Any server with an OpenAI-compatible /audio/transcriptions endpoint works: "
-        + "an MLX server on this Mac, or vLLM on a GPU machine for models like Nemotron 3.5 Transcribe. "
-        + "With a launch command, Load model starts the server when nothing answers at the address; "
-        + "{model} is replaced by the model above. Speakers are still identified on this Mac."
 
     @ViewBuilder
     private var engineStatusView: some View { // swiftlint:disable:this attributes
@@ -500,14 +473,14 @@ struct TranscriptionSettingsView: View {
         case .downloading:
             ProgressView(value: engine.downloadProgress)
                 .progressViewStyle(.linear)
-            Text("Downloading model... \(Int(engine.downloadProgress * 100))%")
+            Text("Downloading model… \(Int(engine.downloadProgress * 100))%")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
         case .loading:
             HStack {
                 ProgressView().controlSize(.small)
-                Text("Loading model...")
+                Text("Loading model…")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

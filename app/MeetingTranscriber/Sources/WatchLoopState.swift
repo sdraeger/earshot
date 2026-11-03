@@ -9,7 +9,6 @@ struct WatchLoopState: Equatable {
     var phase: WatchLoop.State
     var currentMeeting: DetectedMeeting?
     var lastError: String?
-    var detail: String
     var manualRecordingInfo: ManualRecordingInfo?
 
     /// Initial state at `WatchLoop` construction. Matches the field
@@ -18,7 +17,6 @@ struct WatchLoopState: Equatable {
         phase: .idle,
         currentMeeting: nil,
         lastError: nil,
-        detail: "",
         manualRecordingInfo: nil,
     )
 }
@@ -58,7 +56,6 @@ extension WatchLoop {
             phase: state,
             currentMeeting: currentMeeting,
             lastError: lastError,
-            detail: detail,
             manualRecordingInfo: manualRecordingInfo,
         )
     }

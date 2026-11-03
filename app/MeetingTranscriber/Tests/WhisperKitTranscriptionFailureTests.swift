@@ -155,7 +155,6 @@ private final class ScriptedWhisperDecodingClient: WhisperDecodingClient {
     func transcribeFile(
         audioPaths _: [String],
         decodeOptions _: DecodingOptions,
-        callback _: TranscriptionCallback,
     ) -> [Result<[TranscriptionResult], any Error>] {
         [fileResult]
     }

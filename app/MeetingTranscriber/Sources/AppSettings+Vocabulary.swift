@@ -51,11 +51,6 @@ extension AppSettings {
         refreshCustomVocabularyValidation()
     }
 
-    func clearCustomVocabularyFile() {
-        updateCustomVocabularySelection(path: "", bookmark: nil)
-        customVocabularyValidation = .notConfigured
-    }
-
     func repairStaleCustomVocabularyBookmark() {
         guard let bookmark = customVocabularyBookmark,
               let repaired = VocabularyFileAccess.refreshedStaleBookmark(bookmark)

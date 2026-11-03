@@ -182,15 +182,17 @@ final class FluidDiarizer: DiarizationProvider, @unchecked Sendable {
         }
 
         logger.info("Starting Sortformer diarization: \(audioPath.lastPathComponent)")
+        // Decoded once for both the diarizer (fixed at 16 kHz) and the embeddings.
+        let audio = try AudioConverter(sampleRate: 16000.0).resampleAudioFile(audioPath)
         // swiftlint:disable:next force_unwrapping
-        let timeline = try sortformerDiarizer!.processComplete(audioFileURL: audioPath)
+        let timeline = try sortformerDiarizer!.processComplete(audio)
 
         // Phase 1 of issue #165: run WeSpeaker post-hoc on Sortformer's
         // overlap-excluded frames so the naming dialog + SpeakerMatcher
         // light up again. Without this, Sortformer mode produces
         // `embeddings: nil` and `PipelineQueue.processNext()` aborts the
         // naming flow (issue #109).
-        let embeddings = try await extractSortformerEmbeddings(audioPath: audioPath, timeline: timeline)
+        let embeddings = try await extractSortformerEmbeddings(audio: audio, timeline: timeline)
 
         return Self.buildResult(segments: Self.segments(from: timeline), speakerDatabase: embeddings)
     }

@@ -16,26 +16,6 @@ final class TranscriberStatusTests: XCTestCase {
         XCTAssertEqual(TranscriberState.recording.label, "Recording")
     }
 
-    func testTranscribingLabel() {
-        XCTAssertEqual(TranscriberState.transcribing.label, "Transcribing…")
-    }
-
-    func testGeneratingProtocolLabel() {
-        XCTAssertEqual(TranscriberState.generatingProtocol.label, "Writing meeting notes…")
-    }
-
-    func testWaitingForSpeakerCountLabel() {
-        XCTAssertEqual(TranscriberState.waitingForSpeakerCount.label, "Speaker count")
-    }
-
-    func testWaitingForSpeakerNamesLabel() {
-        XCTAssertEqual(TranscriberState.waitingForSpeakerNames.label, "Name speakers")
-    }
-
-    func testProtocolReadyLabel() {
-        XCTAssertEqual(TranscriberState.protocolReady.label, "Meeting notes ready")
-    }
-
     func testErrorLabel() {
         XCTAssertEqual(TranscriberState.error.label, "Error")
     }
@@ -52,26 +32,6 @@ final class TranscriberStatusTests: XCTestCase {
 
     func testRecordingIcon() {
         XCTAssertEqual(TranscriberState.recording.icon, "record.circle.fill")
-    }
-
-    func testTranscribingIcon() {
-        XCTAssertEqual(TranscriberState.transcribing.icon, "waveform")
-    }
-
-    func testGeneratingProtocolIcon() {
-        XCTAssertEqual(TranscriberState.generatingProtocol.icon, "waveform")
-    }
-
-    func testWaitingForSpeakerCountIcon() {
-        XCTAssertEqual(TranscriberState.waitingForSpeakerCount.icon, "person.2.wave.2")
-    }
-
-    func testWaitingForSpeakerNamesIcon() {
-        XCTAssertEqual(TranscriberState.waitingForSpeakerNames.icon, "person.2.fill")
-    }
-
-    func testProtocolReadyIcon() {
-        XCTAssertEqual(TranscriberState.protocolReady.icon, "checkmark.circle.fill")
     }
 
     func testErrorIcon() {

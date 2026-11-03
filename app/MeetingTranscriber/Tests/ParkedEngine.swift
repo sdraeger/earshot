@@ -16,7 +16,6 @@ import Foundation
 final class ParkedEngine: TranscribingEngine {
     var modelState: EngineModelState = .loaded
     var downloadProgress: Double = 1.0
-    var transcriptionProgress: Double = 1.0
     var providesTimestamps = true
     var segmentsToReturn: [TimestampedSegment] = []
 

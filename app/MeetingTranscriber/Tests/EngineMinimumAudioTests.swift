@@ -16,7 +16,6 @@ final class EngineMinimumAudioTests: XCTestCase {
     private final class FloorlessEngine: TranscribingEngine {
         var modelState: EngineModelState = .loaded
         var downloadProgress: Double = 1
-        var transcriptionProgress: Double = 1
         func loadModel() {}
         func transcribeSegments(audioPath _: URL) -> [TimestampedSegment] {
             []

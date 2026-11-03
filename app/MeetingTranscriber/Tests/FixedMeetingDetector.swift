@@ -43,3 +43,16 @@ extension HealthCheckResult {
     /// state — `makeTestWatchLoop` installs the same verdict for the same reason.
     static let allHealthy = Self(screenRecording: .healthy, microphone: .healthy)
 }
+
+/// Never finds a meeting; built by `makeSilentDetector`.
+struct SilentMeetingDetector: MeetingDetecting {
+    func checkOnce() -> DetectedMeeting? {
+        nil
+    }
+
+    func isMeetingActive(_: DetectedMeeting) -> Bool {
+        false
+    }
+
+    func reset(appName _: String?) {}
+}

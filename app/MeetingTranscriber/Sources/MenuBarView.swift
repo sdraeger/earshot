@@ -34,12 +34,12 @@ struct MenuBarView: View {
     var pendingConsentApp: String?
     /// Answers the open prompt: true records, false declines.
     var onAnswerPendingConsent: (Bool) -> Void = { _ in }
+    /// Opens the naming window on one job; falls back to `onNameSpeakers`.
+    var onNameSpeakersForJob: ((UUID) -> Void)?
     /// Whether Notion export is on. A job that has a page URL but was exported
     /// before the setting was turned off still falls back to it when no local
     /// file exists; `JobOpenTarget` owns that rule.
     var notionExportEnabled: Bool = false
-    /// Opens the naming window on one job; falls back to `onNameSpeakers`.
-    var onNameSpeakersForJob: ((UUID) -> Void)?
 
     private var state: TranscriberState {
         status?.state ?? .idle
@@ -75,10 +75,6 @@ struct MenuBarView: View {
                 .font(.headline)
                 .foregroundStyle(state.tint)
 
-            if let detail = status?.detail, !detail.isEmpty {
-                Text(detail)
-                    .foregroundStyle(.secondary)
-            }
             meetingInfo
             errorInfo
             stopRecordingButton
@@ -176,14 +172,7 @@ struct MenuBarView: View {
     }
 
     @ViewBuilder private var lastNotesRow: some View {
-        let completedTarget = JobOpenTarget.resolve(
-            for: pipelineQueue.completedJobs.last,
-            preferNotion: notionExportEnabled,
-        )
-        let target = completedTarget ?? status?.protocolPath.map { path in
-            JobOpenTarget.file(URL(fileURLWithPath: path))
-        }
-        if let target {
+        if let target = JobOpenTarget.resolve(for: pipelineQueue.completedJobs.last, preferNotion: notionExportEnabled) {
             PanelRow(target.lastProtocolLabel, systemImage: target.systemImage) { onOpenProtocol(target) }
                 .keyboardShortcut("o")
         }
@@ -283,7 +272,7 @@ struct MenuBarView: View {
                     Button("Name speakers…") {
                         if let onNameSpeakersForJob { onNameSpeakersForJob(job.id) } else { onNameSpeakers?() }
                     }
-                        .buttonStyle(.borderedProminent)
+                    .buttonStyle(.borderedProminent)
                 }
                 if showRetry {
                     Button("Retry") { pipelineQueue.retryJob(id: job.id) }
@@ -326,7 +315,6 @@ struct MenuBarView: View {
         .help(title)
     }
 
-    @ViewBuilder
     private func jobStateLabel(_ job: PipelineJob) -> some View {
         Group {
             if StageKind(jobState: job.state) != nil {
@@ -402,7 +390,8 @@ private struct PanelRowStyle: ButtonStyle {
 
     private struct Highlight: View {
         let configuration: Configuration
-        @Environment(\.isEnabled) private var isEnabled
+        @Environment(\.isEnabled)
+        private var isEnabled
         @State private var hovering = false
 
         var body: some View {

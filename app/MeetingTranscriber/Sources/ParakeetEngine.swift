@@ -14,7 +14,6 @@ private let logger = Logger(subsystem: AppPaths.logSubsystem, category: "Parakee
 final class ParakeetEngine: TranscribingEngine, StreamingTranscribingEngine {
     private(set) var modelState: EngineModelState = .unloaded
     private(set) var downloadProgress: Double = 0
-    private(set) var transcriptionProgress: Double = 0
 
     /// FluidAudio refuses anything shorter with
     /// `Invalid audio data provided. Must be at least 300ms of 16kHz audio`.
@@ -143,9 +142,7 @@ final class ParakeetEngine: TranscribingEngine, StreamingTranscribingEngine {
         try await ensureModel()
         await ensureVocabularyConfiguration()
 
-        transcriptionProgress = 0
         var result = try await decodeFile(audioPath)
-        transcriptionProgress = 1.0
 
         // Apply CTC vocabulary rescoring if configured
         if vocabularyBooster?.rescorer != nil, let timings = result.tokenTimings, !timings.isEmpty {

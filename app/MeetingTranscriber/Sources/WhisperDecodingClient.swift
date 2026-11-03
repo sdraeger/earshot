@@ -11,7 +11,6 @@ protocol WhisperDecodingClient: AnyObject {
     func transcribeFile(
         audioPaths: [String],
         decodeOptions: DecodingOptions,
-        callback: @escaping TranscriptionCallback,
     ) async -> [Result<[TranscriptionResult], any Error>]
 
     func transcribeSamples(
@@ -24,9 +23,8 @@ extension WhisperKit: WhisperDecodingClient {
     func transcribeFile(
         audioPaths: [String],
         decodeOptions: DecodingOptions,
-        callback: @escaping TranscriptionCallback,
     ) async -> [Result<[TranscriptionResult], any Error>] {
-        await transcribeWithResults(audioPaths: audioPaths, decodeOptions: decodeOptions, callback: callback)
+        await transcribeWithResults(audioPaths: audioPaths, decodeOptions: decodeOptions)
     }
 
     func transcribeSamples(

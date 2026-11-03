@@ -12,7 +12,7 @@ final class ManualRecordingTests: XCTestCase {
         mock.mixPath = URL(fileURLWithPath: "/tmp/test_mix.wav")
         let noMicSetting: () -> Bool = { noMic }
         let loop = WatchLoop(
-            detector: MeetingDetector(patterns: AppMeetingPattern.all),
+            detector: makeSilentDetector(),
             recorderFactory: { mock },
             pipelineQueue: pipelineQueue,
             pollInterval: 0.05,

@@ -50,42 +50,6 @@ final class NotificationManagerTests: XCTestCase {
         )
     }
 
-    // MARK: - handleTransition without setUp is no-op
-
-    func testHandleTransitionWithoutSetUpDoesNotCrash() {
-        let manager = NotificationManager()
-        let status = TranscriberStatus(
-            version: 1, timestamp: "2026-03-03T10:00:00",
-            state: .recording, detail: "",
-            meeting: MeetingInfo(app: "Teams", title: "Standup", pid: 1),
-            protocolPath: nil, error: nil, audioPath: nil, pid: nil,
-        )
-        // recording state would normally trigger a notification, but setUp was
-        // never called so notify() should be a no-op
-        manager.handleTransition(from: nil, to: .recording, status: status)
-    }
-
-    func testHandleTransitionNoNotificationForIdle() {
-        let manager = NotificationManager()
-        let status = TranscriberStatus(
-            version: 1, timestamp: "2026-03-03T10:00:00",
-            state: .idle, detail: "", meeting: nil,
-            protocolPath: nil, error: nil, audioPath: nil, pid: nil,
-        )
-        manager.handleTransition(from: nil, to: .idle, status: status)
-    }
-
-    func testHandleTransitionSameStateTwice() {
-        let manager = NotificationManager()
-        let status = TranscriberStatus(
-            version: 1, timestamp: "2026-03-03T10:00:00",
-            state: .recording, detail: "", meeting: nil,
-            protocolPath: nil, error: nil, audioPath: nil, pid: nil,
-        )
-        manager.handleTransition(from: nil, to: .recording, status: status)
-        manager.handleTransition(from: .recording, to: .recording, status: status)
-    }
-
     // MARK: - shared singleton
 
     func testSharedIsSingleton() {
@@ -127,94 +91,6 @@ final class NotificationManagerTests: XCTestCase {
             XCTAssertEqual(manager.recentNotifications, manager.recentNotificationsLog.entries)
         }
     #endif
-
-    // MARK: - notificationContent (pure helper)
-
-    func testNotificationContentRecordingUsesMeetingTitleAndApp() {
-        let content = NotificationManager.notificationContent(
-            for: .recording,
-            status: statusWithMeeting(app: "Teams", title: "Standup"),
-        )
-        XCTAssertEqual(content?.title, "Recording started")
-        XCTAssertEqual(content?.body, "Recording: Standup (Teams)")
-    }
-
-    func testNotificationContentRecordingFallsBackWhenMeetingMissing() {
-        // Defensive: if a recording-state notification ever fires without a
-        // meeting attached (shouldn't happen in production), the body still
-        // renders rather than crashing.
-        let content = NotificationManager.notificationContent(
-            for: .recording,
-            status: statusWithNoMeeting(),
-        )
-        XCTAssertEqual(content?.title, "Recording started")
-        XCTAssertEqual(content?.body, "Recording: Unknown ()")
-    }
-
-    func testNotificationContentProtocolReady() {
-        let content = NotificationManager.notificationContent(
-            for: .protocolReady,
-            status: statusWithMeeting(app: "Zoom", title: "Retro"),
-        )
-        XCTAssertEqual(content?.title, "Meeting notes ready")
-        XCTAssertEqual(content?.body, "Meeting notes for \"Retro\" are ready.")
-    }
-
-    func testNotificationContentProtocolReadyFallsBackToMeetingLabel() {
-        let content = NotificationManager.notificationContent(
-            for: .protocolReady,
-            status: statusWithNoMeeting(),
-        )
-        XCTAssertEqual(content?.body, "Meeting notes for \"Meeting\" are ready.")
-    }
-
-    func testNotificationContentWaitingForSpeakerNames() {
-        let content = NotificationManager.notificationContent(
-            for: .waitingForSpeakerNames,
-            status: statusWithNoMeeting(),
-        )
-        XCTAssertEqual(content?.title, "Name speakers")
-        XCTAssertFalse(content?.body.isEmpty ?? true)
-    }
-
-    func testNotificationContentErrorWithMessage() {
-        let status = TranscriberStatus(
-            version: 1, timestamp: "2026-05-21T10:00:00",
-            state: .error, detail: "", meeting: nil,
-            protocolPath: nil, error: "disk full", audioPath: nil, pid: nil,
-        )
-        let content = NotificationManager.notificationContent(for: .error, status: status)
-        XCTAssertEqual(content?.title, "Something went wrong")
-        XCTAssertEqual(content?.body, "disk full")
-    }
-
-    func testNotificationContentErrorWithoutMessageReturnsNil() {
-        // No error string attached → suppress the notification entirely.
-        // Avoids a "Something went wrong" banner with a blank body.
-        let content = NotificationManager.notificationContent(
-            for: .error,
-            status: statusWithNoMeeting(),
-        )
-        XCTAssertNil(content)
-    }
-
-    func testNotificationContentReturnsNilForSilentStates() {
-        // .idle / .watching / .transcribing / .generatingProtocol /
-        // .waitingForSpeakerCount / .recordingDone all fall into the
-        // `default` branch — no notification.
-        for state: TranscriberState in [
-            .idle, .watching, .transcribing, .generatingProtocol,
-            .waitingForSpeakerCount, .recordingDone,
-        ] {
-            XCTAssertNil(
-                NotificationManager.notificationContent(
-                    for: state,
-                    status: statusWithNoMeeting(),
-                ),
-                "Expected no notification for state \(state)",
-            )
-        }
-    }
 
     // MARK: - Browser consent prompt (issue #503)
 
@@ -292,24 +168,5 @@ final class NotificationManagerTests: XCTestCase {
         // without a visible prompt.
         let answer = await SilentNotifier().askToRecord(title: "Browser meeting", body: "Record?")
         XCTAssertEqual(answer, .declined)
-    }
-
-    // MARK: - Helpers
-
-    private func statusWithMeeting(app: String, title: String) -> TranscriberStatus {
-        TranscriberStatus(
-            version: 1, timestamp: "2026-05-21T10:00:00",
-            state: .recording, detail: "",
-            meeting: MeetingInfo(app: app, title: title, pid: 1),
-            protocolPath: nil, error: nil, audioPath: nil, pid: nil,
-        )
-    }
-
-    private func statusWithNoMeeting() -> TranscriberStatus {
-        TranscriberStatus(
-            version: 1, timestamp: "2026-05-21T10:00:00",
-            state: .idle, detail: "", meeting: nil,
-            protocolPath: nil, error: nil, audioPath: nil, pid: nil,
-        )
     }
 }

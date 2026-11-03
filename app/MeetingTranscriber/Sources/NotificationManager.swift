@@ -200,47 +200,6 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate, App
         return content
     }
 
-    /// Pure function: determines notification content for a state transition.
-    /// Returns nil if no notification should be sent.
-    static func notificationContent(
-        for state: TranscriberState,
-        status: TranscriberStatus,
-    ) -> (title: String, body: String)? {
-        switch state {
-        case .recording:
-            let meetingTitle = status.meeting?.title ?? "Unknown"
-            let app = status.meeting?.app ?? ""
-            return ("Recording started", "Recording: \(meetingTitle) (\(app))")
-
-        case .protocolReady:
-            let meetingTitle = status.meeting?.title ?? "Meeting"
-            return ("Meeting notes ready", "Meeting notes for \"\(meetingTitle)\" are ready.")
-
-        case .waitingForSpeakerNames:
-            return ("Name speakers", "Open Meeting Transcriber to name who spoke")
-
-        case .error:
-            if let error = status.error {
-                return ("Something went wrong", error)
-            }
-            return nil
-
-        default:
-            return nil
-        }
-    }
-
-    /// Handle state transitions and send appropriate notifications.
-    func handleTransition(
-        from _: TranscriberState?,
-        to newState: TranscriberState,
-        status: TranscriberStatus,
-    ) {
-        if let content = Self.notificationContent(for: newState, status: status) {
-            notify(title: content.title, body: content.body)
-        }
-    }
-
     // MARK: - Consent prompt (issue #503)
 
     /// The "record this browser meeting?" category with Record / Ignore actions.

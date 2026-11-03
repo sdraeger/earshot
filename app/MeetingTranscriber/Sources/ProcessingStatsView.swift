@@ -7,7 +7,7 @@ import SwiftUI
 struct ProcessingStatsView: View {
     // swiftlint:disable:next discouraged_optional_collection
     @State private var aggregates: [StageConfig: StageTimingStats.StageAggregate]?
-    @State private var windowDays: WindowChoice = .thirty
+    @State private var windowDays: StatsWindowChoice = .thirty
 
     private let log: StageTimingLog
 
@@ -15,21 +15,10 @@ struct ProcessingStatsView: View {
         self.log = log
     }
 
-    enum WindowChoice: Int, CaseIterable, Identifiable {
-        case seven = 7, thirty = 30, ninety = 90
-        var id: Int {
-            rawValue
-        }
-
-        var label: String {
-            "Last \(rawValue) days"
-        }
-    }
-
     var body: some View {
         Section("Processing stats") {
             Picker("Window", selection: $windowDays) {
-                ForEach(WindowChoice.allCases) { choice in
+                ForEach(StatsWindowChoice.allCases) { choice in
                     Text(choice.label).tag(choice)
                 }
             }
@@ -117,5 +106,17 @@ extension StageConfig {
         if ia != ib { return ia < ib }
         if a.engine != b.engine { return (a.engine ?? "") < (b.engine ?? "") }
         return (a.diarizerMode ?? "") < (b.diarizerMode ?? "")
+    }
+}
+
+/// How far back the stats views look.
+enum StatsWindowChoice: Int, CaseIterable, Identifiable {
+    case seven = 7, thirty = 30, ninety = 90
+    var id: Int {
+        rawValue
+    }
+
+    var label: String {
+        "Last \(rawValue) days"
     }
 }

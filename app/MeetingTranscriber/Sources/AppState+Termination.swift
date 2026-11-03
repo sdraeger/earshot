@@ -15,6 +15,7 @@ extension AppState: AppTerminating {
     }
 
     func tearDownBeforeExit() {
+        engines.modelServer.stopServer()
         #if !APPSTORE
             stopPersistentLogStreamer()
         #endif

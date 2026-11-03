@@ -70,10 +70,6 @@ struct JobExportDTO: Codable, Equatable {
             url: job.hasCompletedNotionExport ? job.notionPageURL?.absoluteString : nil,
         )
     }
-
-    var isInProgress: Bool {
-        status == NotionExportStatus.inProgress.rawValue
-    }
 }
 
 /// The echo verdict in machine-readable form, and what was done about it. The

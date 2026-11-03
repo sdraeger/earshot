@@ -77,8 +77,6 @@ final class WhisperKitEngine: TranscribingEngine, StreamingTranscribingEngine {
     /// sits next to a working one.
     private(set) var loadFailureReason: String?
     private(set) var downloadProgress: Double = 0
-    /// Transcription progress (0.0–1.0) based on WhisperKit's 30s window processing.
-    private(set) var transcriptionProgress: Double = 0
     private var pipe: WhisperKit?
     /// Whether a model is loaded, for the load loop in `WhisperKitEngine+ModelLoad.swift`.
     var pipeInstalled: Bool {
@@ -325,11 +323,6 @@ final class WhisperKitEngine: TranscribingEngine, StreamingTranscribingEngine {
             throw TranscriptionError.modelNotLoaded()
         }
 
-        transcriptionProgress = 0
-
-        // Estimate total 30s windows from audio duration
-        let totalWindows = max(1, Self.estimateWindowCount(audioPath: audioPath))
-
         // Snapshot all settings-derived decoding options before the asynchronous
         // decode starts. A later settings change only affects a subsequent run.
         let options = Self.decodingOptions(
@@ -337,23 +330,8 @@ final class WhisperKitEngine: TranscribingEngine, StreamingTranscribingEngine {
             promptTokens: vocabularyPromptTokens(for: decodingClient),
         )
 
-        let results = await decodingClient.transcribeFile(
-            audioPaths: [audioPath.path],
-            decodeOptions: options,
-        ) { [weak self] progress in
-            Task { @MainActor in
-                guard let self else { return }
-                self.transcriptionProgress = min(
-                    Double(progress.windowId + 1) / Double(totalWindows),
-                    1.0,
-                )
-            }
-            return nil // continue transcription
-        }
-
-        let segments = try Self.segments(from: results.first)
-        transcriptionProgress = 1.0
-        return segments
+        let results = await decodingClient.transcribeFile(audioPaths: [audioPath.path], decodeOptions: options)
+        return try Self.segments(from: results.first)
     }
 
     /// Transcribe a raw 16 kHz mono Float32 PCM buffer (no file). Used by
@@ -457,13 +435,6 @@ final class WhisperKitEngine: TranscribingEngine, StreamingTranscribingEngine {
         )
         vocabularyPromptCache.store(tokens, for: key)
         return tokens.isEmpty ? nil : tokens
-    }
-
-    /// Estimate number of 30-second windows WhisperKit will process for the given audio file.
-    private static func estimateWindowCount(audioPath: URL) -> Int {
-        guard let audioFile = try? AVAudioFile(forReading: audioPath) else { return 1 }
-        let duration = Double(audioFile.length) / audioFile.fileFormat.sampleRate
-        return Int(ceil(duration / 30.0))
     }
 
     /// Remove Whisper special tokens like <|startoftranscript|>, <|en|>, <|0.00|>, etc.

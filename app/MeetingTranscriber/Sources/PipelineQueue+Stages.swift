@@ -741,11 +741,15 @@ extension PipelineQueue {
         if let mixPath = ctx.mixPath, FileManager.default.fileExists(atPath: mixPath.path) {
             try await AudioMixer.resampleFile(from: mixPath, to: mix16k)
         } else if let appAudioPath = ctx.appPath, let micAudioPath = ctx.micPath {
-            try AudioMixer.mix(
-                appAudioPath: appAudioPath, micAudioPath: micAudioPath,
-                outputPath: mix16k, micDelay: ctx.micDelay,
-                sampleRate: AudioConstants.targetSampleRate,
-            )
+            // Off the main actor: this decodes both full tracks and writes a WAV.
+            let micDelay = ctx.micDelay
+            try await Task.detached(priority: .userInitiated) {
+                try AudioMixer.mix(
+                    appAudioPath: appAudioPath, micAudioPath: micAudioPath,
+                    outputPath: mix16k, micDelay: micDelay,
+                    sampleRate: AudioConstants.targetSampleRate,
+                )
+            }.value
         } else {
             throw PipelineError.noMixAudioForDiarization
         }

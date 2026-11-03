@@ -563,32 +563,14 @@ final class AppState {
         guard let loop = watching.watchLoop, loop.isActive else { return nil }
 
         let meeting: MeetingInfo? = if let manual = loop.manualRecordingInfo {
-            MeetingInfo(
-                app: manual.appName,
-                title: manual.title,
-                pid: manual.pid.map(Int.init),
-            )
+            MeetingInfo(app: manual.appName, title: manual.title)
         } else {
             loop.currentMeeting.map { meeting in
-                MeetingInfo(
-                    app: meeting.pattern.appName,
-                    title: meeting.windowTitle,
-                    pid: Int(meeting.windowPID),
-                )
+                MeetingInfo(app: meeting.pattern.appName, title: meeting.windowTitle)
             }
         }
 
-        return TranscriberStatus(
-            version: 1,
-            timestamp: Self.isoFormatter.string(from: Date()),
-            state: loop.transcriberState,
-            detail: loop.detail,
-            meeting: meeting,
-            protocolPath: nil,
-            error: loop.lastError,
-            audioPath: nil,
-            pid: Int(ProcessInfo.processInfo.processIdentifier),
-        )
+        return TranscriberStatus(state: loop.transcriberState, meeting: meeting, error: loop.lastError)
     }
 }
 

@@ -15,50 +15,6 @@ final class BadgeKindComputeTests: XCTestCase {
         XCTAssertEqual(badge, .recording)
     }
 
-    func testBadgeTranscribingForTranscribingState() {
-        let badge = BadgeKind.compute(
-            watchLoopActive: true,
-            watchLoopState: .watching,
-            transcriberState: .transcribing,
-            activeJobState: nil,
-            updateAvailable: false,
-        )
-        XCTAssertEqual(badge, .transcribing)
-    }
-
-    func testBadgeTranscribingForRecordingDoneState() {
-        let badge = BadgeKind.compute(
-            watchLoopActive: true,
-            watchLoopState: .watching,
-            transcriberState: .recordingDone,
-            activeJobState: nil,
-            updateAvailable: false,
-        )
-        XCTAssertEqual(badge, .transcribing)
-    }
-
-    func testBadgeUserActionForWaitingForSpeakerCount() {
-        let badge = BadgeKind.compute(
-            watchLoopActive: true,
-            watchLoopState: .watching,
-            transcriberState: .waitingForSpeakerCount,
-            activeJobState: nil,
-            updateAvailable: false,
-        )
-        XCTAssertEqual(badge, .userAction)
-    }
-
-    func testBadgeUserActionForWaitingForSpeakerNames() {
-        let badge = BadgeKind.compute(
-            watchLoopActive: true,
-            watchLoopState: .watching,
-            transcriberState: .waitingForSpeakerNames,
-            activeJobState: nil,
-            updateAvailable: false,
-        )
-        XCTAssertEqual(badge, .userAction)
-    }
-
     /// An open browser-consent prompt shows on the icon, not only as a
     /// notification that may never be seen (issue #814).
     func testBadgeUserActionWhileConsentIsPending() {
@@ -99,17 +55,6 @@ final class BadgeKindComputeTests: XCTestCase {
         XCTAssertEqual(badge, .recording)
     }
 
-    func testBadgeDoneForProtocolReadyState() {
-        let badge = BadgeKind.compute(
-            watchLoopActive: true,
-            watchLoopState: .watching,
-            transcriberState: .protocolReady,
-            activeJobState: nil,
-            updateAvailable: false,
-        )
-        XCTAssertEqual(badge, .done)
-    }
-
     func testBadgeErrorForErrorState() {
         let badge = BadgeKind.compute(
             watchLoopActive: true,
@@ -119,17 +64,6 @@ final class BadgeKindComputeTests: XCTestCase {
             updateAvailable: false,
         )
         XCTAssertEqual(badge, .error)
-    }
-
-    func testBadgeProcessingForGeneratingProtocol() {
-        let badge = BadgeKind.compute(
-            watchLoopActive: true,
-            watchLoopState: .watching,
-            transcriberState: .generatingProtocol,
-            activeJobState: nil,
-            updateAvailable: false,
-        )
-        XCTAssertEqual(badge, .processing)
     }
 
     // MARK: WatchLoop inactive, active job

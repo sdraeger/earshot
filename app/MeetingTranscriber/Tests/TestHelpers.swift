@@ -243,9 +243,9 @@ extension XCTestCase {
 
 // MARK: - WatchLoop / AppState Helpers
 
-/// Returns a MeetingDetector with no patterns — never matches any window.
-func makeSilentDetector() -> MeetingDetector {
-    MeetingDetector(patterns: [])
+/// A detector that never finds a meeting.
+func makeSilentDetector() -> some MeetingDetecting {
+    SilentMeetingDetector()
 }
 
 /// Creates a WatchLoop backed by a MockRecorder and a silent detector.
@@ -408,7 +408,6 @@ extension ProtocolGenerating {
 class MockEngine: TranscribingEngine {
     var modelState: EngineModelState = .loaded
     var downloadProgress: Double = 1.0
-    var transcriptionProgress: Double = 1.0
     var providesTimestamps = true
     var segmentsToReturn: [TimestampedSegment] = []
     /// Per-track override, keyed on a filename suffix (e.g. "app_16k.wav").

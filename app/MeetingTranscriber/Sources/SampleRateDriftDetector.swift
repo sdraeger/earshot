@@ -62,7 +62,7 @@ struct SampleRateDriftDetector {
 
     private mutating func prune() {
         guard let newestTime = entries.last?.hostTime else { return }
-        let windowTicks = Self.secondsToMachTicks(Self.windowSeconds)
+        let windowTicks = secondsToMachTicks(Self.windowSeconds)
         let cutoff = newestTime > windowTicks ? newestTime - windowTicks : 0
         entries.removeAll { $0.hostTime < cutoff }
     }
@@ -71,7 +71,7 @@ struct SampleRateDriftDetector {
         guard entries.count >= 4,
               let first = entries.first,
               let last = entries.last else { return nil }
-        let elapsedSeconds = Self.machTicksToSeconds(last.hostTime &- first.hostTime)
+        let elapsedSeconds = machTicksToSeconds(last.hostTime &- first.hostTime)
         guard elapsedSeconds >= 1.0 else { return nil }
         // Skip the first entry: its samples were captured BEFORE
         // first.hostTime (they're what got buffered for delivery AT that
@@ -90,23 +90,5 @@ struct SampleRateDriftDetector {
             observedRate: observedRate,
             driftFraction: drift,
         )
-    }
-
-    // mach_absolute_time helpers re-implemented here (AudioTapLib's
-    // versions are package-internal). Cached at first use.
-    private static let machTimebase: mach_timebase_info_data_t = {
-        var info = mach_timebase_info_data_t()
-        mach_timebase_info(&info)
-        return info
-    }()
-
-    static func machTicksToSeconds(_ ticks: UInt64) -> Double {
-        let nanos = Double(ticks) * Double(machTimebase.numer) / Double(machTimebase.denom)
-        return nanos / 1_000_000_000.0
-    }
-
-    static func secondsToMachTicks(_ seconds: Double) -> UInt64 {
-        let nanos = seconds * 1_000_000_000
-        return UInt64(nanos * Double(machTimebase.denom) / Double(machTimebase.numer))
     }
 }

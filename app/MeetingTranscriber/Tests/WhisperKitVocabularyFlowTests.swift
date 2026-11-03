@@ -184,7 +184,6 @@ private final class CapturingWhisperDecodingClient: WhisperDecodingClient {
     func transcribeFile(
         audioPaths _: [String],
         decodeOptions: DecodingOptions,
-        callback _: TranscriptionCallback,
     ) -> [Result<[TranscriptionResult], any Error>] {
         filePrompts.append(PromptObservation(decodeOptions.promptTokens))
         return [.success([])]

@@ -122,8 +122,8 @@ enum EchoSegmentClassifier {
         let samplesPerFrame = Int(frameSeconds * Double(sampleRate))
         guard sampleRate > 0, samplesPerFrame > 0 else { return micSegments.map { _ in .undecided } }
 
-        let appEnvelope = envelope(app, samplesPerFrame)
-        let micEnvelope = envelope(mic, samplesPerFrame)
+        let appEnvelope = EchoBleedDetector.envelope(app, count: app.count, samplesPerFrame: samplesPerFrame)
+        let micEnvelope = EchoBleedDetector.envelope(mic, count: mic.count, samplesPerFrame: samplesPerFrame)
         guard !appEnvelope.isEmpty, !micEnvelope.isEmpty else {
             return micSegments.map { _ in .undecided }
         }
@@ -218,18 +218,6 @@ enum EchoSegmentClassifier {
             .sorted()
         guard !hotLags.isEmpty else { return AudioMixer.clampMicDelay(micDelay) }
         return -hotLags[hotLags.count / 2]
-    }
-
-    private static func envelope(_ samples: [Float], _ samplesPerFrame: Int) -> [Double] {
-        let frames = samples.count / samplesPerFrame
-        guard frames > 0 else { return [] }
-        return (0 ..< frames).map { frame in
-            var acc = 0.0
-            for i in (frame * samplesPerFrame) ..< ((frame + 1) * samplesPerFrame) {
-                acc += Double(samples[i]) * Double(samples[i])
-            }
-            return (acc / Double(samplesPerFrame)).squareRoot()
-        }
     }
 
     /// A tenth of this track's own speech level. Anything quieter is room tone

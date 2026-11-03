@@ -206,7 +206,7 @@ class PowerAssertionDetector: MeetingDetecting {
 
     /// Closure that provides the window list for title lookup. Defaults to CGWindowListCopyWindowInfo.
     /// Override in tests to inject mock data.
-    var windowListProvider: () -> [[String: Any]] = MeetingDetector.systemWindowList
+    var windowListProvider: () -> [[String: Any]] = systemWindowList
 
     /// Identities the user answered "Never for this app" about, so they never
     /// reach confirmation. Wired from the persisted deny list.

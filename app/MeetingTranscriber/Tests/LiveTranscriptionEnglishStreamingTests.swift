@@ -40,7 +40,6 @@ final class LiveTranscriptionEnglishStreamingTests: XCTestCase {
     private final class LoadTrackingEngine: StreamingTranscribingEngine {
         var modelState: EngineModelState = .loaded
         var downloadProgress: Double = 1.0
-        var transcriptionProgress: Double = 1.0
         private(set) var loadModelCount = 0
 
         func loadModel() {

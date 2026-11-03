@@ -348,7 +348,6 @@ private final class TestGate {
 private final class NonStreamingEngine: TranscribingEngine {
     var modelState: EngineModelState = .loaded
     var downloadProgress: Double = 1.0
-    var transcriptionProgress: Double = 1.0
     func loadModel() {}
     func transcribeSegments(audioPath _: URL) -> [TimestampedSegment] {
         []

@@ -182,7 +182,7 @@ extension DualSourceRecorder {
                 }
             }
 
-            appSamples = downmixToMono(floats, channels: actualChannels)
+            appSamples = AudioTapLib.downmixToMono(floats, channels: actualChannels)
 
             // Resample to 16kHz and save app track
             appSamples16k = AudioMixer.resample(appSamples, from: actualRate, to: format.targetRate)

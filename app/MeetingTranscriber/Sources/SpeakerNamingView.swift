@@ -597,42 +597,20 @@ struct SpeakerNamingView: View { // swiftlint:disable:this type_body_length
         // Pick the longest pure segment to avoid cross-voice contamination.
         guard let chosen = Self.selectSampleSegment(for: label, in: data.segments) else { return }
 
-        // Perform file I/O off the main thread
-        Task.detached { [audioPath, chosen] in
-            do {
-                let (samples, sampleRate) = try await AudioMixer.loadAudioAsFloat32(url: audioPath)
-                guard let range = Self.sampleRange(
-                    start: chosen.start,
-                    end: chosen.end,
-                    sampleRate: sampleRate,
-                    totalSamples: samples.count,
-                ) else { return }
-
-                let snippet = Array(samples[range])
-                let tmpPath = FileManager.default.temporaryDirectory
-                    .appendingPathComponent("speaker_\(label).wav")
-                try AudioMixer.saveWAV(samples: snippet, sampleRate: sampleRate, url: tmpPath)
-
-                let newPlayer = try AVAudioPlayer(contentsOf: tmpPath)
-                let duration = newPlayer.duration
-
-                await MainActor.run {
-                    player?.stop()
-                    player = newPlayer
-                    player?.play()
-                    playingLabel = label
-                }
-
-                // Reset icon when done
-                try? await Task.sleep(for: .seconds(duration + 0.1))
-                await MainActor.run {
-                    if playingLabel == label {
-                        playingLabel = nil
-                    }
-                }
-            } catch {
-                // Silently fail — playback is best-effort
-            }
+        // AVAudioPlayer streams from disk, so seeking into a long meeting costs
+        // nothing up front, unlike decoding the whole file for a few seconds.
+        guard let newPlayer = try? AVAudioPlayer(contentsOf: audioPath) else { return }
+        player?.stop()
+        newPlayer.currentTime = max(0, chosen.start)
+        newPlayer.play()
+        player = newPlayer
+        playingLabel = label
+        let duration = chosen.end - chosen.start
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(duration))
+            guard playingLabel == label else { return }
+            player?.stop()
+            playingLabel = nil
         }
     }
 
@@ -661,24 +639,6 @@ struct SpeakerNamingView: View { // swiftlint:disable:this type_body_length
     }
 
     // MARK: - Pure Functions (testable without UI)
-
-    /// Maps a [start, end] time range (seconds) to a clamped half-open sample range,
-    /// rounding down to whole samples. Returns `nil` when the resulting range is
-    /// empty (start >= end after clamping/conversion). Multiplies before truncation
-    /// so fractional starts (e.g. 1.7s) preserve precision; the previous inline code
-    /// did `Int(start) * sampleRate`, which discarded the sub-second offset and shifted
-    /// playback by up to ~1s into a different speaker.
-    nonisolated static func sampleRange(
-        start: TimeInterval,
-        end: TimeInterval,
-        sampleRate: Int,
-        totalSamples: Int,
-    ) -> Range<Int>? {
-        let startSample = max(0, Int(start * Double(sampleRate)))
-        let endSample = min(totalSamples, Int(end * Double(sampleRate)))
-        guard startSample < endSample else { return nil }
-        return startSample ..< endSample
-    }
 
     /// Picks the longest temporally-pure segment for `label`, falling back to
     /// `longestSegment` when no pure segment ≥ `minDuration` exists. A segment is

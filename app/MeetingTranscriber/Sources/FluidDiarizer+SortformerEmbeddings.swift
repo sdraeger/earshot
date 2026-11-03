@@ -23,21 +23,11 @@ extension FluidDiarizer {
     /// The pure helpers — `buildOverlapExcludedMasks`, `resampleMask`,
     /// `aggregateCentroids` — stay in `FluidDiarizer.swift` and are
     /// covered by `FluidDiarizerSortformerTests`.
-    func extractSortformerEmbeddings(
-        audioPath: URL,
-        timeline: DiarizerTimeline,
-    ) async throws -> [String: [Float]] {
-        let converter = AudioConverter(sampleRate: 16000.0)
-        let audio = try converter.resampleAudioFile(audioPath)
-        return try await extractSortformerEmbeddings(audio: audio, timeline: timeline)
-    }
-
-    /// Same, for audio already decoded to 16 kHz mono. Nemotron 3 mode uses
-    /// this: its model is an 8-speaker streaming Sortformer, its timeline
-    /// has the same shape at 10 ms instead of 80 ms frames (the chunk walk
-    /// derives its frame counts from `timeline.config`), and it has the
-    /// samples in hand already, so decoding the file a second time would
-    /// only cost time.
+    ///
+    /// Takes audio already decoded to 16 kHz mono, which both callers have in
+    /// hand. Nemotron 3 mode works too: its timeline has the same shape at
+    /// 10 ms instead of 80 ms frames (the chunk walk derives its frame counts
+    /// from `timeline.config`).
     func extractSortformerEmbeddings(
         audio: [Float],
         timeline: DiarizerTimeline,

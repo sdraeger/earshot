@@ -15,11 +15,6 @@ final class ParakeetEngineTests: XCTestCase {
         XCTAssertEqual(engine.downloadProgress, 0, accuracy: 0.001)
     }
 
-    func testTranscriptionProgressStartsAtZero() {
-        let engine = ParakeetEngine()
-        XCTAssertEqual(engine.transcriptionProgress, 0, accuracy: 0.001)
-    }
-
     // MARK: - Protocol Conformance
 
     func testConformsToTranscribingEngine() {

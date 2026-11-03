@@ -23,7 +23,6 @@ final class WatchLoopUpdateFunnelTests: XCTestCase {
 
         XCTAssertEqual(observed.count, 1, "Exactly one phase transition fires for start()")
         XCTAssertEqual(observed.first?.phase, .watching)
-        XCTAssertEqual(observed.first?.detail, "Polling for meetings...")
     }
 
     /// `onStateChange` is invoked only when the *phase* changes. A funnel
@@ -66,7 +65,6 @@ final class WatchLoopUpdateFunnelTests: XCTestCase {
 
         let snap = loop.snapshot
         XCTAssertEqual(snap.phase, .recording)
-        XCTAssertEqual(snap.detail, "Recording: Daily")
         XCTAssertEqual(
             snap.manualRecordingInfo,
             ManualRecordingInfo(pid: 99, appName: "Zoom", title: "Daily"),
@@ -88,7 +86,6 @@ final class WatchLoopUpdateFunnelTests: XCTestCase {
         let snap = loop.snapshot
         XCTAssertEqual(snap.phase, .idle, "Phase still transitions to idle on stop failure")
         XCTAssertNil(snap.manualRecordingInfo, "Manual info cleared even when stop throws")
-        XCTAssertEqual(snap.detail, "")
         XCTAssertNotNil(snap.lastError, "Recorder error must surface via funnel's lastError")
     }
 }

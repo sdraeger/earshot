@@ -192,15 +192,6 @@ final class AppStateTests: XCTestCase { // swiftlint:disable:this type_body_leng
         XCTAssertEqual(state.currentStatus?.state, .watching)
     }
 
-    func testCurrentStatusDetailMatchesLoopDetail() {
-        let (state, _) = makeState()
-        let (loop, _) = makeTestWatchLoop()
-        state.watching.watchLoop = loop
-        loop.start()
-        defer { loop.stop() }
-        XCTAssertEqual(state.currentStatus?.detail, "Polling for meetings...")
-    }
-
     func testCurrentStatusMeetingNilWhenNoActiveMeeting() {
         let (state, _) = makeState()
         let (loop, _) = makeTestWatchLoop()
@@ -219,7 +210,6 @@ final class AppStateTests: XCTestCase { // swiftlint:disable:this type_body_leng
         let status = try XCTUnwrap(state.currentStatus)
         XCTAssertEqual(status.meeting?.app, "Chrome")
         XCTAssertEqual(status.meeting?.title, "Standup")
-        XCTAssertEqual(status.meeting?.pid, 42)
     }
 
     // MARK: - currentBadge integration

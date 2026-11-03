@@ -48,6 +48,12 @@ protocol MeetingDetecting {
     func reset(appName: String?)
 }
 
+/// The on-screen window list (CGWindowListCopyWindowInfo), which detectors
+/// read for meeting titles.
+func systemWindowList() -> [[String: Any]] {
+    CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+}
+
 extension MeetingDetecting {
     func activeCalls(_: DetectedMeeting) -> ActiveCalls {
         .unidentified

@@ -45,9 +45,9 @@ Native SwiftUI menu bar application that orchestrates meeting detection, recordi
                      ▼               ▼                    ▼
         ┌─────────────────────┐  ┌────────────────┐  ┌────────────────────┐
         │ MeetingDetecting    │  │ DualSource-    │  │   PipelineQueue    │
-        │  • MeetingDetector  │  │   Recorder     │  │   (@MainActor)     │
-        │    (CGWindowList +  │  │                │  │                    │
-        │     regex)          │  │  AudioTapLib   │  │  Sequential job    │
+        │                     │  │   Recorder     │  │   (@MainActor)     │
+        │                     │  │                │  │                    │
+        │                     │  │  AudioTapLib   │  │  Sequential job    │
         │  • PowerAssertion-  │  │  (CATap +      │  │  processing →      │
         │    Detector (IOKit, │  │   AVAudioEng.) │  │  see breakdown     │
         │    sandbox-safe)    │  │  + AudioMixer  │  │  below             │
@@ -137,7 +137,6 @@ State writes to `AppPaths.dataDir`; IPC + queue snapshots to `ipcDir`.
 | `WatchLoopState.swift` | Value-type snapshot of `WatchLoop`'s observable fields (for tests and RPC) |
 | `ManualRecordingMonitorPolicy.swift` | Pure decision logic for manual recording stop conditions (process-died vs max-duration) |
 | `MeetingDetecting.swift` | `MeetingDetecting` protocol + `DetectedMeeting` model |
-| `MeetingDetector.swift` | Window title polling, pattern matching, confirmation counting, cooldown |
 | `MeetingTitleMatcher.swift` | Compiled idle/meeting title regex semantics for one `AppMeetingPattern` |
 | `PowerAssertionDetector.swift` | IOKit power assertion–based meeting detection (sandbox-safe); carries the Chrome WebRTC pattern for browser meetings (issue #503) |
 | `PowerAssertionDetector+Diagnostics.swift` | "Saw something that looks like a meeting and did not act on it" diagnostic, split out of `PowerAssertionDetector` (line-cap) |
@@ -344,7 +343,7 @@ State writes to `AppPaths.dataDir`; IPC + queue snapshots to `ipcDir`.
 | `Bundle+AppVersion.swift` | Bundle extension: `appVersion` + `gitCommitHash` from `Info.plist` |
 | `DiagnosticExporter.swift` | Reads log entries and writes shareable `.log` file (Settings → Advanced → Export Diagnostics) |
 | `PersistentDiagnosticLog.swift` | Persistent `log stream` subprocess with sliding-window restart policy for long-term log retention |
-| `String+LogRedaction.swift` | String extensions: `.pseudonymized` (SHA-256 4-hex prefix) and `.redactedName` for log privacy |
+| `String+LogRedaction.swift` | String extensions: `.pseudonymized` (SHA-256 4-hex prefix) for log privacy |
 | `FileManager+OwnerOnly.swift` | `FileManager` extension: owner-only file permission constant (`rw-------`) as single source of truth |
 | `SingleFlight.swift` | Single-flight async deduplication coordinator (concurrent callers await one shared run and receive its outcome) |
 | `RPCServerController.swift` | `@Observable` controller owning `DebugRPCServer` lifecycle (`#if !APPSTORE`, wired by `AppState`) |
@@ -731,7 +730,6 @@ AppSettings (UserDefaults)
 
 | Component | Injection Point |
 |-----------|----------------|
-| MeetingDetector | `windowListProvider` closure (mock window list) |
 | PowerAssertionDetector | `assertionProvider` + `windowListProvider` closures |
 | MicInputDetector | `processProvider` + `windowListProvider` closures |
 | DiarizationProvider | `diarizationFactory` closure in PipelineQueue |

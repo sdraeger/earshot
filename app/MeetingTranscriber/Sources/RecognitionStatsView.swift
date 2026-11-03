@@ -6,7 +6,7 @@ import SwiftUI
 /// remains the source of truth; this view is read-only.
 struct RecognitionStatsView: View {
     @State private var aggregate: RecognitionStats.Aggregate?
-    @State private var windowDays: WindowChoice = .thirty
+    @State private var windowDays: StatsWindowChoice = .thirty
 
     private let log: RecognitionStatsLog
 
@@ -14,21 +14,10 @@ struct RecognitionStatsView: View {
         self.log = log
     }
 
-    enum WindowChoice: Int, CaseIterable, Identifiable {
-        case seven = 7, thirty = 30, ninety = 90
-        var id: Int {
-            rawValue
-        }
-
-        var label: String {
-            "Last \(rawValue) days"
-        }
-    }
-
     var body: some View {
         Section("Recognition stats") {
             Picker("Window", selection: $windowDays) {
-                ForEach(WindowChoice.allCases) { choice in
+                ForEach(StatsWindowChoice.allCases) { choice in
                     Text(choice.label).tag(choice)
                 }
             }
@@ -62,11 +51,9 @@ struct RecognitionStatsView: View {
     @ViewBuilder
     private func statsBody(_ agg: RecognitionStats.Aggregate) -> some View {
         LabeledContent("Total confirmations", value: "\(agg.total)")
-        statRow(.accepted, count: agg.counts[.accepted] ?? 0, total: agg.total)
-        statRow(.corrected, count: agg.counts[.corrected] ?? 0, total: agg.total)
-        statRow(.added, count: agg.counts[.added] ?? 0, total: agg.total)
-        statRow(.skipped, count: agg.counts[.skipped] ?? 0, total: agg.total)
-        statRow(.dismissed, count: agg.counts[.dismissed] ?? 0, total: agg.total)
+        ForEach(RecognitionAction.allCases, id: \.self) { action in
+            statRow(action, count: agg.counts[action] ?? 0, total: agg.total)
+        }
     }
 
     private func statRow(_ action: RecognitionAction, count: Int, total: Int) -> some View {

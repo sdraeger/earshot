@@ -107,29 +107,6 @@ final class ParakeetE2ETests: XCTestCase {
         XCTAssertEqual(engine.downloadProgress, 1.0, "Download progress should be 1.0 after model load")
     }
 
-    func testTranscriptionProgressReachesOne() async throws {
-        try skipIfCIWithoutE2EOptIn("requires Parakeet model download")
-
-        let fixture = fixtureURL()
-        try XCTSkipUnless(
-            FileManager.default.fileExists(atPath: fixture.path),
-            "Test fixture not found at \(fixture.path)",
-        )
-
-        let engine = ParakeetEngine()
-        await engine.loadModel()
-        XCTAssertEqual(engine.modelState, .loaded, "Model should be loaded")
-
-        // Resample 48kHz fixture to 16kHz for Parakeet
-        let resampled16k = try resampleFixtureToTemp(fixture)
-
-        _ = try await engine.transcribeSegments(audioPath: resampled16k)
-        XCTAssertEqual(
-            engine.transcriptionProgress, 1.0,
-            "Transcription progress should be 1.0 after transcribeSegments completes",
-        )
-    }
-
     // MARK: - Helpers
 
     /// Keywords expected in the fixture's German transcript.

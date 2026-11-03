@@ -141,7 +141,7 @@ final class LiveTranscriptionE2ETests: XCTestCase {
         into sink: LiveAudioSink,
     ) {
         let chunkFrames = 1280 // ~80 ms at 16 kHz
-        let ticksPerSecond = SampleRateDriftDetector.secondsToMachTicks(1.0)
+        let ticksPerSecond = secondsToMachTicks(1.0)
         var hostTime: UInt64 = 0
         var offset = 0
         while offset < samples.count {

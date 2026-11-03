@@ -455,14 +455,7 @@ extension BadgeKind {
             // question that can go unseen as a notification (issue #814), so
             // it outranks everything but a running recording and an error.
             if consentPending, transcriberState != .error { return .userAction }
-            switch transcriberState {
-            case .waitingForSpeakerCount, .waitingForSpeakerNames: return .userAction
-            case .protocolReady: return .done
-            case .error: return .error
-            case .transcribing, .recordingDone: return .transcribing
-            case .generatingProtocol: return .processing
-            default: break
-            }
+            if transcriberState == .error { return .error }
         }
         switch activeJobState {
         case .transcribing: return .transcribing

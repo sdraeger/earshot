@@ -166,7 +166,7 @@ Read the matching doc before changing or debugging that area. Each holds the are
 ## Critical Notes
 
 - AudioTapLib (CATapDescription) requires macOS 14.2+ — compiled as SPM library, no separate binary needed
-- **Meeting detection** needs no Screen Recording: the watch loop auto-detects via `CompositeMeetingDetector` over `PowerAssertionDetector` (IOKit power assertions) and `MicInputDetector` (Core Audio process objects), neither of which reads window titles. The grant only sharpens the meeting *title* (`CGWindowListCopyWindowInfo`, real title vs. a placeholder) and gates the audio-tap TCC fallback below. The window-title `MeetingDetector` that would require it is not the production detector (issue #562).
+- **Meeting detection** needs no Screen Recording: the watch loop auto-detects via `CompositeMeetingDetector` over `PowerAssertionDetector` (IOKit power assertions) and `MicInputDetector` (Core Audio process objects), neither of which reads window titles. The grant only sharpens the meeting *title* (`CGWindowListCopyWindowInfo`, real title vs. a placeholder) and gates the audio-tap TCC fallback below. No production detector polls window titles for detection (issue #562).
 - Audio capture (CATapDescription process tap) is TCC-gated: it needs either the `NSAudioCaptureUsageDescription` "Audio Recording" grant or, as a fallback, the Screen Recording grant. With neither, the tap returns `noErr` but captures silence, with no error and nothing logged (issue #524; measured on macOS 26, see the process-tap TCC-gate notes).
 - FluidAudio models are downloaded automatically on first run (~50 MB); Nemotron 3 diarization mode adds a ~200 MB download the first time it is used
 

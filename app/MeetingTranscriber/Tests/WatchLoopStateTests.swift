@@ -16,7 +16,6 @@ final class WatchLoopStateTests: XCTestCase {
         XCTAssertEqual(WatchLoopState.initial.phase, .idle)
         XCTAssertNil(WatchLoopState.initial.currentMeeting)
         XCTAssertNil(WatchLoopState.initial.lastError)
-        XCTAssertEqual(WatchLoopState.initial.detail, "")
         XCTAssertNil(WatchLoopState.initial.manualRecordingInfo)
     }
 
@@ -25,8 +24,8 @@ final class WatchLoopStateTests: XCTestCase {
         var b = WatchLoopState.initial
         XCTAssertEqual(a, b)
 
-        b.detail = "watching"
-        XCTAssertNotEqual(a, b, "Snapshots with different detail must not compare equal")
+        b.lastError = "boom"
+        XCTAssertNotEqual(a, b, "Snapshots with different errors must not compare equal")
     }
 
     // MARK: - Snapshot reflects live fields
@@ -37,7 +36,6 @@ final class WatchLoopStateTests: XCTestCase {
 
         loop.start()
         XCTAssertEqual(loop.snapshot.phase, .watching)
-        XCTAssertEqual(loop.snapshot.detail, "Polling for meetings...")
 
         loop.stop()
         XCTAssertEqual(loop.snapshot.phase, .idle)

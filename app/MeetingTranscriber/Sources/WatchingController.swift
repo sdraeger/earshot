@@ -453,10 +453,7 @@ final class WatchingController {
             // about, reachable from the app picker (its window outlives the
             // state it was opened in) and from the automation API alike.
             guard Self.mayTakeOverLoop(in: loop.state) else {
-                notifier.notify(
-                    title: "Can't start recording",
-                    body: "A meeting is already being recorded",
-                )
+                notifier.notify(title: "Can't start recording", body: "A meeting is already being recorded")
                 return .blockedByActiveRecording
             }
             loop.stop()
@@ -517,10 +514,7 @@ final class WatchingController {
             // the loop stamps it into `manualRecordingInfo`, and that is the
             // same value the job and the record-only sidecar get, so the
             // notification cannot end up naming the recording something else.
-            notifier.notify(
-                title: "Recording started",
-                body: loop.manualRecordingInfo?.title ?? "",
-            )
+            notifier.notify(title: "Recording started", body: loop.manualRecordingInfo?.title ?? "")
             return .started
         } catch is CancellationError {
             watchLoop = nil // a quit began while the recorder was built: not an error
@@ -544,8 +538,7 @@ final class WatchingController {
         let loop = watchLoop
         let errorBefore = loop?.lastError
         loop?.stopManualRecording()
-        // A failed stop leaves the loop idle with `lastError` set, which the
-        // state handler (it reports `.error` only) would never surface.
+        // A failed stop leaves the loop idle with `lastError` set; the state handler reports only `.error`.
         if let error = loop?.lastError, error != errorBefore {
             notifier.notify(title: "Recording failed", body: error)
         }
@@ -554,9 +547,8 @@ final class WatchingController {
     }
 
     private func resumeWatchingIfTakenOver() {
-        guard resumeWatchingAfterManual else { return }
+        guard resumeWatchingAfterManual, !isQuitting else { return }
         resumeWatchingAfterManual = false
-        guard !isQuitting else { return }
         toggleWatching(userInitiated: false)
     }
 
@@ -584,10 +576,7 @@ final class WatchingController {
             switch newState {
             case .recording:
                 if notifyOnRecording, let meeting = loop?.currentMeeting {
-                    notifier.notify(
-                        title: "Recording started",
-                        body: meeting.windowTitle,
-                    )
+                    notifier.notify(title: "Recording started", body: meeting.windowTitle)
                 }
                 // No source means no live recording, so there are no channels to
                 // watch and starting the monitor would only assume a topology.

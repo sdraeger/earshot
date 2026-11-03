@@ -57,7 +57,7 @@ final class CustomVocabularyTests: XCTestCase {
 
     func testCustomVocabularyPathClear() {
         settings.setCustomVocabularyPath("/tmp/vocab.txt")
-        settings.clearCustomVocabularyFile()
+        settings.setCustomVocabularyPath("")
         XCTAssertEqual(settings.customVocabularyPath, "")
     }
 
@@ -123,7 +123,7 @@ final class CustomVocabularyTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: file) }
         settings.setCustomVocabularyFile(file)
 
-        settings.clearCustomVocabularyFile()
+        settings.setCustomVocabularyPath("")
 
         XCTAssertEqual(settings.customVocabularyPath, "")
         XCTAssertNil(settings.customVocabularyBookmark)

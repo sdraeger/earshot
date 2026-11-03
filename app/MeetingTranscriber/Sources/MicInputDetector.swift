@@ -1,4 +1,5 @@
 import AppKit
+import AudioTapLib
 import CoreAudio
 import os.log
 
@@ -126,7 +127,7 @@ class MicInputDetector: MeetingDetecting {
     var processProvider: () -> [AudioProcessSnapshot] = MicInputDetector.systemAudioProcesses
 
     /// Injectable window list for title lookup, mirroring PowerAssertionDetector.
-    var windowListProvider: () -> [[String: Any]] = MeetingDetector.systemWindowList
+    var windowListProvider: () -> [[String: Any]] = systemWindowList
 
     var mainAppPIDProvider: (String) -> pid_t? = { bundleID in
         NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first?.processIdentifier
@@ -257,48 +258,27 @@ class MicInputDetector: MeetingDetecting {
             // optional alone does not filter it. Such an entry can never match
             // a watched pattern; drop it here so the snapshot list keeps its
             // "every entry identifies an app" invariant.
-            guard let bundleID = stringProperty(objectID, selector: kAudioProcessPropertyBundleID),
+            guard let bundleID = getProcessBundleID(objectID),
                   !bundleID.isEmpty
             else {
                 return nil
             }
-            let pid = pid_t(int32Property(objectID, selector: kAudioProcessPropertyPID) ?? -1)
-            let running = (uint32Property(objectID, selector: kAudioProcessPropertyIsRunningInput) ?? 0) != 0
+            let pid: pid_t = scalarProperty(objectID, selector: kAudioProcessPropertyPID) ?? -1
+            let running = (scalarProperty(objectID, selector: kAudioProcessPropertyIsRunningInput) as UInt32? ?? 0) != 0
             return AudioProcessSnapshot(bundleID: bundleID, pid: pid, isRunningInput: running)
         }
     }
 
-    private static func propertyAddress(_ selector: AudioObjectPropertySelector) -> AudioObjectPropertyAddress {
-        AudioObjectPropertyAddress(
+    private static func scalarProperty<T: FixedWidthInteger>(
+        _ objectID: AudioObjectID, selector: AudioObjectPropertySelector,
+    ) -> T? {
+        var address = AudioObjectPropertyAddress(
             mSelector: selector,
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain,
         )
-    }
-
-    private static func stringProperty(_ objectID: AudioObjectID, selector: AudioObjectPropertySelector) -> String? {
-        var address = propertyAddress(selector)
-        var dataSize = UInt32(MemoryLayout<CFString?>.size)
-        var value: CFString?
-        let status = withUnsafeMutablePointer(to: &value) { ptr in
-            AudioObjectGetPropertyData(objectID, &address, 0, nil, &dataSize, ptr)
-        }
-        guard status == noErr, let value else { return nil }
-        return value as String
-    }
-
-    private static func uint32Property(_ objectID: AudioObjectID, selector: AudioObjectPropertySelector) -> UInt32? {
-        var address = propertyAddress(selector)
-        var dataSize = UInt32(MemoryLayout<UInt32>.size)
-        var value: UInt32 = 0
-        guard AudioObjectGetPropertyData(objectID, &address, 0, nil, &dataSize, &value) == noErr else { return nil }
-        return value
-    }
-
-    private static func int32Property(_ objectID: AudioObjectID, selector: AudioObjectPropertySelector) -> Int32? {
-        var address = propertyAddress(selector)
-        var dataSize = UInt32(MemoryLayout<Int32>.size)
-        var value: Int32 = 0
+        var dataSize = UInt32(MemoryLayout<T>.size)
+        var value: T = 0
         guard AudioObjectGetPropertyData(objectID, &address, 0, nil, &dataSize, &value) == noErr else { return nil }
         return value
     }

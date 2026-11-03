@@ -39,7 +39,7 @@ final class ModelServerEngineTests: XCTestCase {
         let engine = ModelServerEngine()
         await engine.loadModel()
         XCTAssertEqual(engine.modelState, .unloaded)
-        XCTAssertTrue(engine.loadFailureReason?.contains("server address") == true)
+        XCTAssertEqual(engine.loadFailureReason?.contains("server address"), true)
     }
 
     func testLoadWithNothingListeningAndNoCommandSaysSo() async {
@@ -47,7 +47,7 @@ final class ModelServerEngineTests: XCTestCase {
         engine.baseURL = "http://127.0.0.1:\(Self.freePort())/v1"
         await engine.loadModel()
         XCTAssertEqual(engine.modelState, .unloaded)
-        XCTAssertTrue(engine.loadFailureReason?.contains("No server answers") == true)
+        XCTAssertEqual(engine.loadFailureReason?.contains("No server answers"), true)
     }
 
     func testALaunchCommandThatExitsReportsItsStatus() async {
@@ -56,7 +56,7 @@ final class ModelServerEngineTests: XCTestCase {
         engine.launchCommand = "false"
         await engine.loadModel()
         XCTAssertEqual(engine.modelState, .unloaded)
-        XCTAssertTrue(engine.loadFailureReason?.contains("exited with status 1") == true, engine.loadFailureReason ?? "")
+        XCTAssertEqual(engine.loadFailureReason?.contains("exited with status 1"), true, engine.loadFailureReason ?? "")
     }
 
     // MARK: - Launch and transcribe
@@ -92,7 +92,7 @@ final class ModelServerEngineTests: XCTestCase {
         let probe = try XCTUnwrap(URL(string: "http://127.0.0.1:\(port)/v1/models"))
         var stillUp = true
         for _ in 0 ..< 50 where stillUp {
-            stillUp = (try? await URLSession.shared.data(from: probe)) != nil
+            stillUp = await (try? URLSession.shared.data(from: probe)) != nil
             if stillUp { try await Task.sleep(for: .milliseconds(100)) }
         }
         XCTAssertFalse(stillUp, "the launched server must stop with the engine")
@@ -131,11 +131,11 @@ final class ModelServerEngineTests: XCTestCase {
         addr.sin_family = sa_family_t(AF_INET)
         addr.sin_addr.s_addr = inet_addr("127.0.0.1")
         var len = socklen_t(MemoryLayout<sockaddr_in>.size)
-        _ = withUnsafeMutablePointer(to: &addr) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { Darwin.bind(sock, $0, len) }
-        }
-        _ = withUnsafeMutablePointer(to: &addr) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { getsockname(sock, $0, &len) }
+        withUnsafeMutablePointer(to: &addr) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { address in
+                _ = Darwin.bind(sock, address, len)
+                _ = getsockname(sock, address, &len)
+            }
         }
         return Int(UInt16(bigEndian: addr.sin_port))
     }

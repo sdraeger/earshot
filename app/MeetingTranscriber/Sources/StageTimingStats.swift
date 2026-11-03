@@ -1,7 +1,4 @@
 import Foundation
-import os.log
-
-private let logger = Logger(subsystem: AppPaths.logSubsystem, category: "StageTimingStats")
 
 /// A pipeline stage whose wall-clock duration we track. The raw values are the
 /// `stage_timing.jsonl` wire contract; map from a `JobState` via the
@@ -134,69 +131,5 @@ enum StageTimingStats {
         marginFactor: Double = 1.5, minOverrunSeconds: Double = 30,
     ) -> Bool {
         average > 0 && elapsed > average * marginFactor && (elapsed - average) >= minOverrunSeconds
-    }
-}
-
-/// Append-only JSONL writer for stage-timing events. One file per app install,
-/// owner-readable (chmod 0600 on first creation). Production callers use the
-/// no-arg `init()`; tests pass an explicit `path:` to avoid polluting the real
-/// log. Mirrors `RecognitionStatsLog`.
-actor StageTimingLog {
-    static let defaultPath = AppPaths.dataDir.appendingPathComponent("stage_timing.jsonl")
-
-    private let path: URL
-    private let encoder: JSONEncoder
-    private let decoder: JSONDecoder
-
-    init(path: URL = StageTimingLog.defaultPath) {
-        self.path = path
-        self.encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = [.sortedKeys]
-        self.decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-    }
-
-    func append(_ events: [StageTimingEvent]) {
-        guard !events.isEmpty else { return }
-        do {
-            try FileManager.default.createDirectory(
-                at: path.deletingLastPathComponent(), withIntermediateDirectories: true,
-            )
-
-            if !FileManager.default.fileExists(atPath: path.path) {
-                FileManager.default.createFile(
-                    atPath: path.path, contents: nil,
-                    attributes: [.posixPermissions: 0o600],
-                )
-            }
-
-            let handle = try FileHandle(forWritingTo: path)
-            defer { try? handle.close() }
-            try handle.seekToEnd()
-            for event in events {
-                let line = try encoder.encode(event) + Data([0x0A])
-                try handle.write(contentsOf: line)
-            }
-            try handle.synchronize()
-        } catch {
-            logger.error("Failed to append stage-timing events: \(error.localizedDescription, privacy: .public)")
-        }
-    }
-
-    /// Load events with `ts` within the last `interval` seconds. Skips lines that
-    /// fail to decode (forward-compat for future schema changes).
-    func loadRecent(within interval: TimeInterval, now: Date = Date()) -> [StageTimingEvent] {
-        guard let data = try? Data(contentsOf: path),
-              let text = String(data: data, encoding: .utf8) else { return [] }
-        let cutoff = now.addingTimeInterval(-interval)
-        var out: [StageTimingEvent] = []
-        for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
-            guard let lineData = line.data(using: .utf8),
-                  let event = try? decoder.decode(StageTimingEvent.self, from: lineData),
-                  event.ts >= cutoff else { continue }
-            out.append(event)
-        }
-        return out
     }
 }
