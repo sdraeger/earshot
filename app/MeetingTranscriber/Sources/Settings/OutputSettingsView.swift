@@ -126,9 +126,7 @@ struct OutputSettingsView: View {
                         Text(bin).tag(bin)
                     }
                 }
-                Text("Binary used to generate meeting notes")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                .settingsNote("Binary used to generate meeting notes")
 
                 HStack {
                     Text("API Key")
@@ -136,12 +134,10 @@ struct OutputSettingsView: View {
                     SecureField("", text: $settings.claudeAPIKey)
                         .frame(width: 200)
                 }
-                Text("Optional. Leave empty to use your \"claude login\" session.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text("Only set this if that session can't stay signed in. An explicit key here is billed separately from your subscription.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                .settingsNote(
+                    "Optional. Leave empty to use your \"claude login\" session.",
+                    "Only set this if that session can't stay signed in. An explicit key here is billed separately from your subscription.",
+                )
         #endif
 
         case .openAICompatible:
@@ -149,7 +145,7 @@ struct OutputSettingsView: View {
 
         case .none:
             Text("No LLM summarization will be generated. Raw transcripts are retained if no meeting notes are saved.")
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.secondary)
         }
     }
@@ -161,7 +157,7 @@ struct OutputSettingsView: View {
             TextField("http://localhost:1234/v1", text: $settings.openAIEndpoint)
                 .textFieldStyle(.roundedBorder)
             Text("Base URL (e.g. http://localhost:1234/v1) or full chat-completions URL — both work.")
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.secondary)
         }
 
@@ -193,12 +189,10 @@ struct OutputSettingsView: View {
             toggleID: A11yID.openAITopPToggle,
             valueID: A11yID.openAITopPValue,
         )
-        Text("Passed to the server only when switched on. Off leaves the server's own default in place.")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        Text("Some servers reject both together, and reasoning models often reject any value.")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+        .settingsNote(
+            "Passed to the server only when switched on. Off leaves the server's own default in place.",
+            "Some servers reject both together, and reasoning models often reject any value.",
+        )
 
         HStack {
             Text("API Key")
@@ -206,9 +200,7 @@ struct OutputSettingsView: View {
             SecureField("", text: $settings.openAIAPIKey)
                 .frame(width: 200)
         }
-        Text("Leave empty if your local server doesn't require authentication")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+        .settingsNote("Leave empty if your local server doesn't require authentication")
 
         Picker("API Key Authentication", selection: $settings.openAIAPIKeyPlacement) {
             ForEach(OpenAIAPIKeyPlacement.allCases, id: \.self) { placement in
@@ -226,14 +218,12 @@ struct OutputSettingsView: View {
                     .multilineTextAlignment(.trailing)
                     .accessibilityIdentifier(A11yID.openAIAPIKeyHeaderNameField)
             }
-            Text("Sends the API key unchanged in this HTTP header, e.g. api-key.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            .settingsNote("Sends the API key unchanged in this HTTP header, e.g. api-key.")
             if !OpenAIProtocolGenerator.isValidAPIKeyHeaderName(
                 settings.openAIAPIKeyHeaderName.trimmingCharacters(in: .whitespacesAndNewlines),
             ) {
                 Text("Enter a valid HTTP header name. Content-Type, Content-Length, Host and other connection-level headers are reserved.")
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(.red)
                     .accessibilityIdentifier(A11yID.openAIAPIKeyHeaderNameWarning)
             }
@@ -258,12 +248,12 @@ struct OutputSettingsView: View {
                 case let .success(msg):
                     Label(msg, systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
-                        .font(.caption)
+                        .font(.callout)
 
                 case let .failure(msg):
                     Label(msg, systemImage: "xmark.circle.fill")
                         .foregroundStyle(.red)
-                        .font(.caption)
+                        .font(.callout)
                 }
             }
         }
@@ -307,11 +297,11 @@ struct OutputSettingsView: View {
             if hasCustomPrompt {
                 Label("Custom prompt active", systemImage: "doc.text.fill")
                     .foregroundStyle(.blue)
-                    .font(.caption)
+                    .font(.callout)
             } else {
                 Label("Using default prompt", systemImage: "doc.text")
                     .foregroundStyle(.secondary)
-                    .font(.caption)
+                    .font(.callout)
             }
         }
     }

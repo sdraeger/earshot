@@ -28,7 +28,7 @@ struct RecognitionStatsView: View {
                     statsBody(aggregate)
                 } else {
                     Text("No data yet — confirm a meeting to start collecting.")
-                        .font(.caption)
+                        .font(.callout)
                         .foregroundStyle(.secondary)
                 }
             } else {
@@ -70,7 +70,7 @@ struct RecognitionStatsView: View {
     private func pctLabel(_ pct: Int) -> some View {
         Text("(\(pct)%)")
             .foregroundStyle(.secondary)
-            .font(.caption)
+            .font(.callout)
     }
 
     private func progressBar(count: Int, total: Int) -> some View {

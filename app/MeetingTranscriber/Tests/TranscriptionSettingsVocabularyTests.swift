@@ -63,7 +63,8 @@ final class TranscriptionSettingsVocabularyTests: XCTestCase {
             .inspect()
             .form()
             .section(0)
-            .hStack(3)
+            .vStack(3)
+            .hStack(0)
 
         XCTAssertEqual(
             try vocabularyControl.help().string(),

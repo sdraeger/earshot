@@ -63,65 +63,61 @@ struct AdvancedSettingsView: View {
                 Button("Refresh") {
                     refreshPermissions()
                 }
-                .font(.caption)
+                .font(.callout)
             }
 
             // swiftlint:disable:next closure_body_length
             Section("Diagnostics") {
                 Toggle("Verbose diagnostic logging", isOn: $settings.verboseDiagnostics)
-                Text(
-                    "Logs detailed diagnostics across recording, transcription,"
-                        + " diarization, and meeting notes generation. Used to debug"
-                        + " issues. Off by default — toggle on, reproduce the"
-                        + " problem, then click \"Export Diagnostics…\" below to"
-                        + " attach a redacted log file to a bug report.",
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                    .settingsNote(
+                        "Logs detailed diagnostics across recording, transcription,"
+                            + " diarization, and meeting notes generation. Used to debug"
+                            + " issues. Off by default — toggle on, reproduce the"
+                            + " problem, then click \"Export Diagnostics…\" below to"
+                            + " attach a redacted log file to a bug report.",
+                    )
 
-                HStack {
-                    Button("Export diagnostics…") { exportDiagnostics() }
-                        .disabled(isExportingDiagnostics)
-                    if isExportingDiagnostics {
-                        ProgressView()
-                            .controlSize(.small)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Button("Export diagnostics…") { exportDiagnostics() }
+                            .disabled(isExportingDiagnostics)
+                        if isExportingDiagnostics {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
                     }
-                }
-                if let file = lastExportFile {
-                    Text("Exported to: \(file)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                if let err = lastExportError {
-                    Text("Export failed: \(err)")
-                        .font(.caption)
-                        .foregroundStyle(.red)
+                    if let file = lastExportFile {
+                        Text("Exported to: \(file)")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                    if let err = lastExportError {
+                        Text("Export failed: \(err)")
+                            .font(.callout)
+                            .foregroundStyle(.red)
+                    }
                 }
 
                 #if !APPSTORE
                     Button("Open diagnostic logs folder") {
                         NSWorkspace.shared.activateFileViewerSelecting([PersistentDiagnosticLog.logDirectory])
                     }
-                    Text(
+                    .settingsNote(
                         "Persistent logs are kept for 30 days at"
                             + " ~/Library/Logs/MeetingTranscriber/. Useful when"
                             + " you need to attach logs from a session that"
                             + " happened earlier today (or yesterday).",
                     )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
 
                     Toggle("Local Automation API", isOn: $settings.debugRPCEnabled)
-                    Text(
-                        "Exposes the local automation API + pipeline state on"
-                            + " 127.0.0.1:9876 (POST /v1/transcribe, /v1/jobs, and"
-                            + " /v1/watch to start/stop watching from a hotkey or"
-                            + " Stream Deck; also `mt-cli`). Localhost-only,"
-                            + " bearer-token auth. Off by default; enable for"
-                            + " headless automation or shell-driven inspection.",
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                        .settingsNote(
+                            "Exposes the local automation API + pipeline state on"
+                                + " 127.0.0.1:9876 (POST /v1/transcribe, /v1/jobs, and"
+                                + " /v1/watch to start/stop watching from a hotkey or"
+                                + " Stream Deck; also `mt-cli`). Localhost-only,"
+                                + " bearer-token auth. Off by default; enable for"
+                                + " headless automation or shell-driven inspection.",
+                        )
                 #endif
             }
         }

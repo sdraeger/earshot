@@ -93,7 +93,7 @@ struct VoiceEnrollmentView: View {
                     + "Embeddings + centroid land in your speaker DB exactly as if "
                     + "the meeting had just happened.",
             )
-            .font(.caption)
+            .font(.callout)
             .foregroundStyle(.secondary)
         }
     }
@@ -104,7 +104,7 @@ struct VoiceEnrollmentView: View {
             HStack {
                 ProgressView()
                 Text(String(format: "%.0f s elapsed", elapsed))
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
             }
         }
@@ -113,7 +113,7 @@ struct VoiceEnrollmentView: View {
     private func namingBody(payload: NamingPayload) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Found \(payload.speakerCount) speakers in \(payload.url.lastPathComponent)")
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.secondary)
 
             SpeakerNamingView(

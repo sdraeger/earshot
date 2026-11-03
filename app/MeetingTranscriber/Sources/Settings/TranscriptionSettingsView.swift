@@ -86,7 +86,6 @@ struct TranscriptionSettingsView: View {
             whisperKitPickers
             parakeetLanguagePicker
             customVocabularyRow
-            customVocabularyValidation
             whisperKitVocabularyPromptControls
             terminologyRulesEditor
             modelServerFields
@@ -149,7 +148,14 @@ struct TranscriptionSettingsView: View {
     }
 
     @ViewBuilder private var customVocabularyRow: some View {
-        if settings.transcriptionEngine != .server { vocabularyFilePicker }
+        if settings.transcriptionEngine != .server {
+            vocabularyFilePicker
+                .settingsNote(settings.customVocabularyValidation.message)
+                .onAppear { settings.refreshCustomVocabularyValidation() }
+                .onChange(of: settings.customVocabularyPath) { _, _ in
+                    settings.refreshCustomVocabularyValidation()
+                }
+        }
     }
 
     private var vocabularyFilePicker: some View {
@@ -172,32 +178,16 @@ struct TranscriptionSettingsView: View {
         .help(Self.vocabularyHelpText(for: settings.transcriptionEngine))
     }
 
-    @ViewBuilder private var customVocabularyValidation: some View {
-        if settings.transcriptionEngine != .server { vocabularyValidationText }
-    }
-
-    private var vocabularyValidationText: some View {
-        Text(settings.customVocabularyValidation.message)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .onAppear { settings.refreshCustomVocabularyValidation() }
-            .onChange(of: settings.customVocabularyPath) { _, _ in
-                settings.refreshCustomVocabularyValidation()
-            }
-    }
-
     @ViewBuilder
     private var whisperKitVocabularyPromptControls: some View { // swiftlint:disable:this attributes
         if settings.transcriptionEngine == .whisperKit {
             Toggle("Use custom vocabulary prompt (experimental)", isOn: $settings.whisperKitVocabularyPromptEnabled)
                 .accessibilityIdentifier(A11yID.whisperKitVocabularyPromptToggle)
                 .help(Self.whisperKitVocabularyPromptHelpText)
-            Text("Experimental: dense audio can omit whole sentences. See help for measured results; prefer Parakeet for vocabulary boosting.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text("When enabled, WhisperKit uses a 32-token hint; earlier terms have priority.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .settingsNote(
+                    "Experimental: dense audio can omit whole sentences. See help for measured results; prefer Parakeet for vocabulary boosting.",
+                    "When enabled, WhisperKit uses a 32-token hint; earlier terms have priority.",
+                )
         }
     }
 
@@ -213,10 +203,10 @@ struct TranscriptionSettingsView: View {
                     + "Canonical spelling => spoken variant | another variant. "
                     + "Rules only replace whole words or phrases.",
             )
-            .font(.caption)
+            .font(.callout)
             .foregroundStyle(.secondary)
             Text(settings.terminologyRulesValidation.message)
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.secondary)
         }
     }
@@ -281,15 +271,13 @@ struct TranscriptionSettingsView: View {
             .disabled(settings.whisperKitCustomModelFolderPath.isEmpty)
         }
         .help(Self.customModelFolderHelpText)
-        Text(settings.whisperKitCustomModelValidation.message)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .onAppear { settings.refreshWhisperKitCustomModelValidation() }
-            // Here because this line exists only while the fields do. Closing the
-            // window hides it, so a pending edit would otherwise stay unapplied.
-            .onReceive(NotificationCenter.default.publisher(for: NSWindow.willCloseNotification)) { notification in
-                customModelDrafts.settingsWindowWillClose(notification, settings: settings)
-            }
+        .settingsNote(settings.whisperKitCustomModelValidation.message)
+        .onAppear { settings.refreshWhisperKitCustomModelValidation() }
+        // Here because this line exists only while the fields do. Closing the
+        // window hides it, so a pending edit would otherwise stay unapplied.
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.willCloseNotification)) { notification in
+            customModelDrafts.settingsWindowWillClose(notification, settings: settings)
+        }
     }
 
     static let customModelFolderHelpText =
@@ -319,6 +307,7 @@ struct TranscriptionSettingsView: View {
                     }
                 },
             ))
+            .settingsNote(captionBackendFootnote)
             .alert("Download caption model?", isPresented: $pendingCaptionEnable) {
                 Button("Cancel", role: .cancel) {}
                 Button("Enable") { settings.liveTranscriptionEnabled = true }
@@ -331,16 +320,6 @@ struct TranscriptionSettingsView: View {
 
             captionOverlayToggle
             captionSizePicker
-
-            Text(captionBackendFootnote)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Text(liveTranscriptionFootnote)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityIdentifier(A11yID.liveTranscriptionSection)
         .recordOnlyDisabled(settings.recordOnly)
@@ -354,6 +333,7 @@ struct TranscriptionSettingsView: View {
         Toggle("Show caption overlay", isOn: $settings.liveCaptionsOverlayEnabled)
             .disabled(!settings.liveTranscriptionEnabled)
             .accessibilityIdentifier(A11yID.liveCaptionsOverlayToggle)
+            .settingsNote(liveTranscriptionFootnote)
     }
 
     /// Nested one level deeper than the overlay toggle: a hidden bar has no
@@ -444,7 +424,7 @@ struct TranscriptionSettingsView: View {
             + "click-through bar at the bottom of the screen; turn it off to hide "
             + "the bar without stopping transcription. Hold ⌥ (Option) "
             + "to drag it; the position is remembered across sessions. "
-            + "Caption text is **not** logged by default — enable "
+            + "Caption text is not logged by default — enable "
             + "\"Verbose Diagnostic Logging\" in Advanced to see "
             + "partials + finals in Console.app (subsystem "
             + "com.meetingtranscriber, category LiveTranscription). "
@@ -473,22 +453,20 @@ struct TranscriptionSettingsView: View {
         case .downloading:
             ProgressView(value: engine.downloadProgress)
                 .progressViewStyle(.linear)
-            Text("Downloading model… \(Int(engine.downloadProgress * 100))%")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .settingsNote("Downloading model… \(Int(engine.downloadProgress * 100))%")
 
         case .loading:
             HStack {
                 ProgressView().controlSize(.small)
                 Text("Loading model…")
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
             }
 
         case .loaded:
             Label("Model ready", systemImage: "checkmark.circle.fill")
                 .foregroundStyle(.green)
-                .font(.caption)
+                .font(.callout)
 
         case .unloaded:
             Button("Load model") {
@@ -507,12 +485,12 @@ struct TranscriptionSettingsView: View {
         // this shows only beside "Load Model".
         if settings.transcriptionEngine == .whisperKit, let reason = whisperKitEngine.loadFailureReason {
             Text(reason)
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.red)
         }
         if settings.transcriptionEngine == .server, let reason = modelServerEngine.loadFailureReason {
             Text(reason)
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.red)
                 .textSelection(.enabled)
         }

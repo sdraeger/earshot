@@ -23,7 +23,7 @@ struct AboutSettingsView: View {
                         systemImage: FFmpegHelper.isAvailable ? "checkmark.circle.fill" : "xmark.circle.fill",
                     )
                     .foregroundStyle(FFmpegHelper.isAvailable ? .green : .secondary)
-                    .font(.caption)
+                    .font(.callout)
                 }
                 Link("GitHub", destination: Self.githubURL)
             }
@@ -87,18 +87,18 @@ struct AboutSettingsView: View {
                 if let error = updateChecker.lastError {
                     Label(error, systemImage: "xmark.circle.fill")
                         .foregroundStyle(.red)
-                        .font(.caption)
+                        .font(.callout)
                 } else if let update = updateChecker.availableUpdate {
                     Label(
                         "Update available: \(update.tagName)",
                         systemImage: "arrow.down.circle.fill",
                     )
                     .foregroundStyle(.blue)
-                    .font(.caption)
+                    .font(.callout)
                 } else if updateChecker.lastCheckDate != nil {
                     Label("Up to date", systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
-                        .font(.caption)
+                        .font(.callout)
                 }
             }
 
@@ -115,7 +115,7 @@ struct AboutSettingsView: View {
             switch route {
             case let .homebrew(command):
                 Text(command)
-                    .font(.caption.monospaced())
+                    .font(.callout.monospaced())
                     .textSelection(.enabled)
                 Button {
                     route.perform(pasteboard: pasteboard)

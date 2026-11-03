@@ -27,7 +27,7 @@ struct ProcessingStatsView: View {
             if let aggregates {
                 if aggregates.isEmpty {
                     Text("No data yet — process a meeting to start collecting.")
-                        .font(.caption)
+                        .font(.callout)
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(aggregates.keys.sorted(by: StageConfig.displayedBefore), id: \.self) { config in
@@ -62,11 +62,11 @@ struct ProcessingStatsView: View {
                     // "processing seconds per minute of audio" — the intuitive form.
                     Text(String(format: "%.1f s/audio-min", rtf * 60))
                         .foregroundStyle(.secondary)
-                        .font(.caption)
+                        .font(.callout)
                 }
                 Text("(n=\(agg.count))")
                     .foregroundStyle(.secondary)
-                    .font(.caption)
+                    .font(.callout)
             }
         }
     }

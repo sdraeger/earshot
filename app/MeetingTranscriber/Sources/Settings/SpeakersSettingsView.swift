@@ -66,9 +66,7 @@ struct SpeakersSettingsView: View {
                             .multilineTextAlignment(.trailing)
                             .accessibilityIdentifier(A11yID.micNameField)
                     }
-                    Text("Your name for dual-source mode. Leave empty to diarize mic track (multi-person room).")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    .settingsNote("Your name for dual-source mode. Leave empty to diarize mic track (multi-person room).")
                 }
                 .recordOnlyDisabled(settings.recordOnly)
             }
@@ -77,9 +75,7 @@ struct SpeakersSettingsView: View {
                 Button("Manage\u{2026}") {
                     knownVoicesSheet = KnownVoicesSheetItem(matcher: matcherFactory())
                 }
-                Text("Rename, delete, or merge entries in your speaker DB.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                .settingsNote("Rename, delete, or merge entries in your speaker DB.")
             }
 
             RecognitionStatsView(log: recognitionStatsLog)
@@ -111,15 +107,12 @@ struct SpeakersSettingsView: View {
                         systemImage: "info.circle",
                     )
                     .foregroundStyle(.secondary)
-                    .font(.caption)
+                    .font(.callout)
                 }
                 expectedSpeakersRow
-                Label(
-                    "Auto detects the count; a fixed value forces exactly that many speakers (and over-splits a smaller meeting).",
-                    systemImage: "info.circle",
-                )
-                .foregroundStyle(.secondary)
-                .font(.caption)
+                    .settingsNote(
+                        "Auto detects the count; a fixed value forces exactly that many speakers (and over-splits a smaller meeting).",
+                    )
                 if settings.diarizerMode == .offline {
                     experimentalTuningDisclosure
                 }
@@ -208,7 +201,7 @@ struct SpeakersSettingsView: View {
             systemImage: "exclamationmark.triangle.fill",
         )
         .foregroundColor(.red)
-        .font(.caption)
+        .font(.callout)
         .padding(.vertical, 4)
     }
 }

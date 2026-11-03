@@ -115,7 +115,7 @@ struct KnownVoicesView: View {
             actionButtonsRow
             if pipelineBusy, diarizerFactory != nil {
                 Text("Pipeline busy — diarization may be slower.")
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
             }
         }
@@ -217,7 +217,7 @@ struct KnownVoicesView: View {
                 "Embeddings, centroid, last-used and use count of both speakers will be combined; "
                     + "\(mergingFrom) is removed.",
             )
-            .font(.caption)
+            .font(.callout)
             .foregroundStyle(.secondary)
             HStack {
                 Spacer()
@@ -249,7 +249,7 @@ struct KnownVoicesView: View {
 
     private var syntheticTag: some View {
         Text("synthetic")
-            .font(.caption)
+            .font(.callout)
             .foregroundStyle(.secondary)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)

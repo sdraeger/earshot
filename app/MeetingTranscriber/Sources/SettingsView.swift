@@ -45,17 +45,23 @@ struct SettingsView: View {
                     .tag(tab)
                     .accessibilityIdentifier(A11yID.settingsTab(tab.rawValue))
             }
-            .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 240)
+            .environment(\.sidebarRowSize, .large)
+            .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 260)
         } detail: {
+            // Larger type and controls in an inset column: rows stretched across
+            // the full pane put a label and its control too far apart to scan.
             detailView(for: selection)
+                .font(.system(size: 14))
+                .controlSize(.large)
+                .contentMargins(.horizontal, 48, for: .scrollContent)
+                .navigationTitle(selection.label)
         }
-        .navigationTitle("Settings")
         .frame(
-            minWidth: 760,
-            idealWidth: 860,
-            maxWidth: 1000,
-            minHeight: 520,
-            idealHeight: 640,
+            minWidth: 860,
+            idealWidth: 1000,
+            maxWidth: 1200,
+            minHeight: 600,
+            idealHeight: 760,
             maxHeight: .infinity,
         )
     }

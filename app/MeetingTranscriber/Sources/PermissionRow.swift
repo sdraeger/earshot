@@ -31,7 +31,7 @@ struct PermissionRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(label)
                 Text(detail)
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
             }
             Spacer()

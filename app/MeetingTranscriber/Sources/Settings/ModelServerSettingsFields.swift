@@ -18,9 +18,7 @@ struct ModelServerSettingsFields: View {
             prompt: Text("Optional command that starts the server"),
             axis: .vertical,
         )
-        Text(Self.helpText)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+        .settingsNote(Self.helpText)
     }
 
     private func chooseModelFolder() {

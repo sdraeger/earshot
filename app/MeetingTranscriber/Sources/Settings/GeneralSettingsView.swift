@@ -37,9 +37,7 @@ struct GeneralSettingsView: View {
 
             Section("Notifications") {
                 Toggle("Play sounds", isOn: $settings.notificationSounds)
-                Text("Only notifications that need you, such as a meeting waiting for your OK to record, make a sound.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .settingsNote("Only notifications that need you, such as a meeting waiting for your OK to record, make a sound.")
             }
 
             Section("Apps to watch") {
@@ -55,15 +53,13 @@ struct GeneralSettingsView: View {
                 customApps
                 Toggle("Browser web meetings", isOn: $settings.watchBrowserMeetings)
                     .accessibilityIdentifier(A11yID.watchBrowserToggle)
-                Text(
-                    """
-                    Detects web meetings (Google Meet, Whereby, web Zoom/Teams) by the WebRTC \
-                    signal, so any browser works. Other apps that place calls can trigger it too; \
-                    it always asks before recording, and "Never for this app" stops one for good.
-                    """,
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                    .settingsNote(
+                        """
+                        Detects web meetings (Google Meet, Whereby, web Zoom/Teams) by the WebRTC \
+                        signal, so any browser works. Other apps that place calls can trigger it too; \
+                        it always asks before recording, and "Never for this app" stops one for good.
+                        """,
+                    )
                 browserConsentWarning
                 consentDenyList
             }
@@ -112,11 +108,11 @@ struct GeneralSettingsView: View {
         VStack(alignment: .leading, spacing: 4) {
             Button("Add app…", action: addCustomApps)
             Text("Recording starts when an added app keeps the microphone busy for a few seconds.")
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.secondary)
             ForEach(addAppRefusals, id: \.self) { refusal in
                 Text(refusal)
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(.orange)
             }
         }
@@ -201,12 +197,12 @@ struct GeneralSettingsView: View {
         if !settings.consentDeniedApps.isEmpty {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Never record these apps")
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
                 ForEach(Array(settings.consentDeniedApps.enumerated()), id: \.element) { index, app in
                     HStack {
                         Text(app)
-                            .font(.caption)
+                            .font(.callout)
                         Spacer()
                         Button("Remove") {
                             ConsentDenyListStore(settings: settings).revert(app)
@@ -232,14 +228,14 @@ struct GeneralSettingsView: View {
                     Text(headline)
                         .font(.callout.weight(.semibold))
                     Text(warning)
-                        .font(.caption)
+                        .font(.callout)
                         .foregroundStyle(.secondary)
                         .accessibilityIdentifier(A11yID.browserConsentWarning)
                     Button("Open notification settings") {
                         NSWorkspace.shared.open(Self.notificationSettingsURL)
                     }
                     .buttonStyle(.link)
-                    .font(.caption)
+                    .font(.callout)
                 }
             } icon: {
                 Image(systemName: "exclamationmark.triangle.fill")
@@ -270,7 +266,7 @@ struct GeneralSettingsView: View {
                         "sidecar next to its WAVs. No transcription, diarization, or meeting notes " +
                         "generation runs on this device.",
                 )
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.secondary)
             }
         } icon: {

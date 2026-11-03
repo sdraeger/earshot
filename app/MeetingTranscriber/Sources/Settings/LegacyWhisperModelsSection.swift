@@ -15,20 +15,18 @@ struct LegacyWhisperModelsSection: View {
             Section("Storage") {
                 if !state.models.isEmpty {
                     Text(state.summary)
-                    Text(LegacyWhisperModelInventory.sharedFolderNote)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .settingsNote(LegacyWhisperModelInventory.sharedFolderNote)
                     toggles
                     trashRow
                 }
                 if let scanProblem = state.scanProblem {
                     Text(scanProblem)
-                        .font(.caption)
+                        .font(.callout)
                         .foregroundStyle(.red)
                 }
                 if let failureMessage = state.failureMessage {
                     Text(failureMessage)
-                        .font(.caption)
+                        .font(.callout)
                         .foregroundStyle(.red)
                 }
             }

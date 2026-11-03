@@ -25,7 +25,7 @@ struct NotionExportSettingsView: View {
             if settings.notionExportEnabled {
                 if let notice = model.configurationNotice {
                     Label(notice, systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption)
+                        .font(.callout)
                         .foregroundStyle(.orange)
                         .accessibilityIdentifier(A11yID.notionConfigurationNotice)
                 }
@@ -93,12 +93,12 @@ private extension NotionExportSettingsView {
                 case let .success(message):
                     Label(message, systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
-                        .font(.caption)
+                        .font(.callout)
 
                 case let .failure(message):
                     Label(message, systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(.red)
-                        .font(.caption)
+                        .font(.callout)
                 }
             }
             Spacer()
@@ -109,9 +109,7 @@ private extension NotionExportSettingsView {
             if model.needsDatabaseConfirmation {
                 Button("Use this database") { model.confirmDatabase() }
                     .accessibilityIdentifier(A11yID.notionConfirmDatabaseButton)
-                Text("Confirm this database to start exporting.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .settingsNote("Confirm this database to start exporting.")
             }
 
             if model.selectedDatabaseTag != NotionExportSettingsModel.createDatabaseTag && model.selectedDatabaseTag != NotionExportSettingsModel
@@ -130,9 +128,7 @@ private extension NotionExportSettingsView {
             .accessibilityIdentifier(A11yID.notionSkipLocalMarkdownToggle)
         Toggle("Include speaker names as tags", isOn: $settings.notionSpeakerTagsEnabled)
             .accessibilityIdentifier(A11yID.notionSpeakerTagsToggle)
-        Text("Adds confirmed speaker names to the database’s Tags column.")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .settingsNote("Adds confirmed speaker names to the database’s Tags column.")
     }
 
     private var notionDatabaseSelectionRow: some View {
@@ -189,13 +185,13 @@ private extension NotionExportSettingsView {
                 ProgressView()
                     .controlSize(.small)
                 Text("Checking database columns\u{2026}")
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
             }
             .padding(.vertical, 2)
         } else if let error = model.schemaCheckError {
             Label(error, systemImage: "exclamationmark.triangle.fill")
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.red)
                 .padding(.vertical, 2)
         } else if let status = model.databaseSchemaStatus {
@@ -206,7 +202,7 @@ private extension NotionExportSettingsView {
                         "Ready to export — title, tags, and date columns matched.",
                     systemImage: "checkmark.circle.fill",
                 )
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.green)
                 .padding(.vertical, 2)
             } else {
@@ -217,7 +213,7 @@ private extension NotionExportSettingsView {
                             + status.missingColumns.joined(separator: ", "),
                         systemImage: "info.circle.fill",
                     )
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
 
                     HStack {
@@ -246,7 +242,7 @@ private extension NotionExportSettingsView {
         // swiftlint:disable:next closure_body_length
         VStack(alignment: .leading, spacing: 6) {
             Text("New databases are created as a subpage of a page shared with your Notion integration.")
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.secondary)
 
             if !model.availablePages.isEmpty {
@@ -291,7 +287,7 @@ private extension NotionExportSettingsView {
 
             if let error = model.createDatabaseError {
                 Label(error, systemImage: "info.circle")
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
             }
         }
