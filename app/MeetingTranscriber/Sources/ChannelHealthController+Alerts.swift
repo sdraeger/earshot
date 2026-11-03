@@ -15,7 +15,7 @@ extension ChannelHealthController {
         channel: AudioChannel,
         startTimedOut: Bool = false,
     ) -> (title: String, body: String, urgency: NotificationUrgency) {
-        ("Capture Channel Lost", captureGaveUpMessage(for: channel, startTimedOut: startTimedOut), .timeSensitive)
+        ("Audio source lost", captureGaveUpMessage(for: channel, startTimedOut: startTimedOut), .timeSensitive)
     }
 
     /// Title, body and Focus behaviour for a channel that stopped delivering.
@@ -41,11 +41,11 @@ extension ChannelHealthController {
         // Same title and urgency as a give-up: the track is gone for now and
         // nothing brings it back on its own. Only the remedy differs.
         if fault == .stalled {
-            return ("Capture Channel Lost", captureStalledMessage(for: stall), .timeSensitive)
+            return ("Audio source lost", captureStalledMessage(for: stall), .timeSensitive)
         }
         let suppressible = fault == .digitalSilence && channel == .mic
         return (
-            "Capture Channel Silent",
+            "Audio source is silent",
             faultMessage(channel: channel, fault: fault, everCarriedSignal: everCarriedSignal),
             suppressible ? .standard : .timeSensitive,
         )

@@ -78,9 +78,9 @@ final class VoiceEnrollmentViewTests: XCTestCase { // swiftlint:disable:this bal
 
     func testRendersPickFileBodyWithBothPickerButtons() throws {
         let body = try makeView().inspect()
-        XCTAssertNoThrow(try body.find(button: "Choose File…"))
-        XCTAssertNoThrow(try body.find(button: "Browse Past Recordings…"))
-        XCTAssertNoThrow(try body.find(text: "Add Voice from Recording"))
+        XCTAssertNoThrow(try body.find(button: "Choose file…"))
+        XCTAssertNoThrow(try body.find(button: "Browse past recordings…"))
+        XCTAssertNoThrow(try body.find(text: "Add voice from recording"))
     }
 
     // MARK: - Render: diarizing
@@ -131,7 +131,7 @@ final class VoiceEnrollmentViewTests: XCTestCase { // swiftlint:disable:this bal
         let body = try makeView(initialStage: .error("disk full")).inspect()
         XCTAssertNoThrow(try body.find(text: "Enrollment failed"))
         XCTAssertNoThrow(try body.find(text: "disk full"))
-        XCTAssertNoThrow(try body.find(button: "Try Again"))
+        XCTAssertNoThrow(try body.find(button: "Try again"))
         XCTAssertNoThrow(try body.find(button: "Close"))
     }
 
@@ -431,13 +431,13 @@ final class VoiceEnrollmentViewTests: XCTestCase { // swiftlint:disable:this bal
             diarizerFactory: { MockDiarization() } as (() -> any DiarizationProvider),
         )
         let inspected = try view.inspect()
-        XCTAssertNoThrow(try inspected.find(button: "Add from Recording…"))
+        XCTAssertNoThrow(try inspected.find(button: "Add from recording…"))
     }
 
     func testKnownVoicesViewHidesEnrollButtonWhenNoFactory() throws {
         let view = KnownVoicesView(matcher: SpeakerMatcher(dbPath: dbPath))
         let inspected = try view.inspect()
-        XCTAssertThrowsError(try inspected.find(button: "Add from Recording…"))
+        XCTAssertThrowsError(try inspected.find(button: "Add from recording…"))
     }
 
     func testKnownVoicesViewDisablesEnrollButtonWhenNamingDialogActive() throws {
@@ -447,7 +447,7 @@ final class VoiceEnrollmentViewTests: XCTestCase { // swiftlint:disable:this bal
             namingDialogActive: true,
         )
         let inspected = try view.inspect()
-        let button = try inspected.find(button: "Add from Recording…")
+        let button = try inspected.find(button: "Add from recording…")
         XCTAssertTrue(button.isDisabled())
     }
 

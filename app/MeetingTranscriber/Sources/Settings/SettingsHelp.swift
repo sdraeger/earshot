@@ -76,7 +76,7 @@ enum SettingsHelp {
         2. Share the target page or database with that integration: open it in \
         Notion → "..." → "Connect to" → your integration. The integration only \
         sees content explicitly shared with it.
-        3. Paste the token here and press "Test Connection".
+        3. Paste the token here and press "Test connection".
         4. Choose an existing database, or create a "Meeting Transcriber" \
         database under one of your shared pages.
         5. Local Markdown backups are kept by default. Leave "Skip local markdown \

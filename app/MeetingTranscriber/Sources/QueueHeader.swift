@@ -7,7 +7,7 @@ struct QueueHeader: Equatable {
     let systemImage: String
 
     static let processing = Self(title: "Processing", systemImage: "gearshape.2.fill")
-    static let needsAttention = Self(title: "Needs Attention", systemImage: "person.2.fill")
+    static let needsAttention = Self(title: "Needs attention", systemImage: "person.2.fill")
     static let completed = Self(title: "Completed", systemImage: "checkmark.circle")
     static let queue = Self(title: "Queue", systemImage: "tray.full.fill")
     static let all = [processing, needsAttention, completed, queue]

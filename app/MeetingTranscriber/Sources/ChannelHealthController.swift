@@ -346,7 +346,7 @@ final class ChannelHealthController {
             recordingSilentActive = true
             log.notice(Self.silentRecordingLogLine(micDBFS: mic, appDBFS: app, window: silentRecordingMonitor.debounceSeconds))
             notifier.notify(
-                title: "Recording Appears Silent",
+                title: "Recording is silent",
                 body: Self.silentRecordingMessage(for: channels),
                 // Suppressible on purpose, see
                 // `captureAlert(channel:fault:everCarriedSignal:)`: an auto-detected

@@ -50,7 +50,7 @@ final class AboutSettingsViewTests: XCTestCase {
 
     func testAboutSectionShowsBuildDate() throws {
         let body = try makeAbout().inspect()
-        XCTAssertNoThrow(try body.find(text: "Build Date"))
+        XCTAssertNoThrow(try body.find(text: "Build date"))
     }
 
     /// The identifier decides which settings domain, TCC grants and notification
@@ -75,7 +75,7 @@ final class AboutSettingsViewTests: XCTestCase {
     func testUpdatesSectionShownWhenUpdateCheckerPresent() throws {
         let checker = UpdateChecker(provider: MockUpdateProvider())
         let body = try makeAbout(updateChecker: checker).inspect()
-        XCTAssertNoThrow(try body.find(text: "Check for Updates"))
+        XCTAssertNoThrow(try body.find(text: "Check for updates"))
     }
 
     func testCheckNowButtonStartsAnUpdateCheck() throws {
@@ -84,7 +84,7 @@ final class AboutSettingsViewTests: XCTestCase {
         let checker = UpdateChecker(provider: provider)
         let view = makeAbout(updateChecker: checker)
 
-        try view.inspect().find(button: "Check Now").tap()
+        try view.inspect().find(button: "Check now").tap()
 
         XCTAssertTrue(checker.isChecking)
     }
@@ -130,7 +130,7 @@ final class AboutSettingsViewTests: XCTestCase {
 
     func testUpdatesSectionHiddenWhenNoChecker() throws {
         let body = try makeAbout().inspect()
-        XCTAssertThrowsError(try body.find(text: "Check for Updates"))
+        XCTAssertThrowsError(try body.find(text: "Check for updates"))
     }
 
     func testPreReleaseToggleShownWhenCheckEnabled() throws {
@@ -138,7 +138,7 @@ final class AboutSettingsViewTests: XCTestCase {
         settings.checkForUpdates = true
         let checker = UpdateChecker(provider: MockUpdateProvider())
         let body = try makeAbout(settings: settings, updateChecker: checker).inspect()
-        XCTAssertNoThrow(try body.find(text: "Include Pre-Releases"))
+        XCTAssertNoThrow(try body.find(text: "Include pre-releases"))
     }
 
     func testPreReleaseToggleHiddenWhenCheckDisabled() throws {
@@ -146,6 +146,6 @@ final class AboutSettingsViewTests: XCTestCase {
         settings.checkForUpdates = false
         let checker = UpdateChecker(provider: MockUpdateProvider())
         let body = try makeAbout(settings: settings, updateChecker: checker).inspect()
-        XCTAssertThrowsError(try body.find(text: "Include Pre-Releases"))
+        XCTAssertThrowsError(try body.find(text: "Include pre-releases"))
     }
 }

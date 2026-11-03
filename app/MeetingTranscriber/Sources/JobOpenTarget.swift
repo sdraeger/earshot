@@ -41,8 +41,8 @@ enum JobOpenTarget: Equatable {
 
     var lastProtocolLabel: String {
         switch self {
-        case .notion: "Open Last Notes in Notion"
-        case .file: "Open Last Notes"
+        case .notion: "Open last notes in Notion"
+        case .file: "Open last notes"
         }
     }
 

@@ -384,11 +384,11 @@ final class PipelineController {
         queue.onJobStateChange = { [notifier] job, _, newState in
             switch newState {
             case .done:
-                notifier.notify(title: job.hasSavedProtocol ? "Meeting Notes Ready" : "Transcript Saved", body: job.meetingTitle)
+                notifier.notify(title: job.hasSavedProtocol ? "Meeting notes ready" : "Transcript saved", body: job.meetingTitle)
 
             case .error:
                 if let err = job.error {
-                    notifier.notify(title: "Error", body: err)
+                    notifier.notify(title: "Processing failed", body: err)
                 }
 
             default:

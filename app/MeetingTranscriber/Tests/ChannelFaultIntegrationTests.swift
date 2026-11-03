@@ -50,10 +50,10 @@ final class ChannelFaultIntegrationTests: XCTestCase {
         }
 
         // Scoped to the capture titles on purpose. The same double also trips
-        // "Recording Appears Silent", because the level defaults are -120 and
+        // "Recording is silent", because the level defaults are -120 and
         // the symmetric monitor still decides from levels; that is untouched
         // here and asserting on it would pin behaviour this change does not own.
-        let captureTitles = ["Capture Channel Silent", "Capture Channel Lost"]
+        let captureTitles = ["Audio source is silent", "Audio source lost"]
         XCTAssertFalse(
             notifier.calls.contains { captureTitles.contains($0.title) },
             "reported: \(notifier.calls.map(\.title))",
@@ -94,7 +94,7 @@ final class ChannelFaultIntegrationTests: XCTestCase {
                 .timeSensitive,
                 "channel=\(channel)",
             )
-            XCTAssertEqual(ChannelHealthController.gaveUpAlert(channel: channel).title, "Capture Channel Lost")
+            XCTAssertEqual(ChannelHealthController.gaveUpAlert(channel: channel).title, "Audio source lost")
         }
     }
 
@@ -131,7 +131,7 @@ final class ChannelFaultIntegrationTests: XCTestCase {
         controller.applyTick(recorder: recorder, now: t0)
 
         XCTAssertEqual(controller.micFault, .gaveUp)
-        XCTAssertEqual(notifier.calls.filter { $0.title == "Capture Channel Lost" }.count, 1)
+        XCTAssertEqual(notifier.calls.filter { $0.title == "Audio source lost" }.count, 1)
     }
 
     /// The microphone went without audio for the capture layer's whole budget
@@ -148,7 +148,7 @@ final class ChannelFaultIntegrationTests: XCTestCase {
         _ = controller.applyTick(recorder: recorder, now: t0.addingTimeInterval(120))
 
         XCTAssertEqual(controller.micFault, .stalled)
-        let lost = notifier.calls.filter { $0.title == "Capture Channel Lost" }
+        let lost = notifier.calls.filter { $0.title == "Audio source lost" }
         XCTAssertEqual(lost.count, 1)
         let body = try XCTUnwrap(lost.first?.body)
         XCTAssertTrue(body.contains("input device"), body)
@@ -169,7 +169,7 @@ final class ChannelFaultIntegrationTests: XCTestCase {
         controller.applyTick(recorder: recorder, now: t0)
         _ = controller.applyTick(recorder: recorder, now: t0.addingTimeInterval(120))
 
-        let lost = notifier.calls.filter { $0.title == "Capture Channel Lost" }
+        let lost = notifier.calls.filter { $0.title == "Audio source lost" }
         XCTAssertEqual(lost.map(\.body), [ChannelHealthController.captureStalledMessage(for: details)])
     }
 
@@ -190,7 +190,7 @@ final class ChannelFaultIntegrationTests: XCTestCase {
         _ = controller.applyTick(recorder: recorder, now: t0.addingTimeInterval(120.1))
 
         XCTAssertNil(controller.micFault)
-        XCTAssertEqual(notifier.calls.filter { $0.title == "Capture Channel Silent" }.count, 0)
+        XCTAssertEqual(notifier.calls.filter { $0.title == "Audio source is silent" }.count, 0)
     }
 
     /// Once a device change brought the microphone back, the state no longer
@@ -209,7 +209,7 @@ final class ChannelFaultIntegrationTests: XCTestCase {
         recorder.micCaptureStall = MicCaptureStall(isActive: true, count: 2)
         _ = controller.applyTick(recorder: recorder, now: t0.addingTimeInterval(80))
         XCTAssertEqual(controller.micFault, .stalled)
-        XCTAssertEqual(notifier.calls.filter { $0.title == "Capture Channel Lost" }.count, 2)
+        XCTAssertEqual(notifier.calls.filter { $0.title == "Audio source lost" }.count, 2)
     }
 
     /// A revival that never delivered and stalled again is told again, with
@@ -226,7 +226,7 @@ final class ChannelFaultIntegrationTests: XCTestCase {
         _ = controller.applyTick(recorder: recorder, now: t0.addingTimeInterval(80))
 
         XCTAssertEqual(controller.micFault, .stalled)
-        XCTAssertEqual(notifier.calls.filter { $0.title == "Capture Channel Lost" }.count, 2)
+        XCTAssertEqual(notifier.calls.filter { $0.title == "Audio source lost" }.count, 2)
     }
 
     /// A revival that wedges gives up, and the capture layer ends the stall
@@ -245,7 +245,7 @@ final class ChannelFaultIntegrationTests: XCTestCase {
         _ = controller.applyTick(recorder: recorder, now: t0.addingTimeInterval(81))
 
         XCTAssertEqual(controller.micFault, .gaveUp)
-        let lost = notifier.calls.filter { $0.title == "Capture Channel Lost" }
+        let lost = notifier.calls.filter { $0.title == "Audio source lost" }
         XCTAssertEqual(lost.count, 2)
         let body = try XCTUnwrap(lost.last?.body)
         XCTAssertTrue(body.contains("Restart Meeting Transcriber"), body)
@@ -268,8 +268,8 @@ final class ChannelFaultIntegrationTests: XCTestCase {
         _ = controller.applyTick(recorder: recorder, now: t0.addingTimeInterval(40))
         _ = controller.applyTick(recorder: recorder, now: t0.addingTimeInterval(120))
 
-        XCTAssertEqual(notifier.calls.filter { $0.title == "Capture Channel Silent" }.count, 1)
-        XCTAssertEqual(notifier.calls.filter { $0.title == "Capture Channel Lost" }.count, 1)
+        XCTAssertEqual(notifier.calls.filter { $0.title == "Audio source is silent" }.count, 1)
+        XCTAssertEqual(notifier.calls.filter { $0.title == "Audio source lost" }.count, 1)
         XCTAssertEqual(controller.micFault, .gaveUp)
     }
 
@@ -299,7 +299,7 @@ final class ChannelFaultIntegrationTests: XCTestCase {
         _ = controller.applyTick(recorder: recorder, now: t0.addingTimeInterval(30))
 
         XCTAssertEqual(notifier.calls.count, 1)
-        XCTAssertEqual(notifier.calls.first?.title, "Capture Channel Silent")
+        XCTAssertEqual(notifier.calls.first?.title, "Audio source is silent")
         XCTAssertEqual(
             notifier.calls.first?.body,
             ChannelHealthController.faultMessage(channel: .mic, fault: .digitalSilence, everCarriedSignal: true),
@@ -394,7 +394,7 @@ final class ChannelFaultIntegrationTests: XCTestCase {
         controller.applyTick(recorder: recorder, now: t0)
         _ = controller.applyTick(recorder: recorder, now: t0.addingTimeInterval(30))
         XCTAssertFalse(
-            notifier.calls.contains { $0.title == "Capture Channel Silent" },
+            notifier.calls.contains { $0.title == "Audio source is silent" },
             "nobody was speaking, so nothing proves the tap should be carrying anything",
         )
 
@@ -403,7 +403,7 @@ final class ChannelFaultIntegrationTests: XCTestCase {
         _ = controller.applyTick(recorder: recorder, now: t0.addingTimeInterval(40))
 
         XCTAssertEqual(
-            notifier.calls.filter { $0.title == "Capture Channel Silent" }.count, 1,
+            notifier.calls.filter { $0.title == "Audio source is silent" }.count, 1,
         )
         XCTAssertEqual(notifier.calls.last?.urgency, .timeSensitive)
     }
@@ -423,7 +423,7 @@ final class ChannelFaultIntegrationTests: XCTestCase {
             controller.applyTick(recorder: recorder, now: t0)
             _ = controller.applyTick(recorder: recorder, now: t0.addingTimeInterval(30))
 
-            let body = notifier.calls.first { $0.title == "Capture Channel Silent" }?.body
+            let body = notifier.calls.first { $0.title == "Audio source is silent" }?.body
             XCTAssertNotNil(body, "\(ages)")
             XCTAssertEqual(
                 body?.contains(SystemSettingsPaths.screenRecording), isPermissionCandidate,
@@ -497,7 +497,7 @@ final class ChannelFaultIntegrationTests: XCTestCase {
         _ = controller.applyTick(recorder: recorder, now: t0.addingTimeInterval(60))
 
         XCTAssertEqual(
-            notifier.calls.filter { $0.title == "Capture Channel Lost" }.count, 1,
+            notifier.calls.filter { $0.title == "Audio source lost" }.count, 1,
             "giving up after the latch must still reach the user, and only once",
         )
     }
@@ -516,7 +516,7 @@ final class ChannelFaultIntegrationTests: XCTestCase {
         _ = controller.applyTick(recorder: recorder, now: t0.addingTimeInterval(30))
 
         XCTAssertEqual(
-            notifier.calls.filter { $0.title == "Capture Channel Lost" }.count, 1,
+            notifier.calls.filter { $0.title == "Audio source lost" }.count, 1,
             "a terminal capture failure does not depend on the other channel",
         )
     }
@@ -532,7 +532,7 @@ final class ChannelFaultIntegrationTests: XCTestCase {
 
         controller.applyTick(recorder: recorder, now: t0)
         XCTAssertEqual(
-            notifier.calls.filter { $0.title == "Capture Channel Lost" }.count, 1,
+            notifier.calls.filter { $0.title == "Audio source lost" }.count, 1,
             "the first tick that sees the flag reports it",
         )
 
@@ -541,7 +541,7 @@ final class ChannelFaultIntegrationTests: XCTestCase {
         }
 
         XCTAssertEqual(
-            notifier.calls.filter { $0.title == "Capture Channel Lost" }.count, 1,
+            notifier.calls.filter { $0.title == "Audio source lost" }.count, 1,
             "and it stays at one for the rest of the recording",
         )
     }
@@ -559,6 +559,6 @@ final class ChannelFaultIntegrationTests: XCTestCase {
         controller.simulateStartForTests()
         controller.applyTick(recorder: recorder, now: t0.addingTimeInterval(120))
 
-        XCTAssertEqual(notifier.calls.filter { $0.title == "Capture Channel Lost" }.count, 2)
+        XCTAssertEqual(notifier.calls.filter { $0.title == "Audio source lost" }.count, 2)
     }
 }

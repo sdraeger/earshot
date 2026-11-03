@@ -224,7 +224,7 @@ final class PipelineControllerNotionExportTests: XCTestCase {
             notifier.calls.filter { $0.title == "Saved to Notion" }.count, 1,
             "the replaced queue reported its stopped export as well",
         )
-        XCTAssertFalse(notifier.calls.contains { $0.title == "Notion Export Failed" })
+        XCTAssertFalse(notifier.calls.contains { $0.title == "Notion export failed" })
     }
 
     /// The stopped run ends in its cancellation; the replaced queue must not

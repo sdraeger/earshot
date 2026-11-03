@@ -54,9 +54,9 @@ final class NotificationManagerSchedulingTests: XCTestCase {
     func testNotifyPostsRequestWithMappedContent() {
         let (manager, fake) = makeManager()
         manager.setUp()
-        manager.notify(title: "Meeting Detected", body: "Recording: Standup (Teams)")
+        manager.notify(title: "Recording started", body: "Recording: Standup (Teams)")
         XCTAssertEqual(fake.added.count, 1)
-        XCTAssertEqual(fake.added.first?.content.title, "Meeting Detected")
+        XCTAssertEqual(fake.added.first?.content.title, "Recording started")
         XCTAssertEqual(fake.added.first?.content.body, "Recording: Standup (Teams)")
         #if !APPSTORE
             // The ring-buffer entry must be flagged posted — RPC/e2e consumers
@@ -68,7 +68,7 @@ final class NotificationManagerSchedulingTests: XCTestCase {
     func testNotifyDoesNotPostWhenNotSetUp() {
         let (manager, fake) = makeManager()
         // setUp never called → not deliverable regardless of canDeliver.
-        manager.notify(title: "Meeting Detected", body: "x")
+        manager.notify(title: "Recording started", body: "x")
         XCTAssertTrue(fake.added.isEmpty)
     }
 
@@ -79,7 +79,7 @@ final class NotificationManagerSchedulingTests: XCTestCase {
         manager.setUp()
         XCTAssertTrue(manager.isSetUp)
         box.value = false
-        manager.notify(title: "Meeting Detected", body: "x")
+        manager.notify(title: "Recording started", body: "x")
         XCTAssertTrue(fake.added.isEmpty)
     }
 
@@ -184,7 +184,7 @@ final class NotificationManagerSchedulingTests: XCTestCase {
     func testTimeSensitiveUrgencyPostsAtThatInterruptionLevel() {
         let (manager, fake) = makeManager()
         manager.setUp()
-        manager.notify(title: "Capture Channel Silent", body: "x", urgency: .timeSensitive)
+        manager.notify(title: "Audio source is silent", body: "x", urgency: .timeSensitive)
         XCTAssertEqual(fake.added.first?.content.interruptionLevel, .timeSensitive)
     }
 
@@ -193,7 +193,7 @@ final class NotificationManagerSchedulingTests: XCTestCase {
     func testPlainNotifyStaysActive() {
         let (manager, fake) = makeManager()
         manager.setUp()
-        manager.notify(title: "Meeting Notes Ready", body: "x")
+        manager.notify(title: "Meeting notes ready", body: "x")
         XCTAssertEqual(fake.added.first?.content.interruptionLevel, .active)
     }
 
@@ -204,7 +204,18 @@ final class NotificationManagerSchedulingTests: XCTestCase {
         XCTAssertEqual(content.title, "T")
         XCTAssertEqual(content.body, "B")
         XCTAssertEqual(content.categoryIdentifier, "CAT")
-        XCTAssertEqual(content.sound, .default)
+        // Status notices are silent; only one that needs an answer now plays a sound.
+        XCTAssertNil(content.sound)
+        XCTAssertEqual(
+            NotificationManager.makeNotificationContent(title: "T", body: "B", urgency: .timeSensitive).sound,
+            .default,
+        )
+        // The "Play sounds" switch silences even those.
+        XCTAssertNil(
+            NotificationManager.makeNotificationContent(
+                title: "T", body: "B", urgency: .timeSensitive, playsSound: false,
+            ).sound,
+        )
         // Overridden only by the consent prompt and the capture-failure
         // notices. A transcript-ready or permission-problem notice has no
         // deadline and must not break through the user's Focus, so the default

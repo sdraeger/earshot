@@ -51,7 +51,7 @@ struct LegacyWhisperModelsSection: View {
     private var trashRow: some View {
         HStack {
             Spacer()
-            Button("Move Selected to Trash\u{2026}") { state.isConfirming = true }
+            Button("Move selected to Trash\u{2026}") { state.isConfirming = true }
                 .disabled(state.selection.isEmpty || state.isRemoving)
                 .accessibilityIdentifier(A11yID.legacyWhisperModelsTrashButton)
         }

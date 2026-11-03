@@ -23,7 +23,7 @@ final class MicFirstStartTimeoutNoticeTests: XCTestCase {
         controller.applyTick(recorder: recorder, now: t0)
 
         XCTAssertEqual(notifier.calls.count, 1, "told at once, without waiting out the silence window")
-        XCTAssertEqual(notifier.calls.first?.title, "Capture Channel Lost")
+        XCTAssertEqual(notifier.calls.first?.title, "Audio source lost")
         XCTAssertEqual(
             notifier.calls.first?.body,
             ChannelHealthController.captureGaveUpMessage(for: .mic, startTimedOut: true),

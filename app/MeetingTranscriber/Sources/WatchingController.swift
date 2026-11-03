@@ -29,6 +29,10 @@ import Observation
 final class WatchingController {
     var watchLoop: WatchLoop?
 
+    /// Set when a manual recording stopped a running auto-watch loop, so the
+    /// end of that recording turns watching back on.
+    private var resumeWatchingAfterManual = false
+
     /// Non-nil while `toggleWatching`'s async start is in flight — it awaits mic
     /// access before `watchLoop` is assigned, so without this a second toggle in
     /// that window would launch a duplicate start. Cleared when the start task
@@ -391,7 +395,7 @@ final class WatchingController {
     func startMicrophoneRecording() {
         guard !settings.noMic else {
             notifier.notify(
-                title: "Microphone Recording Refused",
+                title: "Can't record the microphone",
                 body: MicrophoneRecordingAvailability.blockedByNoMicSetting.disabledReason ?? "",
             )
             return
@@ -450,13 +454,14 @@ final class WatchingController {
             // state it was opened in) and from the automation API alike.
             guard Self.mayTakeOverLoop(in: loop.state) else {
                 notifier.notify(
-                    title: "Recording Refused",
+                    title: "Can't start recording",
                     body: "A meeting is already being recorded",
                 )
                 return .blockedByActiveRecording
             }
             loop.stop()
             watchLoop = nil
+            resumeWatchingAfterManual = true
         }
 
         _ = await ensureMicAccess()
@@ -513,16 +518,17 @@ final class WatchingController {
             // same value the job and the record-only sidecar get, so the
             // notification cannot end up naming the recording something else.
             notifier.notify(
-                title: "Manual Recording",
-                body: "Recording: \(loop.manualRecordingInfo?.title ?? "")",
+                title: "Recording started",
+                body: loop.manualRecordingInfo?.title ?? "",
             )
             return .started
         } catch is CancellationError {
             watchLoop = nil // a quit began while the recorder was built: not an error
             return .failed
         } catch {
-            notifier.notify(title: "Error", body: error.localizedDescription)
+            notifier.notify(title: "Recording failed", body: error.localizedDescription)
             watchLoop = nil
+            resumeWatchingIfTakenOver()
             // The permission arm is told apart by the error the gate raises, not
             // by re-asking the health check here: only the loop knows which
             // source it was about to record, and the whole point of that gate is
@@ -535,8 +541,23 @@ final class WatchingController {
     }
 
     func stopManualRecording() {
-        watchLoop?.stopManualRecording()
+        let loop = watchLoop
+        let errorBefore = loop?.lastError
+        loop?.stopManualRecording()
+        // A failed stop leaves the loop idle with `lastError` set, which the
+        // state handler (it reports `.error` only) would never surface.
+        if let error = loop?.lastError, error != errorBefore {
+            notifier.notify(title: "Recording failed", body: error)
+        }
         watchLoop = nil
+        resumeWatchingIfTakenOver()
+    }
+
+    private func resumeWatchingIfTakenOver() {
+        guard resumeWatchingAfterManual else { return }
+        resumeWatchingAfterManual = false
+        guard !isQuitting else { return }
+        toggleWatching(userInitiated: false)
     }
 
     // MARK: - State-change handler
@@ -545,7 +566,7 @@ final class WatchingController {
     /// and post-`.error` notifications. Shared between the auto-detect path
     /// (`toggleWatching`) and the manual-recording path (`startManualRecording`)
     /// so the red-tint indicator + asymmetric-silence notification fire in both.
-    /// `notifyOnRecording` only fires "Meeting Detected" notifications for the
+    /// `notifyOnRecording` only fires "Recording started" notifications for the
     /// auto-detect path; manual recording emits its own start notification.
     private func attachStateChangeHandler(to loop: WatchLoop, notifyOnRecording: Bool) {
         loop.onStateChange = { [weak self, weak loop, notifier] oldState, newState in
@@ -564,8 +585,8 @@ final class WatchingController {
             case .recording:
                 if notifyOnRecording, let meeting = loop?.currentMeeting {
                     notifier.notify(
-                        title: "Meeting Detected",
-                        body: "Recording: \(meeting.windowTitle)",
+                        title: "Recording started",
+                        body: meeting.windowTitle,
                     )
                 }
                 // No source means no live recording, so there are no channels to
@@ -578,7 +599,7 @@ final class WatchingController {
 
             case .error:
                 if let err = loop?.lastError {
-                    notifier.notify(title: "Error", body: err)
+                    notifier.notify(title: "Recording failed", body: err)
                 }
                 self?.channelHealth.stop()
 

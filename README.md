@@ -260,6 +260,18 @@ Open Settings via the menu bar item or ⌘,.
 
 Settings → Transcribe → Model → **Custom model…** loads a fine-tuned WhisperKit model instead of a stock one, for example a Swiss German fine-tune. Enter a Hugging Face repository laid out like [`argmaxinc/whisperkit-coreml`](https://huggingface.co/argmaxinc/whisperkit-coreml) (one folder per variant) plus the exact variant folder name, e.g. `spert/flix-swissgerman-whisperkit` and `flix-swissgerman-large-v3_8bit`; it downloads on first use and loads offline afterwards. A variant that is only the tail of the real folder name is refused with the real name, because it would load once and then never offline. Alternatively choose a model folder on disk with **Choose…** (in the App Store build only a chosen folder is accessible; a typed path works outside the sandbox). It must contain `AudioEncoder.mlmodelc`, `TextDecoder.mlmodelc`, `MelSpectrogram.mlmodelc`, `tokenizer.json` and `tokenizer_config.json`. The folder itself is never downloaded; for the tokenizer, WhisperKit prefers a stock tokenizer it has already cached and reads the folder's own tokenizer otherwise, so a folder that carries one loads without a network. Each field takes effect on Return, when you leave it or when you close the Settings window, so while you change the repository and then the variant, the new repository is briefly paired with the old variant; until a custom model is filled in, the previously selected stock model is used, and a load that fails says why under the model status.
 
+### Model server (any open model)
+
+Settings → Transcription → Engine → **Model server** sends recordings to any server with an OpenAI-compatible `POST /v1/audio/transcriptions` endpoint and reads back the text with segment timestamps (`response_format=verbose_json`). Speaker diarization still runs on this Mac, so the server only transcribes. The server can run on this Mac (an MLX server such as [open-asr-server](https://pypi.org/project/open-asr-server/) for Parakeet or Whisper) or on a GPU machine on any operating system (vLLM, for models that need an NVIDIA GPU such as Nemotron 3.5 Transcribe).
+
+Fill in the server address (for example `http://127.0.0.1:8000/v1`), the model as a Hugging Face id or a folder on disk, and optionally a launch command. With a launch command, **Load model** starts the server when nothing answers at the address, replacing `{model}` with the model field, and waits up to 10 minutes for it (a first run downloads the model); the server stops when the app quits. For Parakeet on Apple Silicon via open-asr-server, use the model `mlx-community/parakeet-tdt-0.6b-v3` and this launch command. It raises the server's 25 MB upload cap, which a meeting longer than about 13 minutes exceeds, and pins MLX below 0.30: with MLX 0.32 (open-asr-server 0.3.0, parakeet-mlx 0.6.0) every request fails with `There is no Stream(cpu, 1) in current thread`.
+
+```bash
+OPEN_ASR_SERVER_MAX_UPLOAD_BYTES=2000000000 uvx --python 3.11 --with "mlx<0.30" --from "open-asr-server[parakeet-mlx]" open-asr-server serve --host 127.0.0.1 --port 8000
+```
+
+When the server cannot be reached, exits, or rejects a request, the reason and the server's last output appear under the engine status. A server that returns text without segments still works, but speakers are then not labeled. Live captions are not available with this engine.
+
 ---
 
 ## Output

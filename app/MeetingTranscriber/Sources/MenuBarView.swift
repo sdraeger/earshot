@@ -1,5 +1,8 @@
 import SwiftUI
 
+/// The menu-bar panel: what the app is doing, the few actions that start or
+/// stop it, and the meetings it is working on. Shown with
+/// `.menuBarExtraStyle(.window)`, so it updates live while open.
 struct MenuBarView: View {
     let status: TranscriberStatus?
     let isWatching: Bool
@@ -26,7 +29,7 @@ struct MenuBarView: View {
     let onDismissJob: (UUID) -> Void
     let onQuit: () -> Void
     /// The browser whose recording-consent prompt is open, nil when none is.
-    /// Mirrors the notification in the menu so a prompt hidden by Focus, screen
+    /// Mirrors the notification in the panel so a prompt hidden by Focus, screen
     /// sharing or a notification style of None can still be answered (issue #814).
     var pendingConsentApp: String?
     /// Answers the open prompt: true records, false declines.
@@ -35,6 +38,8 @@ struct MenuBarView: View {
     /// before the setting was turned off still falls back to it when no local
     /// file exists; `JobOpenTarget` owns that rule.
     var notionExportEnabled: Bool = false
+    /// Opens the naming window on one job; falls back to `onNameSpeakers`.
+    var onNameSpeakersForJob: ((UUID) -> Void)?
 
     private var state: TranscriberState {
         status?.state ?? .idle
@@ -47,185 +52,130 @@ struct MenuBarView: View {
         )
     }
 
-    /// Hoisted out of the `ViewBuilder`: an `Optional.map` returning an
-    /// interpolated string, coalesced with `??`, inside an overloaded `Text`
-    /// initializer is the exact shape that blew the 300 ms type-check budget in
-    /// this file before (see the note on `body`).
-    private func meetingLabel(_ meeting: MeetingInfo) -> String {
-        guard let pid = meeting.pid else { return meeting.app }
-        return "\(meeting.app) (PID \(pid))"
-    }
-
-    // The sections below are hoisted out of `body` into separate computed
-    // properties so each is type-checked independently. Inlined as one
-    // expression, the `body` getter crossed the 300 ms type-check budget that
-    // the analyze build enforces (-warn-long-expression-type-checking=300 with
-    // -warnings-as-errors), failing the build on slower CI hardware. The view
-    // order, dividers, and conditionals are unchanged.
+    // Sections are separate properties so each is type-checked on its own
+    // budget (the analyze build fails a getter over 300 ms).
     var body: some View {
-        statusHeader
-        meetingInfo
-        errorInfo
-        consentPrompt
-
-        Divider()
-
-        watchControls
-        processingQueue
-
-        Divider()
-
-        protocolActions
-        updateSection
-
-        Divider()
-
-        settingsButton
-
-        Divider()
-
-        quitButton
+        VStack(alignment: .leading, spacing: 14) {
+            statusHeader
+            consentPrompt
+            actions
+            processingQueue
+            updateSection
+            footer
+        }
+        .padding(14)
+        .frame(width: 320)
     }
 
     // MARK: - Body sections
 
     private var statusHeader: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 6) {
             Label(state.label, systemImage: state.icon)
                 .font(.headline)
+                .foregroundStyle(state.tint)
 
             if let detail = status?.detail, !detail.isEmpty {
                 Text(detail)
-                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            meetingInfo
+            errorInfo
+            stopRecordingButton
         }
-        .padding(.horizontal, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder private var meetingInfo: some View {
         if let meeting = status?.meeting {
-            Divider()
             VStack(alignment: .leading, spacing: 2) {
                 Text(meeting.title)
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                // A microphone-only recording owns no process, so there is no
-                // PID to show and a placeholder would only read as a real one.
-                Text(meetingLabel(meeting))
-                    .font(.caption)
+                    .font(.title3.weight(.semibold))
+                    .lineLimit(2)
+                Text(meeting.app)
                     .foregroundStyle(.secondary)
             }
-            .padding(.horizontal, 4)
         }
     }
 
     @ViewBuilder private var errorInfo: some View {
         if let error = status?.error, state == .error {
-            Divider()
             Text(error)
-                .font(.caption)
                 .foregroundStyle(.red)
-                .padding(.horizontal, 4)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    @ViewBuilder private var stopRecordingButton: some View {
+        if let onStopManualRecording {
+            Button(action: onStopManualRecording) {
+                Label("Stop recording", systemImage: "stop.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.red)
+            .controlSize(.large)
+            .keyboardShortcut(".")
+            .padding(.top, 4)
         }
     }
 
     @ViewBuilder private var consentPrompt: some View {
         if let app = pendingConsentApp {
-            Divider()
-            Text("Meeting detected in \(app)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 4)
-            Button {
-                onAnswerPendingConsent(true)
-            } label: {
-                Label("Record This Meeting", systemImage: "record.circle.fill")
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Record the meeting in \(app)?")
+                    .font(.headline)
+                HStack {
+                    Button("Don't record") { onAnswerPendingConsent(false) }
+                        .accessibilityIdentifier(A11yID.menuDeclinePendingConsent)
+                    Spacer()
+                    Button("Record") { onAnswerPendingConsent(true) }
+                        .buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier(A11yID.menuRecordPendingConsent)
+                }
             }
-            .accessibilityIdentifier(A11yID.menuRecordPendingConsent)
-            Button {
-                onAnswerPendingConsent(false)
-            } label: {
-                Label("Don't Record", systemImage: "xmark.circle")
-            }
-            .accessibilityIdentifier(A11yID.menuDeclinePendingConsent)
+            .panelCard()
         }
     }
 
-    @ViewBuilder private var watchControls: some View {
-        Button {
-            onStartStop()
-        } label: {
-            if isWatching {
-                Label("Stop Watching", systemImage: "stop.fill")
-            } else {
-                Label("Start Watching", systemImage: "play.fill")
+    private var actions: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Toggle(isOn: Binding(get: { isWatching }, set: { _ in onStartStop() })) {
+                Label("Watch for meetings", systemImage: "antenna.radiowaves.left.and.right")
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-        }
-        .keyboardShortcut("s")
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            .keyboardShortcut("s")
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
 
-        if let onStopManualRecording {
-            Button {
-                onStopManualRecording()
-            } label: {
-                Label("Stop Recording", systemImage: "stop.circle.fill")
+            if let onNameSpeakers {
+                PanelRow("Name speakers…", systemImage: "person.2.fill", action: onNameSpeakers)
+                    .foregroundStyle(.tint)
+                    .keyboardShortcut("n")
             }
-            .keyboardShortcut(".")
-        } else if state != .recording {
-            Button {
-                onRecordMicrophone()
-            } label: {
-                Label("Record Microphone", systemImage: "mic.circle")
-            }
-            .keyboardShortcut("m")
-            .disabled(!microphoneAvailability.allowsStart)
-            .help(microphoneAvailability.disabledReason ?? "Record the system microphone, with no app audio")
 
-            Button {
-                onRecordApp()
-            } label: {
-                Label("Record App...", systemImage: "record.circle")
-            }
-            .keyboardShortcut("r")
-        }
+            if onStopManualRecording == nil, state != .recording {
+                PanelRow("Record microphone", systemImage: "mic", action: onRecordMicrophone)
+                    .keyboardShortcut("m")
+                    .disabled(!microphoneAvailability.allowsStart)
+                    .help(microphoneAvailability.disabledReason ?? "Record the microphone only, with no app audio")
 
-        if let onNameSpeakers {
-            Button {
-                onNameSpeakers()
-            } label: {
-                Label("Name Speakers...", systemImage: "person.2.fill")
+                PanelRow("Record an app…", systemImage: "macwindow", action: onRecordApp)
+                    .keyboardShortcut("r")
             }
-            .keyboardShortcut("n")
-        }
 
-        Button {
-            onProcessFiles()
-        } label: {
-            Label("Process Audio/Video Files...", systemImage: "doc.badge.plus")
+            PanelRow("Transcribe files…", systemImage: "doc.badge.plus", action: onProcessFiles)
+                .keyboardShortcut("p")
+
+            lastNotesRow
         }
-        .keyboardShortcut("p")
+        .labelStyle(PanelLabelStyle())
     }
 
-    private var queueHeader: QueueHeader {
-        QueueHeader.compute(jobStates: pipelineQueue.jobs.map(\.state), isProcessing: pipelineQueue.isProcessing)
-    }
-
-    @ViewBuilder private var processingQueue: some View {
-        if !pipelineQueue.jobs.isEmpty {
-            Divider()
-            Label(queueHeader.title, systemImage: queueHeader.systemImage)
-
-            ForEach(Array(pipelineQueue.jobs.enumerated()), id: \.element.id) { index, job in
-                // A native separator, not a grouping view: each job is a run of
-                // flat menu items, and without one the repeated Cancel / Retry /
-                // Dismiss rows of neighbouring jobs read as one list.
-                if index > 0 { Divider() }
-                jobRow(job, index: index)
-            }
-        }
-    }
-
-    @ViewBuilder private var protocolActions: some View {
+    @ViewBuilder private var lastNotesRow: some View {
         let completedTarget = JobOpenTarget.resolve(
             for: pipelineQueue.completedJobs.last,
             preferNotion: notionExportEnabled,
@@ -234,140 +184,262 @@ struct MenuBarView: View {
             JobOpenTarget.file(URL(fileURLWithPath: path))
         }
         if let target {
-            Button {
-                onOpenProtocol(target)
-            } label: {
-                Label(target.lastProtocolLabel, systemImage: target.systemImage)
-            }
-            .keyboardShortcut("o")
+            PanelRow(target.lastProtocolLabel, systemImage: target.systemImage) { onOpenProtocol(target) }
+                .keyboardShortcut("o")
         }
+    }
 
-        Button {
-            onOpenProtocolsFolder()
-        } label: {
-            Label("Open Notes Folder", systemImage: "folder")
+    private var queueHeader: QueueHeader {
+        QueueHeader.compute(jobStates: pipelineQueue.jobs.map(\.state), isProcessing: pipelineQueue.isProcessing)
+    }
+
+    @ViewBuilder private var processingQueue: some View {
+        if !pipelineQueue.jobs.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(queueHeader.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                ForEach(Array(pipelineQueue.jobs.enumerated()), id: \.element.id) { index, job in
+                    jobRow(job, index: index)
+                }
+            }
         }
     }
 
     @ViewBuilder private var updateSection: some View {
         if let updateChecker, let update = updateChecker.availableUpdate {
             let route = updateChecker.installRoute(for: update)
-            Divider()
             Button {
                 route.perform()
             } label: {
-                Label(updateTitle(update, route: route), systemImage: "arrow.down.circle.fill")
+                VStack(alignment: .leading, spacing: 2) {
+                    Label("Update to \(update.tagName)", systemImage: "arrow.down.circle.fill")
+                    if case .homebrew = route {
+                        // The panel closes on click, so say up front that this
+                        // copies a command rather than opening a download.
+                        Text("Copies the brew upgrade command")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .buttonStyle(.plain)
+            .foregroundStyle(.tint)
+            .panelCard()
         }
     }
 
-    /// The menu closes on click, so the title has to say up front that the
-    /// item copies a command rather than opening a download.
-    private func updateTitle(_ update: ReleaseInfo, route: UpdateInstallRoute) -> String {
-        switch route {
-        case .homebrew: "Update Available: \(update.tagName) (Copy brew Command)"
-        case .download: "Update Available: \(update.tagName)"
+    private var footer: some View {
+        HStack(spacing: 16) {
+            Button(action: onOpenProtocolsFolder) {
+                Label("Notes folder", systemImage: "folder")
+            }
+            Spacer()
+            Button(action: onOpenSettings) {
+                Label("Settings…", systemImage: "gear")
+            }
+            .keyboardShortcut(",")
+            Button("Quit", action: onQuit)
+                .keyboardShortcut("q")
         }
+        .buttonStyle(.borderless)
+        .foregroundStyle(.secondary)
+        .labelStyle(PanelLabelStyle())
+        .padding(.horizontal, 8)
     }
 
-    private var settingsButton: some View {
-        Button {
-            onOpenSettings()
-        } label: {
-            Label("Settings...", systemImage: "gear")
-        }
-        .keyboardShortcut(",")
-    }
+    // MARK: - Jobs
 
-    private var quitButton: some View {
-        Button {
-            onQuit()
-        } label: {
-            Text("Quit")
-        }
-        .keyboardShortcut("q")
-    }
-
-    // MARK: - Helpers
-
-    /// Each job is a run of flat rows: a title, then a state row, then its
-    /// actions. `MenuStageProgressUpdater` finds a job's state row by that order
-    /// (below the queue heading, jobs in queue order), so a disabled row put
-    /// between the title and the state row, or a changed order, breaks the
-    /// live progress text without any compile error. Keep the order, or change
-    /// the updater and its tests with it.
-    @ViewBuilder
     private func jobRow(_ job: PipelineJob, index: Int) -> some View {
-        Text(job.meetingTitle)
-        jobStateLabel(job)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(job.meetingTitle)
+                    .fontWeight(.medium)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer(minLength: 8)
+                dismissOrCancelButton(job)
+            }
+            jobStateLabel(job)
+            jobActions(job, index: index)
+        }
+        .panelCard()
+    }
 
-        if job.state == .done,
-           let target = JobOpenTarget.resolve(for: job, preferNotion: notionExportEnabled) {
-            Button(target.jobActionLabel) { onOpenProtocol(target) }
+    @ViewBuilder
+    private func jobActions(_ job: PipelineJob, index: Int) -> some View {
+        let openTarget = job.state == .done
+            ? JobOpenTarget.resolve(for: job, preferNotion: notionExportEnabled) : nil
+        let showRetry = pipelineQueue.canRetryJob(id: job.id)
+        let showNotionRetry = job.state == .done && job.hasPendingNotionExport
+        if openTarget != nil || job.state == .speakerNamingPending || showRetry || showNotionRetry {
+            HStack(spacing: 8) {
+                if let openTarget {
+                    Button(openTarget.jobActionLabel) { onOpenProtocol(openTarget) }
+                }
+                if job.state == .speakerNamingPending {
+                    Button("Name speakers…") {
+                        if let onNameSpeakersForJob { onNameSpeakersForJob(job.id) } else { onNameSpeakers?() }
+                    }
+                        .buttonStyle(.borderedProminent)
+                }
+                if showRetry {
+                    Button("Retry") { pipelineQueue.retryJob(id: job.id) }
+                        .accessibilityIdentifier(A11yID.jobRetryButton(index))
+                }
+                if showNotionRetry {
+                    Button("Retry Notion export") {
+                        Task { await pipelineQueue.retryNotionExport(id: job.id) }
+                    }
+                    .accessibilityIdentifier(A11yID.jobNotionRetryButton(index))
+                    .disabled(!notionExportEnabled || !job.hasRetryableNotionBackup)
+                    .help(notionExportEnabled ? "" : "Turn on Notion export in Settings → Output to retry.")
+                }
+            }
+            .controlSize(.small)
         }
-        if job.state == .speakerNamingPending {
-            Button("Name Speakers") { onNameSpeakers?() }
-        }
-        if job.state == .waiting || job.state == .transcribing
-            || job.state == .diarizing || job.state == .generatingProtocol {
-            Button("Cancel") { pipelineQueue.cancelJob(id: job.id) }
-        }
-        retryButton(job, index: index)
-        notionRetryButton(job, index: index)
-        if job.state == .done || job.state == .error || job.state == .speakerNamingPending {
-            Button(job.notionExportStatus == .failed ? "Discard Notion Retry" : "Dismiss") { onDismissJob(job.id) }
+    }
+
+    /// One trailing control per job: Cancel while it runs, Dismiss once it has
+    /// settled.
+    @ViewBuilder
+    private func dismissOrCancelButton(_ job: PipelineJob) -> some View {
+        if [.waiting, .transcribing, .diarizing, .generatingProtocol].contains(job.state) {
+            iconButton("Cancel", systemImage: "xmark.circle.fill") { pipelineQueue.cancelJob(id: job.id) }
+        } else if [.done, .error, .speakerNamingPending].contains(job.state) {
+            iconButton(
+                job.notionExportStatus == .failed ? "Discard Notion retry" : "Dismiss",
+                systemImage: "xmark",
+            ) { onDismissJob(job.id) }
                 .disabled(job.notionExportStatus == .inProgress)
         }
     }
 
-    /// Runs a failed job again from its audio, instead of the user having to
-    /// find the staged recording and import it by hand.
-    @ViewBuilder
-    private func retryButton(_ job: PipelineJob, index: Int) -> some View {
-        if pipelineQueue.canRetryJob(id: job.id) {
-            Button("Retry") { pipelineQueue.retryJob(id: job.id) }
-                .accessibilityIdentifier(A11yID.jobRetryButton(index))
+    private func iconButton(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage).labelStyle(.iconOnly)
         }
-    }
-
-    @ViewBuilder
-    private func notionRetryButton(_ job: PipelineJob, index: Int) -> some View {
-        if job.state == .done, job.hasPendingNotionExport {
-            Button("Retry Notion Export") {
-                Task { await pipelineQueue.retryNotionExport(id: job.id) }
-            }
-            .accessibilityIdentifier(A11yID.jobNotionRetryButton(index))
-            .disabled(!notionExportEnabled || !job.hasRetryableNotionBackup)
-            .help(notionExportEnabled ? "" : "Enable Notion export in Settings → Output to retry.")
-        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(.secondary)
+        .help(title)
     }
 
     @ViewBuilder
     private func jobStateLabel(_ job: PipelineJob) -> some View {
-        if StageKind(jobState: job.state) != nil {
-            MenuStageProgressLabel(text: MenuStageProgressUpdater.progressText(job: job, queue: pipelineQueue))
-        } else if job.state == .error, let msg = job.error {
-            Text(msg)
-        } else if job.state == .done, job.notionExportStatus == .inProgress {
-            Text("Exporting to Notion…")
-        } else if job.state == .done, !job.warnings.isEmpty {
-            Text(job.warnings.joined(separator: "; "))
-        } else {
-            Text(job.state.label)
+        Group {
+            if StageKind(jobState: job.state) != nil {
+                TimelineView(.periodic(from: .now, by: 1)) { _ in
+                    Text(Self.progressText(job: job, queue: pipelineQueue))
+                }
+            } else if job.state == .error, let msg = job.error {
+                Text(msg).foregroundStyle(.red)
+            } else if job.state == .done, job.notionExportStatus == .inProgress {
+                Text("Exporting to Notion…")
+            } else if job.state == .done, !job.warnings.isEmpty {
+                Text(job.warnings.joined(separator: "; "))
+            } else {
+                Text(job.state.label)
+            }
+        }
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// "Transcribing… 0:42 · usually 1:10" for a job in a timed stage.
+    static func progressText(job: PipelineJob, queue: PipelineQueue) -> String {
+        let elapsed = queue.elapsedSeconds(forJobID: job.id)
+        let base = "\(job.state.label) \(formattedTime(elapsed))"
+        guard let stage = StageKind(jobState: job.state),
+              let avg = queue.averageSeconds(forJobID: job.id, stage: stage), avg > 0 else { return base }
+        let suffix = StageTimingStats.isSlowerThanUsual(elapsed: elapsed, average: avg)
+            ? " · longer than usual (\(formattedTime(avg)))"
+            : " · usually \(formattedTime(avg))"
+        return base + suffix
+    }
+}
+
+// MARK: - Panel building blocks
+
+/// Icons in a fixed-width column so the row titles share one left edge.
+private struct PanelLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 8) {
+            configuration.icon
+                .frame(width: 18)
+            configuration.title
         }
     }
 }
 
-/// Keep SwiftUI's text stable for the active row's lifetime. The native updater
-/// owns subsequent stage and timer changes so Cancel keeps its hover highlight.
-private struct MenuStageProgressLabel: View {
-    @State private var text: String
+/// A full-width action row that highlights under the pointer, like a menu item.
+private struct PanelRow: View {
+    let title: String
+    let systemImage: String
+    let action: () -> Void
 
-    init(text: String) {
-        _text = State(initialValue: text)
+    init(_ title: String, systemImage: String, action: @escaping () -> Void) {
+        self.title = title
+        self.systemImage = systemImage
+        self.action = action
     }
 
     var body: some View {
-        Text(text)
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(PanelRowStyle())
+    }
+}
+
+private struct PanelRowStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Highlight(configuration: configuration)
+    }
+
+    private struct Highlight: View {
+        let configuration: Configuration
+        @Environment(\.isEnabled) private var isEnabled
+        @State private var hovering = false
+
+        var body: some View {
+            configuration.label
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color.primary.opacity(fillOpacity)),
+                )
+                .contentShape(Rectangle())
+                .opacity(isEnabled ? 1 : 0.4)
+                .onHover { hovering = $0 }
+        }
+
+        private var fillOpacity: Double {
+            guard isEnabled else { return 0 }
+            if configuration.isPressed { return 0.14 }
+            return hovering ? 0.08 : 0
+        }
+    }
+}
+
+private extension View {
+    /// A block set off from the panel by a step in tone, with no outline.
+    func panelCard() -> some View {
+        padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private extension TranscriberState {
+    var tint: Color {
+        switch self {
+        case .recording, .error: .red
+        default: .primary
+        }
     }
 }

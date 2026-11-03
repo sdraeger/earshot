@@ -19,13 +19,13 @@ enum JobState: String, Codable {
     /// Human-readable label for this job state.
     var label: String {
         switch self {
-        case .waiting: "Waiting..."
-        case .transcribing: "Transcribing..."
-        case .diarizing: "Diarizing..."
-        case .generatingProtocol: "Generating Meeting Notes..."
-        case .speakerNamingPending: "Name Speakers..."
+        case .waiting: "Waiting…"
+        case .transcribing: "Transcribing…"
+        case .diarizing: "Identifying speakers…"
+        case .generatingProtocol: "Writing meeting notes…"
+        case .speakerNamingPending: "Waiting for speaker names"
         case .done: "Done"
-        case .error: "Error"
+        case .error: "Failed"
         }
     }
 }

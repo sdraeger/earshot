@@ -83,10 +83,6 @@ struct MeetingTranscriberApp: App {
     private var appDelegate // swiftlint:disable:this unused_declaration
     @State private var appState: AppState
     @State private var captionsWindow: LiveCaptionsWindowController?
-    // Keeps the progress updater alive for the app's lifetime; it is seeded in
-    // `init` and observes menu tracking on its own, so nothing reads it back and
-    // the analyzer cannot see that use.
-    @State private var menuProgressUpdater: MenuStageProgressUpdater // swiftlint:disable:this unused_declaration
     @Environment(\.openWindow)
     private var openWindow
 
@@ -109,9 +105,6 @@ struct MeetingTranscriberApp: App {
         #endif
         _appState = State(initialValue: state)
         AppDelegate.install(state)
-        let updater = MenuStageProgressUpdater()
-        updater.observe { [weak state] in state?.pipelineQueue }
-        _menuProgressUpdater = State(initialValue: updater)
         AppPaths.migrateIfNeeded()
         NotificationManager.shared.setUp()
         state.pipeline.restorePendingNotionExports()
@@ -153,6 +146,7 @@ struct MeetingTranscriberApp: App {
         } label: {
             menuBarLabel
         }
+        .menuBarExtraStyle(.window)
 
         speakerNamingWindow
         settingsWindow
@@ -189,6 +183,10 @@ struct MeetingTranscriberApp: App {
             pendingConsentApp: appState.pendingConsentApp,
             onAnswerPendingConsent: appState.answerPendingConsent,
             notionExportEnabled: appState.settings.notionExportEnabled,
+            onNameSpeakersForJob: { id in
+                appState.selectedNamingJobID = id
+                showNamingWindow()
+            },
         )
     }
 
@@ -259,7 +257,7 @@ struct MeetingTranscriberApp: App {
     // MARK: - Windows
 
     private var speakerNamingWindow: some Scene {
-        Window("Name Speakers", id: "speaker-naming") {
+        Window("Name speakers", id: "speaker-naming") {
             speakerNamingContent
                 // Pin the naming window so it stays visible + on top while the
                 // user works in other apps instead of vanishing on focus loss
@@ -290,6 +288,7 @@ struct MeetingTranscriberApp: App {
                 settings: appState.settings,
                 whisperKitEngine: appState.engines.whisperKit,
                 parakeetEngine: appState.engines.parakeetEngine,
+                modelServerEngine: appState.engines.modelServer,
                 updateChecker: appState.updateChecker,
                 notificationVisibility: appState.permissions.notificationVisibility,
                 // Share the pipeline's actor instance so both writers serialise on
@@ -316,7 +315,7 @@ struct MeetingTranscriberApp: App {
     }
 
     private var recordAppWindow: some Scene {
-        Window("Record App", id: "record-app") {
+        Window("Record app", id: "record-app") {
             AppPickerView(
                 appsProvider: SystemRunningAppsProvider(),
                 // The controller's wide predicate, not `appState.isManualRecording`.
@@ -430,6 +429,9 @@ struct MeetingTranscriberApp: App {
         panel.accessoryView = pairingDelegate.accessoryView
         panel.isAccessoryViewDisclosed = true
 
+        // A menu-bar app is not active, so without this the panel opens behind
+        // the frontmost app.
+        NSApp.activate(ignoringOtherApps: true)
         guard panel.runModal() == .OK, !panel.urls.isEmpty else { return }
         appState.pipeline.enqueueFiles(panel.urls)
     }

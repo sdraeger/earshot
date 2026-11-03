@@ -203,7 +203,7 @@ final class TranscriptionSettingsCustomModelTests: XCTestCase {
         try showCustomFields(in: view)
 
         try textField(A11yID.whisperKitCustomRepoField, in: view).setInput("spert/other-whisperkit")
-        try view.inspect().find(button: "Load Model").tap()
+        try view.inspect().find(button: "Load model").tap()
 
         XCTAssertEqual(settings.whisperKitCustomRepo, "spert/other-whisperkit")
         XCTAssertEqual(settings.whisperKitCustomVariant, "flix-swissgerman-large-v3_8bit", "An unedited field is left alone")

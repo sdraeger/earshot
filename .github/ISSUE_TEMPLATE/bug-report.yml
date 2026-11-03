@@ -12,9 +12,9 @@ body:
         Thanks for the report! To help diagnose the issue, please attach a diagnostic log:
 
         1. Open Meeting Transcriber → **Settings → Advanced → Diagnostics**
-        2. Toggle **Verbose Diagnostic Logging** ON
+        2. Toggle **Verbose diagnostic logging** ON
         3. Reproduce the problem
-        4. Click **Export Diagnostics…** — Finder will reveal a `.log` file
+        4. Click **Export diagnostics…** — Finder will reveal a `.log` file
         5. Drag that `.log` file into the **Diagnostic log** field below
 
         Speaker names in the log are pseudonymised (e.g. `speaker_a3f2`) and

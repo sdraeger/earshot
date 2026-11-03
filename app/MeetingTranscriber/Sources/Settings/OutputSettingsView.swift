@@ -53,9 +53,9 @@ struct OutputSettingsView: View {
         Form {
             // Output folder applies to record-only AND protocol mode, so this
             // section deliberately sits outside the .recordOnlyDisabled block.
-            Section("Output Folder") {
+            Section("Output folder") {
                 HStack {
-                    Text("Output Folder")
+                    Text("Output folder")
                     Spacer()
                     Text(outputDirDisplay)
                         .foregroundStyle(.secondary)
@@ -80,7 +80,7 @@ struct OutputSettingsView: View {
 
             NotionExportSettingsView(settings: settings)
 
-            Section("Meeting Notes") {
+            Section("Meeting notes") {
                 Toggle("Include full transcript in meeting notes", isOn: $settings.includeFullTranscriptInProtocol)
                     .accessibilityIdentifier(A11yID.includeFullTranscriptToggle)
                 Toggle("Save raw transcript separately", isOn: $settings.saveRawTranscriptSeparately)
@@ -96,7 +96,7 @@ struct OutputSettingsView: View {
 
                 providerConfigView
 
-                Picker("Notes Language", selection: $settings.protocolLanguage) {
+                Picker("Notes language", selection: $settings.protocolLanguage) {
                     ForEach(languagePickerOptions, id: \.self) { lang in
                         Text(lang).tag(lang)
                     }
@@ -219,7 +219,7 @@ struct OutputSettingsView: View {
 
         if settings.openAIAPIKeyPlacement == .customHeader {
             HStack {
-                Text("Header Name")
+                Text("Header name")
                 Spacer()
                 TextField("", text: $settings.openAIAPIKeyHeaderName)
                     .frame(width: 200)
@@ -277,17 +277,17 @@ struct OutputSettingsView: View {
     private var promptControls: some View {
         // swiftlint:disable:next closure_body_length
         HStack {
-            Button("Edit Prompt") {
+            Button("Edit prompt") {
                 openCustomPrompt()
                 refreshCustomPromptState()
             }
 
-            Button("Import Prompt") {
+            Button("Import prompt") {
                 importCustomPrompt()
                 refreshCustomPromptState()
             }
 
-            Button("Reset to Default") {
+            Button("Reset to defaults") {
                 showResetPromptConfirmation = true
             }
             .disabled(!hasCustomPrompt)
@@ -340,7 +340,9 @@ struct OutputSettingsView: View {
             case let .success(models):
                 availableModels = models
                 if !models.isEmpty {
-                    if !models.contains(settings.openAIModel) {
+                    // Fill in a model only when none is set: a configured name the
+                    // server accepts but does not list (an alias) must survive a test.
+                    if settings.openAIModel.isEmpty {
                         settings.openAIModel = models[0]
                     }
                     connectionTestResult = .success("Connected (\(models.count) models)")

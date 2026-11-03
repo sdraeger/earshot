@@ -42,7 +42,7 @@ extension ChannelHealthController {
         "Channel health first tick: mic \(describe(micAges)), app \(describe(appAges))"
     }
 
-    /// The verdict that precedes a "Capture Channel Silent" or "Capture Channel
+    /// The verdict that precedes a "Audio source is silent" or "Capture Channel
     /// Lost" notification, with the evidence it was reached on.
     nonisolated static func faultLogLine(
         channel: AudioChannel,
@@ -55,7 +55,7 @@ extension ChannelHealthController {
             + "elapsed=\(seconds(elapsed)) window=\(seconds(window)), notifying"
     }
 
-    /// The verdict that precedes "Recording Appears Silent". Levels rather than
+    /// The verdict that precedes "Recording is silent". Levels rather than
     /// ages, because that monitor still decides from levels.
     nonisolated static func silentRecordingLogLine(micDBFS: Double, appDBFS: Double, window: TimeInterval) -> String {
         "Silent recording: both channels silent for \(seconds(window)) "

@@ -73,7 +73,7 @@ struct AppPickerView: View {
         VStack(spacing: 0) {
             // Header
             HStack {
-                Text("Record App")
+                Text("Record app")
                     .font(.headline)
                 Spacer()
                 Button {
@@ -130,7 +130,7 @@ struct AppPickerView: View {
 
                     Spacer()
 
-                    Button("Start Recording") {
+                    Button("Start recording") {
                         guard let app = selectedApp else { return }
                         let title = meetingTitle.isEmpty ? app.name : meetingTitle
                         onStartRecording(app.id, app.name, title)

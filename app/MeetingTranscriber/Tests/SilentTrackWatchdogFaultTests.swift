@@ -3,9 +3,9 @@ import AudioTapLib
 import XCTest
 
 /// What the user hears when the opt-in silent-track watchdog stops rebuilding
-/// the app tap (issue #672): one "Capture Channel Silent" notification with
+/// the app tap (issue #672): one "Audio source is silent" notification with
 /// its own body, through the same fault monitor and notification path as the
-/// other channel faults. Not "Capture Channel Lost": that copy says the channel
+/// other channel faults. Not "Audio source lost": that copy says the channel
 /// stopped and asks for a restart, and after a watchdog give-up the channel is
 /// still capturing.
 @MainActor
@@ -229,7 +229,7 @@ final class SilentTrackWatchdogFaultTests: XCTestCase {
         let alert = ChannelHealthController.captureAlert(
             channel: .app, fault: .rebuildsExhausted, everCarriedSignal: true,
         )
-        XCTAssertEqual(alert.title, "Capture Channel Silent")
+        XCTAssertEqual(alert.title, "Audio source is silent")
         XCTAssertEqual(alert.urgency, .timeSensitive)
     }
 
@@ -266,7 +266,7 @@ final class SilentTrackWatchdogFaultTests: XCTestCase {
         }
 
         XCTAssertEqual(notifier.calls.filter { $0.body == watchdogBody }.count, 1)
-        XCTAssertFalse(notifier.calls.contains { $0.title == "Capture Channel Lost" })
+        XCTAssertFalse(notifier.calls.contains { $0.title == "Audio source lost" })
         XCTAssertEqual(controller.appFault, .rebuildsExhausted)
     }
 

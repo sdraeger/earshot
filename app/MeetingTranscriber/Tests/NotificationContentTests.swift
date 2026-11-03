@@ -24,7 +24,7 @@ final class NotificationContentTests: XCTestCase {
         let content = NotificationManager.notificationContent(for: .recording, status: status)
 
         XCTAssertNotNil(content)
-        XCTAssertEqual(content?.title, "Meeting Detected")
+        XCTAssertEqual(content?.title, "Recording started")
         XCTAssertEqual(content?.body, "Recording: Sprint Planning (Microsoft Teams)")
     }
 
@@ -46,7 +46,7 @@ final class NotificationContentTests: XCTestCase {
         let content = NotificationManager.notificationContent(for: .protocolReady, status: status)
 
         XCTAssertNotNil(content)
-        XCTAssertEqual(content?.title, "Meeting Notes Ready")
+        XCTAssertEqual(content?.title, "Meeting notes ready")
         XCTAssertEqual(content?.body, "Meeting notes for \"Design Review\" are ready.")
     }
 
@@ -67,8 +67,8 @@ final class NotificationContentTests: XCTestCase {
         let content = NotificationManager.notificationContent(for: .waitingForSpeakerNames, status: status)
 
         XCTAssertNotNil(content)
-        XCTAssertEqual(content?.title, "Name Speakers")
-        XCTAssertEqual(content?.body, "Speakers detected — open the app to assign names")
+        XCTAssertEqual(content?.title, "Name speakers")
+        XCTAssertEqual(content?.body, "Open Meeting Transcriber to name who spoke")
     }
 
     // MARK: - Error
@@ -79,7 +79,7 @@ final class NotificationContentTests: XCTestCase {
         let content = NotificationManager.notificationContent(for: .error, status: status)
 
         XCTAssertNotNil(content)
-        XCTAssertEqual(content?.title, "Transcriber Error")
+        XCTAssertEqual(content?.title, "Something went wrong")
         XCTAssertEqual(content?.body, "Whisper crashed")
     }
 

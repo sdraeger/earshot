@@ -3583,7 +3583,7 @@ final class PipelineQueueTests: XCTestCase {
     }
 
     func testJobStateSpeakerNamingPendingLabel() {
-        XCTAssertEqual(JobState.speakerNamingPending.label, "Name Speakers...")
+        XCTAssertEqual(JobState.speakerNamingPending.label, "Waiting for speaker names")
     }
 
     func testJobStateSpeakerNamingPendingIsCodable() throws {

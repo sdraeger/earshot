@@ -145,7 +145,7 @@ final class KnownVoicesViewTests: XCTestCase { // swiftlint:disable:this balance
         ])
         let view = KnownVoicesView(matcher: matcher)
         let body = try view.inspect()
-        XCTAssertNoThrow(try body.find(text: "Known Voices"))
+        XCTAssertNoThrow(try body.find(text: "Known voices"))
         XCTAssertNoThrow(try body.find(text: "2 total"))
     }
 
@@ -179,13 +179,13 @@ final class KnownVoicesViewTests: XCTestCase { // swiftlint:disable:this balance
             MockDiarization()
         }
         let body = try view.inspect()
-        XCTAssertNoThrow(try body.find(button: "Add from Recording…"))
+        XCTAssertNoThrow(try body.find(button: "Add from recording…"))
     }
 
     func testHidesAddFromRecordingButtonWhenFactoryNil() throws {
         let view = KnownVoicesView(matcher: SpeakerMatcher(dbPath: dbPath))
         let body = try view.inspect()
-        XCTAssertThrowsError(try body.find(button: "Add from Recording…"))
+        XCTAssertThrowsError(try body.find(button: "Add from recording…"))
     }
 
     func testPipelineBusyHintHiddenWhenFactoryNil() throws {

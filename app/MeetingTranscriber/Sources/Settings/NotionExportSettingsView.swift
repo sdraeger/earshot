@@ -19,7 +19,7 @@ struct NotionExportSettingsView: View {
 
     var body: some View {
         Section {
-            Toggle("Export to Notion Database", isOn: $settings.notionExportEnabled)
+            Toggle("Export to Notion database", isOn: $settings.notionExportEnabled)
                 .accessibilityIdentifier(A11yID.notionExportToggle)
 
             if settings.notionExportEnabled {
@@ -33,7 +33,7 @@ struct NotionExportSettingsView: View {
             }
         } header: {
             HStack(spacing: 4) {
-                Text("Notion Database Export")
+                Text("Notion database export")
                     .accessibilityIdentifier(A11yID.notionSection)
                 HelpBadge(text: SettingsHelp.notionExport, systemImage: "questionmark.circle")
             }
@@ -82,7 +82,7 @@ private extension NotionExportSettingsView {
                         ProgressView()
                             .controlSize(.small)
                     }
-                    Text("Test Connection")
+                    Text("Test connection")
                 }
             }
             .disabled(model.testingNotion || !model.hasAPIKey)
@@ -107,7 +107,7 @@ private extension NotionExportSettingsView {
         if model.isNotionConnected {
             notionDatabaseSelectionRow
             if model.needsDatabaseConfirmation {
-                Button("Use This Database") { model.confirmDatabase() }
+                Button("Use this database") { model.confirmDatabase() }
                     .accessibilityIdentifier(A11yID.notionConfirmDatabaseButton)
                 Text("Confirm this database to start exporting.")
                     .font(.caption)
@@ -151,7 +151,7 @@ private extension NotionExportSettingsView {
                     Text(databaseLabel(for: db)).tag(db.id)
                 }
 
-                Text("Custom Database ID or URL\u{2026}")
+                Text("Custom database ID or URL\u{2026}")
                     .tag(NotionExportSettingsModel.customDatabaseTag)
             }
             .accessibilityIdentifier(A11yID.notionDatabasePicker)
@@ -229,7 +229,7 @@ private extension NotionExportSettingsView {
                                     ProgressView()
                                         .controlSize(.small)
                                 }
-                                Text("Add Optional Columns to Notion Database")
+                                Text("Add optional columns to Notion database")
                             }
                         }
                         .disabled(model.upgradingSchema)
@@ -250,19 +250,19 @@ private extension NotionExportSettingsView {
                 .foregroundStyle(.secondary)
 
             if !model.availablePages.isEmpty {
-                Picker("Parent Page", selection: $model.selectedParentPageID) {
+                Picker("Parent page", selection: $model.selectedParentPageID) {
                     Text("Choose a page\u{2026}").tag("")
                     ForEach(model.availablePages) { page in
                         Text(page.title).tag(page.id)
                     }
-                    Text("Enter Page URL / ID manually\u{2026}").tag(NotionExportSettingsModel.manualParentTag)
+                    Text("Enter page URL or ID manually\u{2026}").tag(NotionExportSettingsModel.manualParentTag)
                 }
                 .accessibilityIdentifier(A11yID.notionParentPagePicker)
             }
 
             if model.availablePages.isEmpty || model.selectedParentPageID == NotionExportSettingsModel.manualParentTag {
                 TextField(
-                    "Parent Page",
+                    "Parent page",
                     text: $model.manualParentPageInput,
                     prompt: Text("Notion page URL or 32-character ID"),
                 )
@@ -280,7 +280,7 @@ private extension NotionExportSettingsView {
                             ProgressView()
                                 .controlSize(.small)
                         }
-                        Text("Create Database in Notion")
+                        Text("Create database in Notion")
                     }
                 }
                 .disabled(model.isCreatingDatabase || !model.isParentPageAvailable || !model.hasAPIKey)

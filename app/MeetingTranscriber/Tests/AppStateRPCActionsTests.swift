@@ -305,11 +305,11 @@
             let notifierState = try AppState(pipelineEnvironment: makeIsolatedPipelineEnvironment(), settings: state.settings, notifier: manager)
             defer { notifierState.liveCaptions.clear() }
             manager.notify(title: "Silent Recording", body: "Both channels silent")
-            manager.notify(title: "Meeting Detected", body: "Recording: Standup (Teams)")
+            manager.notify(title: "Recording started", body: "Recording: Standup (Teams)")
 
             let snapshot = notifierState.rpcStateSnapshot()
 
-            XCTAssertEqual(snapshot.notifications.map(\.title), ["Silent Recording", "Meeting Detected"])
+            XCTAssertEqual(snapshot.notifications.map(\.title), ["Silent Recording", "Recording started"])
             XCTAssertEqual(snapshot.notifications.map(\.body), ["Both channels silent", "Recording: Standup (Teams)"])
             XCTAssertEqual(snapshot.notifications.map(\.posted), [false, false])
             let posted = try XCTUnwrap(snapshot.notifications.first)

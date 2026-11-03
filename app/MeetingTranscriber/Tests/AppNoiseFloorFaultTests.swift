@@ -3,7 +3,7 @@ import AudioTapLib
 import XCTest
 
 /// What the user hears when the app-audio tap carries only a level below one
-/// 16-bit step (issue #699): one "Capture Channel Silent" notification, through
+/// 16-bit step (issue #699): one "Audio source is silent" notification, through
 /// the same fault monitor, corroboration and once-per-recording silence latch
 /// as digital silence. The sensor itself is pinned in AudioTapLib.
 ///
@@ -162,7 +162,7 @@ final class AppNoiseFloorFaultTests: XCTestCase {
 
     func testTheAlertIsSilentNotLostAndPiercesFocus() {
         let alert = ChannelHealthController.captureAlert(channel: .app, fault: .noiseFloor, everCarriedSignal: true)
-        XCTAssertEqual(alert.title, "Capture Channel Silent")
+        XCTAssertEqual(alert.title, "Audio source is silent")
         XCTAssertEqual(alert.urgency, .timeSensitive)
     }
 

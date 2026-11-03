@@ -57,9 +57,9 @@ struct SpeakersSettingsView: View {
                 .recordOnlyDisabled(settings.recordOnly)
 
             if !settings.noMic {
-                Section("Speaker Identity") {
+                Section("Speaker identity") {
                     HStack {
-                        Text("Mic Speaker Name")
+                        Text("Mic speaker name")
                         Spacer()
                         TextField("Me", text: $settings.micName)
                             .frame(width: 160)
@@ -73,7 +73,7 @@ struct SpeakersSettingsView: View {
                 .recordOnlyDisabled(settings.recordOnly)
             }
 
-            Section("Known Voices") {
+            Section("Known voices") {
                 Button("Manage\u{2026}") {
                     knownVoicesSheet = KnownVoicesSheetItem(matcher: matcherFactory())
                 }
@@ -102,7 +102,7 @@ struct SpeakersSettingsView: View {
 
     private var diarizationSection: some View {
         Section("Diarization") {
-            Toggle("Speaker Diarization", isOn: $settings.diarize)
+            Toggle("Speaker diarization", isOn: $settings.diarize)
             if settings.diarize {
                 diarizationModePicker
                 if settings.diarizerMode != .offline {
@@ -143,7 +143,7 @@ struct SpeakersSettingsView: View {
 
     private var expectedSpeakersRow: some View {
         HStack {
-            Text("Expected Speakers")
+            Text("Expected speakers")
             Spacer()
             Text(settings.numSpeakers == 0 ? "Auto" : "\(settings.numSpeakers)")
                 .frame(width: 40)

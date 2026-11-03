@@ -15,7 +15,7 @@ struct AboutSettingsView: View {
                     .textSelection(.enabled)
                 LabeledContent("Identifier", value: Bundle.main.bundleID)
                     .textSelection(.enabled)
-                LabeledContent("Build Date", value: Self.buildDate)
+                LabeledContent("Build date", value: Self.buildDate)
                     .textSelection(.enabled)
                 LabeledContent("ffmpeg") {
                     Label(
@@ -62,10 +62,10 @@ struct AboutSettingsView: View {
     private func updatesSection(updateChecker: UpdateChecker) -> some View {
         // swiftlint:disable:next closure_body_length
         Section("Updates") {
-            Toggle("Check for Updates", isOn: $settings.checkForUpdates)
+            Toggle("Check for updates", isOn: $settings.checkForUpdates)
 
             if settings.checkForUpdates {
-                Toggle("Include Pre-Releases", isOn: $settings.includePreReleases)
+                Toggle("Include pre-releases", isOn: $settings.includePreReleases)
             }
 
             HStack {
@@ -79,7 +79,7 @@ struct AboutSettingsView: View {
                             ProgressView()
                                 .controlSize(.small)
                         }
-                        Text("Check Now")
+                        Text("Check now")
                     }
                 }
                 .disabled(updateChecker.isChecking)
@@ -120,7 +120,7 @@ struct AboutSettingsView: View {
                 Button {
                     route.perform(pasteboard: pasteboard)
                 } label: {
-                    Label("Copy Command", systemImage: "doc.on.doc")
+                    Label("Copy command", systemImage: "doc.on.doc")
                 }
                 .accessibilityIdentifier(A11yID.updateCopyBrewCommand)
 

@@ -9,7 +9,7 @@ final class TranscriberStatusTests: XCTestCase {
     }
 
     func testWatchingLabel() {
-        XCTAssertEqual(TranscriberState.watching.label, "Watching for Meetings...")
+        XCTAssertEqual(TranscriberState.watching.label, "Watching for meetings…")
     }
 
     func testRecordingLabel() {
@@ -17,23 +17,23 @@ final class TranscriberStatusTests: XCTestCase {
     }
 
     func testTranscribingLabel() {
-        XCTAssertEqual(TranscriberState.transcribing.label, "Transcribing...")
+        XCTAssertEqual(TranscriberState.transcribing.label, "Transcribing…")
     }
 
     func testGeneratingProtocolLabel() {
-        XCTAssertEqual(TranscriberState.generatingProtocol.label, "Generating Meeting Notes...")
+        XCTAssertEqual(TranscriberState.generatingProtocol.label, "Writing meeting notes…")
     }
 
     func testWaitingForSpeakerCountLabel() {
-        XCTAssertEqual(TranscriberState.waitingForSpeakerCount.label, "Speaker Count")
+        XCTAssertEqual(TranscriberState.waitingForSpeakerCount.label, "Speaker count")
     }
 
     func testWaitingForSpeakerNamesLabel() {
-        XCTAssertEqual(TranscriberState.waitingForSpeakerNames.label, "Name Speakers")
+        XCTAssertEqual(TranscriberState.waitingForSpeakerNames.label, "Name speakers")
     }
 
     func testProtocolReadyLabel() {
-        XCTAssertEqual(TranscriberState.protocolReady.label, "Meeting Notes Ready")
+        XCTAssertEqual(TranscriberState.protocolReady.label, "Meeting notes ready")
     }
 
     func testErrorLabel() {

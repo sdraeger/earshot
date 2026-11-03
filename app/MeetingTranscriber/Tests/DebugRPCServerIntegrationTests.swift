@@ -150,7 +150,7 @@
             defer { DefaultsSuite.remove(suite) }
             let state = try AppState(pipelineEnvironment: makeIsolatedPipelineEnvironment(), settings: AppSettings(defaults: defaults), notifier: manager)
             defer { state.liveCaptions.clear() }
-            manager.notify(title: "Meeting Detected", body: "Recording: Standup (Teams)")
+            manager.notify(title: "Recording started", body: "Recording: Standup (Teams)")
             manager.notify(title: "Silent Recording", body: "Both channels silent")
 
             let base = try await startServer(snapshot: state.rpcStateSnapshot())
@@ -160,7 +160,7 @@
 
             XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
             let decoded = try JSONDecoder().decode(RPCStateSnapshot.self, from: data)
-            XCTAssertEqual(decoded.notifications.map(\.title), ["Meeting Detected", "Silent Recording"])
+            XCTAssertEqual(decoded.notifications.map(\.title), ["Recording started", "Silent Recording"])
             XCTAssertEqual(decoded.notifications.map(\.body), ["Recording: Standup (Teams)", "Both channels silent"])
             // Test host has no app bundle, so the delivery guard fails: the wire
             // must report the entries as NOT posted.

@@ -127,24 +127,24 @@ final class SettingsViewTests: XCTestCase { // swiftlint:disable:this type_body_
 
     func testPollIntervalFieldExists() throws {
         let body = try makeGeneral().inspect()
-        XCTAssertNoThrow(try body.find(text: "Poll Interval"))
+        XCTAssertNoThrow(try body.find(text: "Poll interval"))
     }
 
     func testGracePeriodFieldExists() throws {
         let body = try makeGeneral().inspect()
-        XCTAssertNoThrow(try body.find(text: "Grace Period"))
+        XCTAssertNoThrow(try body.find(text: "Grace period"))
     }
 
     func testUpdatesSectionNoLongerInGeneral() throws {
         let body = try makeGeneral().inspect()
-        XCTAssertThrowsError(try body.find(text: "Check for Updates"))
+        XCTAssertThrowsError(try body.find(text: "Check for updates"))
     }
 
     // MARK: - Audio tab
 
     func testNoMicToggleExists() throws {
         let body = try makeAudio().inspect()
-        XCTAssertNoThrow(try body.find(text: "No Microphone (app audio only)"))
+        XCTAssertNoThrow(try body.find(text: "No microphone (app audio only)"))
     }
 
     func testVADToggleExists() throws {
@@ -230,35 +230,35 @@ final class SettingsViewTests: XCTestCase { // swiftlint:disable:this type_body_
 
     func testDiarizeToggleExists() throws {
         let body = try makeSpeakers().inspect()
-        XCTAssertNoThrow(try body.find(text: "Speaker Diarization"))
+        XCTAssertNoThrow(try body.find(text: "Speaker diarization"))
     }
 
     func testDiarizeEnabledShowsExpectedSpeakers() throws {
         let settings = makeSettings()
         settings.diarize = true
         let body = try makeSpeakers(settings: settings).inspect()
-        XCTAssertNoThrow(try body.find(text: "Expected Speakers"))
+        XCTAssertNoThrow(try body.find(text: "Expected speakers"))
     }
 
     func testDiarizerModeHiddenWhenDiarizeDisabled() throws {
         let settings = makeSettings()
         settings.diarize = false
         let body = try makeSpeakers(settings: settings).inspect()
-        XCTAssertThrowsError(try body.find(text: "Expected Speakers"))
+        XCTAssertThrowsError(try body.find(text: "Expected speakers"))
     }
 
     func testMicSectionShownWhenMicEnabled() throws {
         let settings = makeSettings()
         settings.noMic = false
         let body = try makeSpeakers(settings: settings).inspect()
-        XCTAssertNoThrow(try body.find(text: "Mic Speaker Name"))
+        XCTAssertNoThrow(try body.find(text: "Mic speaker name"))
     }
 
     func testMicSectionHiddenWhenNoMic() throws {
         let settings = makeSettings()
         settings.noMic = true
         let body = try makeSpeakers(settings: settings).inspect()
-        XCTAssertThrowsError(try body.find(text: "Mic Speaker Name"))
+        XCTAssertThrowsError(try body.find(text: "Mic speaker name"))
     }
 
     func testSortformerWarningShownWhenSelected() throws {
@@ -446,12 +446,12 @@ final class SettingsViewTests: XCTestCase { // swiftlint:disable:this type_body_
 
     func testProtocolLanguagePickerExists() throws {
         let body = try makeOutput().inspect()
-        XCTAssertNoThrow(try body.find(text: "Notes Language"))
+        XCTAssertNoThrow(try body.find(text: "Notes language"))
     }
 
     func testOutputFolderSectionExists() throws {
         let body = try makeOutput().inspect()
-        XCTAssertNoThrow(try body.find(text: "Output Folder"))
+        XCTAssertNoThrow(try body.find(text: "Output folder"))
     }
 
     func testResetButtonDisabledWhenNoCustomDir() throws {
@@ -464,17 +464,17 @@ final class SettingsViewTests: XCTestCase { // swiftlint:disable:this type_body_
 
     func testEditPromptButtonExists() throws {
         let body = try makeOutput().inspect()
-        XCTAssertNoThrow(try body.find(button: "Edit Prompt"))
+        XCTAssertNoThrow(try body.find(button: "Edit prompt"))
     }
 
     func testImportPromptButtonExists() throws {
         let body = try makeOutput().inspect()
-        XCTAssertNoThrow(try body.find(button: "Import Prompt"))
+        XCTAssertNoThrow(try body.find(button: "Import prompt"))
     }
 
     func testResetToDefaultButtonExists() throws {
         let body = try makeOutput().inspect()
-        XCTAssertNoThrow(try body.find(button: "Reset to Default"))
+        XCTAssertNoThrow(try body.find(button: "Reset to defaults"))
     }
 
     func testDefaultPromptStatusShown() throws {

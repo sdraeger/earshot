@@ -16,11 +16,13 @@ enum TranscriptionEngineSetting: String, CaseIterable, Codable {
     // swiftlint:disable:next raw_value_for_camel_cased_codable_enum
     case whisperKit
     case parakeet
+    case server
 
     var label: String {
         switch self {
         case .whisperKit: "WhisperKit (Whisper)"
         case .parakeet: "Parakeet TDT v3 (NVIDIA)"
+        case .server: "Model server (any open model)"
         }
     }
 
@@ -29,7 +31,7 @@ enum TranscriptionEngineSetting: String, CaseIterable, Codable {
     /// engines with stricter OS floors.
     var isAvailable: Bool {
         switch self {
-        case .whisperKit, .parakeet: true
+        case .whisperKit, .parakeet, .server: true
         }
     }
 
@@ -45,6 +47,7 @@ enum TranscriptionEngineSetting: String, CaseIterable, Codable {
     var supportsLiveTranscription: Bool {
         switch self {
         case .whisperKit, .parakeet: true
+        case .server: false
         }
     }
 }
@@ -331,6 +334,12 @@ final class AppSettings { // swiftlint:disable:this type_body_length
         didSet { defaults.set(liveCaptionsOverlayEnabled, forKey: "liveCaptionsOverlayEnabled") }
     }
 
+    /// Whether a notification that needs an answer plays a sound. Status
+    /// notifications are always silent. `NotificationManager` reads the same key.
+    var notificationSounds: Bool {
+        didSet { defaults.set(notificationSounds, forKey: NotificationManager.soundsDefaultsKey) }
+    }
+
     /// Size preset of the caption bar (font + panel, see `LiveCaptionsSize`).
     /// Default `.medium` is the pre-preset geometry, so an upgrade changes
     /// nothing; an unknown stored value also reads as `.medium`.
@@ -375,6 +384,21 @@ final class AppSettings { // swiftlint:disable:this type_body_length
     /// folder instead of `whisperKitModel`. Resolved by `whisperKitModelSelection`.
     var whisperKitCustomModelEnabled: Bool {
         didSet { defaults.set(whisperKitCustomModelEnabled, forKey: "whisperKitCustomModelEnabled") }
+    }
+
+    /// Model server engine: the OpenAI-compatible base URL, the model to ask
+    /// for, and an optional command that starts the server (`{model}` is
+    /// replaced by the model).
+    var modelServerURL: String {
+        didSet { defaults.set(modelServerURL, forKey: "modelServerURL") }
+    }
+
+    var modelServerModel: String {
+        didSet { defaults.set(modelServerModel, forKey: "modelServerModel") }
+    }
+
+    var modelServerLaunchCommand: String {
+        didSet { defaults.set(modelServerLaunchCommand, forKey: "modelServerLaunchCommand") }
     }
 
     /// Hugging Face repository of the custom model, `owner/name`.
@@ -803,6 +827,7 @@ final class AppSettings { // swiftlint:disable:this type_body_length
         silentTrackWatchdogEnabled = defaults.bool(forKey: "silentTrackWatchdogEnabled", default: false)
         liveTranscriptionEnabled = defaults.bool(forKey: "liveTranscriptionEnabled", default: false)
         liveCaptionsOverlayEnabled = defaults.bool(forKey: "liveCaptionsOverlayEnabled", default: true)
+        notificationSounds = defaults.bool(forKey: NotificationManager.soundsDefaultsKey, default: true)
         liveCaptionsSize = defaults.string(forKey: "liveCaptionsSize")
             .flatMap(LiveCaptionsSize.init(rawValue:)) ?? .medium
         asymmetricSilenceWarningSeconds = max(30, min(300, defaults.object(forKey: "asymmetricSilenceWarningSeconds") as? Double ?? 90))
@@ -813,6 +838,9 @@ final class AppSettings { // swiftlint:disable:this type_body_length
             ?? "openai_whisper-large-v3-v20240930_turbo"
         whisperKitCustomModelEnabled = defaults.bool(forKey: "whisperKitCustomModelEnabled", default: false)
         whisperKitCustomRepo = defaults.string(forKey: "whisperKitCustomRepo") ?? ""
+        modelServerURL = defaults.string(forKey: "modelServerURL") ?? "http://127.0.0.1:8000/v1"
+        modelServerModel = defaults.string(forKey: "modelServerModel") ?? ""
+        modelServerLaunchCommand = defaults.string(forKey: "modelServerLaunchCommand") ?? ""
         whisperKitCustomVariant = defaults.string(forKey: "whisperKitCustomVariant") ?? ""
         whisperKitCustomModelFolderPath = defaults.string(forKey: "whisperKitCustomModelFolderPath") ?? ""
         whisperKitCustomModelFolderBookmark = defaults.data(forKey: "whisperKitCustomModelFolderBookmark")

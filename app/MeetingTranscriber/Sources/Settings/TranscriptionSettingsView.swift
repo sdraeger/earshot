@@ -6,6 +6,7 @@ struct TranscriptionSettingsView: View {
     @Bindable var settings: AppSettings
     var whisperKitEngine: WhisperKitEngine
     var parakeetEngine: ParakeetEngine
+    var modelServerEngine: ModelServerEngine
 
     /// Set when the user flips live captions on while a first-use Nemotron model
     /// download is pending — defers the actual enable to the consent alert.
@@ -25,11 +26,13 @@ struct TranscriptionSettingsView: View {
         settings: AppSettings,
         whisperKitEngine: WhisperKitEngine,
         parakeetEngine: ParakeetEngine,
+        modelServerEngine: ModelServerEngine = ModelServerEngine(),
         legacyModels: LegacyWhisperModelsState? = nil,
     ) {
         self.settings = settings
         self.whisperKitEngine = whisperKitEngine
         self.parakeetEngine = parakeetEngine
+        self.modelServerEngine = modelServerEngine
         // Created here, not as a default value: for an `@Observable` type the
         // default-value form creates the object only once the view is installed,
         // so a view inspected outside a hierarchy, as the view tests do, would get
@@ -86,6 +89,7 @@ struct TranscriptionSettingsView: View {
             customVocabularyValidation
             whisperKitVocabularyPromptControls
             terminologyRulesEditor
+            modelServerFields
             engineStatusView
         }
         .accessibilityIdentifier(A11yID.transcriptionSection)
@@ -144,7 +148,11 @@ struct TranscriptionSettingsView: View {
         }
     }
 
-    private var customVocabularyRow: some View {
+    @ViewBuilder private var customVocabularyRow: some View {
+        if settings.transcriptionEngine != .server { vocabularyFilePicker }
+    }
+
+    private var vocabularyFilePicker: some View {
         HStack {
             TextField("Custom vocabulary file", text: Binding(
                 get: { settings.customVocabularyPath },
@@ -164,7 +172,11 @@ struct TranscriptionSettingsView: View {
         .help(Self.vocabularyHelpText(for: settings.transcriptionEngine))
     }
 
-    private var customVocabularyValidation: some View {
+    @ViewBuilder private var customVocabularyValidation: some View {
+        if settings.transcriptionEngine != .server { vocabularyValidationText }
+    }
+
+    private var vocabularyValidationText: some View {
         Text(settings.customVocabularyValidation.message)
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -291,7 +303,7 @@ struct TranscriptionSettingsView: View {
     /// Hoisted out of `body` into a named property so the section's nesting
     /// doesn't grow the `body` type-check past the 300 ms hard limit on CI.
     private var liveTranscriptionSection: some View {
-        Section("Live transcription (PoC)") {
+        Section("Live transcription (experimental)") {
             // The toggle stays enabled even for engines without the
             // re-transcribe hook, because the language-driven streaming
             // backends route captions through an engine-independent session.
@@ -381,6 +393,9 @@ struct TranscriptionSettingsView: View {
                 + "soft 32-token decoder hint to WhisperKit; it is not a guaranteed correction. "
                 + "It applies to live captions only when they use "
                 + "WhisperKit; language-specific live backends do not use it."
+
+        case .server:
+            "The model server engine does not use a vocabulary file."
         }
     }
 
@@ -441,8 +456,42 @@ struct TranscriptionSettingsView: View {
         switch settings.transcriptionEngine {
         case .parakeet: parakeetEngine
         case .whisperKit: whisperKitEngine
+        case .server: modelServerEngine
         }
     }
+
+    // MARK: - Model server
+
+    @ViewBuilder private var modelServerFields: some View {
+        if settings.transcriptionEngine == .server {
+            TextField("Server address", text: $settings.modelServerURL, prompt: Text("http://127.0.0.1:8000/v1"))
+            HStack {
+                TextField("Model", text: $settings.modelServerModel, prompt: Text("Hugging Face id or model folder"))
+                Button("Choose\u{2026}") {
+                    let panel = NSOpenPanel()
+                    panel.canChooseDirectories = true
+                    panel.canChooseFiles = false
+                    if panel.runModal() == .OK, let url = panel.url {
+                        settings.modelServerModel = url.path
+                    }
+                }
+            }
+            TextField(
+                "Launch command",
+                text: $settings.modelServerLaunchCommand,
+                prompt: Text("Optional command that starts the server"),
+                axis: .vertical,
+            )
+            Text(Self.modelServerHelpText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    static let modelServerHelpText = "Any server with an OpenAI-compatible /audio/transcriptions endpoint works: "
+        + "an MLX server on this Mac, or vLLM on a GPU machine for models like Nemotron 3.5 Transcribe. "
+        + "With a launch command, Load model starts the server when nothing answers at the address; "
+        + "{model} is replaced by the model above. Speakers are still identified on this Mac."
 
     @ViewBuilder
     private var engineStatusView: some View { // swiftlint:disable:this attributes
@@ -469,7 +518,7 @@ struct TranscriptionSettingsView: View {
                 .font(.caption)
 
         case .unloaded:
-            Button("Load Model") {
+            Button("Load model") {
                 if settings.transcriptionEngine == .whisperKit {
                     customModelDrafts.commitPending(to: settings)
                     let model = settings.whisperKitModelSelection
@@ -487,6 +536,12 @@ struct TranscriptionSettingsView: View {
             Text(reason)
                 .font(.caption)
                 .foregroundStyle(.red)
+        }
+        if settings.transcriptionEngine == .server, let reason = modelServerEngine.loadFailureReason {
+            Text(reason)
+                .font(.caption)
+                .foregroundStyle(.red)
+                .textSelection(.enabled)
         }
     }
 }

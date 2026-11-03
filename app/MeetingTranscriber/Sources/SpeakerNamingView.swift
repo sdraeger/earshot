@@ -179,7 +179,7 @@ struct SpeakerNamingView: View { // swiftlint:disable:this type_body_length
     private var rerunSection: some View {
         VStack(spacing: 6) {
             HStack(spacing: 8) {
-                Text("Wrong count?").font(.caption).foregroundStyle(.secondary)
+                Text("Wrong number of speakers?").font(.caption).foregroundStyle(.secondary)
                 // Hide the mode picker for callers that don't track per-job
                 // diarizer mode (currently the voice-enrollment flow): they
                 // can't honour `.rerunWithMode`, so a visible-but-inert
@@ -254,9 +254,14 @@ struct SpeakerNamingView: View { // swiftlint:disable:this type_body_length
     var body: some View {
         // swiftlint:disable:next closure_body_length
         VStack(spacing: 16) {
-            Text("Name Speakers — \"\(data.meetingTitle)\"")
-                .font(.headline)
-                .padding(.top, 8)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Who's speaking?")
+                    .font(.title2.weight(.semibold))
+                Text(data.meetingTitle)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             ScrollView {
                 VStack(spacing: 16) {
@@ -279,6 +284,7 @@ struct SpeakerNamingView: View { // swiftlint:disable:this type_body_length
             }
 
             HStack(spacing: 12) {
+                Spacer()
                 // Deliberately no `.keyboardShortcut(.escape)`. Skip accepts the
                 // matcher's guesses and then deletes the naming data, so it is
                 // irreversible — while Escape means "dismiss this" to everyone
@@ -287,6 +293,7 @@ struct SpeakerNamingView: View { // swiftlint:disable:this type_body_length
                 // Escape now closes the window instead (see `onDismissRequest`),
                 // which leaves the job pending and re-openable.
                 Button("Skip") {
+                    player?.stop()
                     answer(.skipped)
                 }
                 .disabled(keyboardGracePeriodActive)
@@ -300,14 +307,15 @@ struct SpeakerNamingView: View { // swiftlint:disable:this type_body_length
                 .disabled(keyboardGracePeriodActive)
                 .accessibilityIdentifier(A11yID.confirmButton)
             }
-            .padding(.bottom, 8)
 
             escapeDismissShortcut
         }
-        .padding()
-        .frame(minWidth: 400, maxHeight: 700)
+        .padding(20)
+        .frame(minWidth: 440, maxHeight: 700)
         .id(data.meetingTitle)
         .onAppear { resetForCurrentPresentation() }
+        // Closing the window or Escape must not leave a snippet playing.
+        .onDisappear { player?.stop() }
         // After Re-run, lateDiarization replaces the SpeakerNamingData for
         // the same jobID. Watching `data.revision` (a fresh UUID per
         // instance) fires reliably even when the new mapping happens to be
@@ -412,24 +420,25 @@ struct SpeakerNamingView: View { // swiftlint:disable:this type_body_length
                         } label: {
                             Image(systemName: playingLabel == speaker.label
                                 ? "stop.circle.fill" : "play.circle.fill")
-                                .foregroundStyle(.blue)
+                                .foregroundStyle(.tint)
                         }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier(A11yID.play(speaker.label))
                     }
 
                     Spacer()
-                    Text("(\(formattedTime(speaker.speakingTime)))")
-                        .font(.caption)
+                    Text(formattedTime(speaker.speakingTime))
+                        .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
+                        .help("Speaking time")
                 }
 
                 if let autoName = speaker.autoName {
-                    Text("Auto: \(autoName)")
+                    Text("Suggested: \(autoName)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
-                    Text("Unknown")
+                    Text("New voice")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -511,7 +520,7 @@ struct SpeakerNamingView: View { // swiftlint:disable:this type_body_length
             let hidden = ranked.count - visible.count
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("Known:")
+                Text("Known voices")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 ChipFlowLayout(spacing: 4) {

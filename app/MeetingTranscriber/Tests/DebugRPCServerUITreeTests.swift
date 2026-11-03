@@ -89,7 +89,7 @@
             // (e.g. saved speaker names) that /screenshot doesn't capture — its
             // whole subtree must be excluded from the tree.
             let nameLabel = FakeSource(role: "AXStaticText", title: "Some Speaker Name")
-            let sheet = FakeSource(role: "AXSheet", title: "Known Voices", children: [nameLabel])
+            let sheet = FakeSource(role: "AXSheet", title: "Known voices", children: [nameLabel])
             let baseControl = FakeSource(role: "AXCheckBox", identifier: "recordOnlyToggle", title: "Record Only")
             let root = FakeSource(role: "AXWindow", title: "Settings", children: [baseControl, sheet])
 

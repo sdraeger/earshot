@@ -26,6 +26,7 @@ import Observation
 final class EngineController {
     let whisperKit: WhisperKitEngine
     let parakeetEngine: ParakeetEngine
+    let modelServer = ModelServerEngine()
     /// The Settings row for WhisperKit models earlier builds left in
     /// `Documents`, built once here rather than on every Settings body pass.
     let legacyWhisperModels: LegacyWhisperModelsState?
@@ -86,6 +87,9 @@ final class EngineController {
 
         case .whisperKit:
             whisperKit
+
+        case .server:
+            modelServer
         }
     }
 
@@ -131,6 +135,11 @@ final class EngineController {
             if parakeetEngine.customVocabularyBookmark != nextBookmark { parakeetEngine.customVocabularyBookmark = nextBookmark }
             let nextLang = settings.parakeetLanguageOrNil
             if parakeetEngine.language != nextLang { parakeetEngine.language = nextLang }
+
+        case .server:
+            modelServer.baseURL = settings.modelServerURL
+            modelServer.model = settings.modelServerModel
+            modelServer.launchCommand = settings.modelServerLaunchCommand
         }
     }
 
@@ -151,6 +160,9 @@ final class EngineController {
             _ = settings.customVocabularyBookmark
             _ = settings.whisperKitVocabularyPromptEnabled
             _ = settings.parakeetLanguage
+            _ = settings.modelServerURL
+            _ = settings.modelServerModel
+            _ = settings.modelServerLaunchCommand
         } onChange: { [weak self] in
             Task { @MainActor in
                 guard let self else { return }

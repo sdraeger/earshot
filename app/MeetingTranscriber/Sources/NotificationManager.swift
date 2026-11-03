@@ -60,15 +60,24 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate, App
     /// Where the posted / dropped / settings lines go. Injected so a test can
     /// assert they are written, not only what they would say.
     private let log: any DiagnosticsLogging
+    /// The Settings → General "Play sounds" switch, read at post time.
+    private let soundsEnabled: @Sendable () -> Bool
+
+    /// UserDefaults key shared with `AppSettings.notificationSounds`.
+    static let soundsDefaultsKey = "notificationSounds"
 
     init(
         scheduler: any NotificationScheduling = SystemNotificationScheduler(),
         canDeliver: @escaping @Sendable () -> Bool = { Bundle.main.bundleIdentifier != nil },
         log: any DiagnosticsLogging = OSLogDiagnostics(category: "NotificationManager"),
+        soundsEnabled: @escaping @Sendable () -> Bool = {
+            UserDefaults.standard.bool(forKey: NotificationManager.soundsDefaultsKey, default: true)
+        },
     ) {
         self.scheduler = scheduler
         self.canDeliver = canDeliver
         self.log = log
+        self.soundsEnabled = soundsEnabled
         super.init()
     }
 
@@ -104,7 +113,9 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate, App
         let id = UUID().uuidString
         scheduler.add(UNNotificationRequest(
             identifier: id,
-            content: Self.makeNotificationContent(title: title, body: body, urgency: urgency),
+            content: Self.makeNotificationContent(
+                title: title, body: body, urgency: urgency, playsSound: soundsEnabled(),
+            ),
             trigger: nil,
         ))
         logPosted(id: id, urgency: urgency)
@@ -176,11 +187,14 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate, App
         body: String,
         categoryID: String? = nil,
         urgency: NotificationUrgency = .standard,
+        playsSound: Bool = true,
     ) -> UNMutableNotificationContent {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
-        content.sound = .default
+        // Only a notification that needs an answer now makes a sound; the rest
+        // are status the user reads whenever they look.
+        content.sound = playsSound && urgency == .timeSensitive ? .default : nil
         content.interruptionLevel = urgency.interruptionLevel
         if let categoryID { content.categoryIdentifier = categoryID }
         return content
@@ -196,18 +210,18 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate, App
         case .recording:
             let meetingTitle = status.meeting?.title ?? "Unknown"
             let app = status.meeting?.app ?? ""
-            return ("Meeting Detected", "Recording: \(meetingTitle) (\(app))")
+            return ("Recording started", "Recording: \(meetingTitle) (\(app))")
 
         case .protocolReady:
             let meetingTitle = status.meeting?.title ?? "Meeting"
-            return ("Meeting Notes Ready", "Meeting notes for \"\(meetingTitle)\" are ready.")
+            return ("Meeting notes ready", "Meeting notes for \"\(meetingTitle)\" are ready.")
 
         case .waitingForSpeakerNames:
-            return ("Name Speakers", "Speakers detected — open the app to assign names")
+            return ("Name speakers", "Open Meeting Transcriber to name who spoke")
 
         case .error:
             if let error = status.error {
-                return ("Transcriber Error", error)
+                return ("Something went wrong", error)
             }
             return nil
 
@@ -343,6 +357,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate, App
             identifier: id,
             content: Self.makeNotificationContent(
                 title: title, body: body, categoryID: Self.consentCategoryID, urgency: urgency,
+                playsSound: soundsEnabled(),
             ),
             trigger: nil,
         ))

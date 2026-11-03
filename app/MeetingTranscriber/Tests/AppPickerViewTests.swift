@@ -27,7 +27,7 @@ final class AppPickerViewTests: XCTestCase {
             onCancel: {},
         )
         let body = try sut.inspect()
-        XCTAssertNoThrow(try body.find(button: "Start Recording"))
+        XCTAssertNoThrow(try body.find(button: "Start recording"))
     }
 
     func testStartButtonDisabledWithoutSelection() throws {
@@ -38,7 +38,7 @@ final class AppPickerViewTests: XCTestCase {
             onCancel: {},
         )
         let body = try sut.inspect()
-        let button = try body.find(button: "Start Recording")
+        let button = try body.find(button: "Start recording")
         XCTAssertTrue(button.isDisabled())
     }
 
@@ -98,7 +98,7 @@ final class AppPickerViewTests: XCTestCase {
             onCancel: {},
         )
         let body = try sut.inspect()
-        XCTAssertNoThrow(try body.find(text: "Record App"))
+        XCTAssertNoThrow(try body.find(text: "Record app"))
     }
 
     // MARK: - Meeting Title TextField
@@ -140,7 +140,7 @@ final class AppPickerViewTests: XCTestCase {
             onCancel: {},
         )
         let body = try sut.inspect()
-        XCTAssertNoThrow(try body.find(button: "Start Recording"))
+        XCTAssertNoThrow(try body.find(button: "Start recording"))
         XCTAssertNoThrow(try body.find(button: "Cancel"))
     }
 }

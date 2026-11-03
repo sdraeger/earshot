@@ -8,11 +8,11 @@ struct AudioSettingsView: View {
     var body: some View {
         Form {
             Section("Microphone") {
-                Toggle("No Microphone (app audio only)", isOn: $settings.noMic)
+                Toggle("No microphone (app audio only)", isOn: $settings.noMic)
 
                 if !settings.noMic {
                     Picker("Microphone", selection: $settings.micDeviceUID) {
-                        Text("System Default").tag("")
+                        Text("System default").tag("")
                         ForEach(audioDevices, id: \.id) { device in
                             Text(device.name).tag(device.id)
                         }
@@ -44,7 +44,7 @@ private struct VoiceActivityDetectionSection: View {
     @Bindable var settings: AppSettings
 
     var body: some View {
-        Section("Voice Activity Detection") {
+        Section("Voice activity detection") {
             HelpfulToggle(
                 title: "Voice Activity Detection (VAD)",
                 help: SettingsHelp.vad,

@@ -10,11 +10,11 @@
             let fixed = Date(timeIntervalSince1970: 1_700_000_000)
             let buffer = NotificationRingBuffer { fixed }
 
-            buffer.record(title: "Meeting Detected", body: "Recording: Standup (Teams)", posted: true)
+            buffer.record(title: "Recording started", body: "Recording: Standup (Teams)", posted: true)
 
             XCTAssertEqual(buffer.entries.count, 1)
             let entry = buffer.entries[0]
-            XCTAssertEqual(entry.title, "Meeting Detected")
+            XCTAssertEqual(entry.title, "Recording started")
             XCTAssertEqual(entry.body, "Recording: Standup (Teams)")
             XCTAssertEqual(entry.postedAt, fixed)
             XCTAssertTrue(entry.posted)

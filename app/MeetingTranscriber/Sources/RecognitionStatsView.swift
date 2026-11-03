@@ -26,7 +26,7 @@ struct RecognitionStatsView: View {
     }
 
     var body: some View {
-        Section("Recognition Stats") {
+        Section("Recognition stats") {
             Picker("Window", selection: $windowDays) {
                 ForEach(WindowChoice.allCases) { choice in
                     Text(choice.label).tag(choice)
@@ -47,7 +47,7 @@ struct RecognitionStatsView: View {
             }
 
             HStack {
-                Button("Open Log Folder") {
+                Button("Open log folder") {
                     NSWorkspace.shared.activateFileViewerSelecting([RecognitionStatsLog.defaultPath])
                 }
                 Spacer()

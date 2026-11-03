@@ -102,7 +102,7 @@ struct KnownVoicesView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Known Voices").font(.title2).bold()
+                Text("Known voices").font(.title2).bold()
                 Spacer()
                 Text("\(speakers.count) total").foregroundStyle(.secondary)
             }
@@ -275,7 +275,7 @@ struct KnownVoicesView: View {
     private var actionButtonsRow: some View {
         HStack {
             if diarizerFactory != nil {
-                Button("Add from Recording…") { showingEnrollment = true }
+                Button("Add from recording…") { showingEnrollment = true }
                     .disabled(namingDialogActive)
                     .help(
                         namingDialogActive

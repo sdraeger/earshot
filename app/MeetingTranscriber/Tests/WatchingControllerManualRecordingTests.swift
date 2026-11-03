@@ -81,7 +81,7 @@ final class WatchingControllerManualRecordingTests: XCTestCase {
         // on it can win the race and read an empty list.
         await waitFor(!notifier.calls.isEmpty, timeout: .seconds(2))
 
-        XCTAssertEqual(notifier.calls.first?.title, "Manual Recording")
+        XCTAssertEqual(notifier.calls.first?.title, "Recording started")
         XCTAssertTrue(controller.isManualRecording)
     }
 
@@ -105,7 +105,7 @@ final class WatchingControllerManualRecordingTests: XCTestCase {
         controller.startManualRecording(pid: 1234, appName: "Chrome", title: "Standup")
         await waitFor(!notifier.calls.isEmpty, timeout: .seconds(2))
 
-        XCTAssertEqual(notifier.calls.first?.title, "Error")
+        XCTAssertEqual(notifier.calls.first?.title, "Recording failed")
         XCTAssertFalse(controller.isManualRecording, "a start that failed is not a recording")
     }
 
@@ -170,6 +170,28 @@ final class WatchingControllerManualRecordingTests: XCTestCase {
         XCTAssertFalse(existingLoop.isActive, "the loop being taken over from must be stopped")
     }
 
+    /// The other half of the takeover: once the manual recording ends, meeting
+    /// watching comes back, or the next call goes unrecorded.
+    func testStoppingAManualRecordingResumesTheWatchingItTookOverFrom() async {
+        let controller = makeWatchingController(
+            logDir: tmpDir, noMic: false, permissionHealth: .allHealthy,
+        )
+        let (existingLoop, _) = makeTestWatchLoop()
+        existingLoop.start()
+        controller.watchLoop = existingLoop
+        addTeardownBlock { if controller.isWatching { controller.toggleWatching() } }
+
+        controller.startMicrophoneRecording()
+        await waitFor(
+            controller.manualStartTask == nil && controller.watchLoop?.isManualRecording == true,
+            timeout: .seconds(2),
+        )
+        controller.stopManualRecording()
+        await waitFor(controller.isWatching, timeout: .seconds(2))
+
+        XCTAssertTrue(controller.isWatching, "watching must resume after the manual recording")
+    }
+
     /// The app-picker half of the #624 ownership rule, which the two guards in
     /// `beginManualRecording` do not cover: an auto-detected meeting sets no
     /// `manualRecordingInfo`, so `isManualRecording` reads false and a picker
@@ -205,7 +227,7 @@ final class WatchingControllerManualRecordingTests: XCTestCase {
         XCTAssertIdentical(controller.watchLoop, loop, "the meeting's loop must still be the owner")
         XCTAssertEqual(loop.state, .recording, "the meeting must still be recording")
         XCTAssertTrue(
-            notifier.calls.contains { $0.title == "Recording Refused" },
+            notifier.calls.contains { $0.title == "Can't start recording" },
             "a refusal the user cannot see is the failure this guard exists to avoid; got \(notifier.calls)",
         )
     }

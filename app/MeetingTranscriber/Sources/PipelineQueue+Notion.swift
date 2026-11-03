@@ -50,7 +50,7 @@ enum NotionExportResolution {
 extension AppNotifying {
     func notifyNotionExport(job: PipelineJob, failureReason: String?) {
         if let failureReason {
-            notify(title: "Notion Export Failed", body: "\(job.meetingTitle): \(failureReason)")
+            notify(title: "Notion export failed", body: "\(job.meetingTitle): \(failureReason)")
         } else {
             notify(title: "Saved to Notion", body: job.meetingTitle)
         }

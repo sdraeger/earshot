@@ -18,7 +18,7 @@ final class NotificationManagerLoggingTests: XCTestCase {
     func testADroppedNotificationIsLoggedWithItsReason() {
         let (manager, scheduler, log) = makeManager()
 
-        manager.notify(title: "Capture Channel Silent", body: "body", urgency: .timeSensitive)
+        manager.notify(title: "Audio source is silent", body: "body", urgency: .timeSensitive)
 
         XCTAssertTrue(scheduler.added.isEmpty, "precondition: not set up, so nothing is posted")
         XCTAssertEqual(log.lines(.warning, startingWith: "notification_dropped"), ["notification_dropped reason=not_set_up"])
@@ -29,7 +29,7 @@ final class NotificationManagerLoggingTests: XCTestCase {
         let (manager, scheduler, log) = makeManager()
         manager.setUp()
 
-        manager.notify(title: "Capture Channel Silent", body: "body", urgency: .timeSensitive)
+        manager.notify(title: "Audio source is silent", body: "body", urgency: .timeSensitive)
 
         let request = try XCTUnwrap(scheduler.added.first)
         XCTAssertEqual(
@@ -45,7 +45,7 @@ final class NotificationManagerLoggingTests: XCTestCase {
         let (manager, scheduler, log) = makeManager()
         manager.setUp()
 
-        manager.notify(title: "Capture Channel Silent", body: "body", urgency: .timeSensitive)
+        manager.notify(title: "Audio source is silent", body: "body", urgency: .timeSensitive)
 
         let request = try XCTUnwrap(scheduler.added.first)
         await waitFor({ !log.lines(.notice, startingWith: "notification_settings").isEmpty }, timeout: .seconds(2))

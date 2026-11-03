@@ -109,10 +109,10 @@ final class NotificationManagerTests: XCTestCase {
             XCTAssertFalse(manager.isSetUp)
 
             manager.notify(title: "Silent Recording", body: "Both channels silent")
-            manager.notify(title: "Meeting Detected", body: "Recording: Standup (Teams)")
+            manager.notify(title: "Recording started", body: "Recording: Standup (Teams)")
 
             let entries = manager.recentNotificationsLog.entries
-            XCTAssertEqual(entries.map(\.title), ["Silent Recording", "Meeting Detected"])
+            XCTAssertEqual(entries.map(\.title), ["Silent Recording", "Recording started"])
             XCTAssertEqual(entries.map(\.body), ["Both channels silent", "Recording: Standup (Teams)"])
             XCTAssertEqual(entries.map(\.posted), [false, false], "delivery guard failed, so entries must be marked unposted")
         }
@@ -135,7 +135,7 @@ final class NotificationManagerTests: XCTestCase {
             for: .recording,
             status: statusWithMeeting(app: "Teams", title: "Standup"),
         )
-        XCTAssertEqual(content?.title, "Meeting Detected")
+        XCTAssertEqual(content?.title, "Recording started")
         XCTAssertEqual(content?.body, "Recording: Standup (Teams)")
     }
 
@@ -147,7 +147,7 @@ final class NotificationManagerTests: XCTestCase {
             for: .recording,
             status: statusWithNoMeeting(),
         )
-        XCTAssertEqual(content?.title, "Meeting Detected")
+        XCTAssertEqual(content?.title, "Recording started")
         XCTAssertEqual(content?.body, "Recording: Unknown ()")
     }
 
@@ -156,7 +156,7 @@ final class NotificationManagerTests: XCTestCase {
             for: .protocolReady,
             status: statusWithMeeting(app: "Zoom", title: "Retro"),
         )
-        XCTAssertEqual(content?.title, "Meeting Notes Ready")
+        XCTAssertEqual(content?.title, "Meeting notes ready")
         XCTAssertEqual(content?.body, "Meeting notes for \"Retro\" are ready.")
     }
 
@@ -173,7 +173,7 @@ final class NotificationManagerTests: XCTestCase {
             for: .waitingForSpeakerNames,
             status: statusWithNoMeeting(),
         )
-        XCTAssertEqual(content?.title, "Name Speakers")
+        XCTAssertEqual(content?.title, "Name speakers")
         XCTAssertFalse(content?.body.isEmpty ?? true)
     }
 
@@ -184,13 +184,13 @@ final class NotificationManagerTests: XCTestCase {
             protocolPath: nil, error: "disk full", audioPath: nil, pid: nil,
         )
         let content = NotificationManager.notificationContent(for: .error, status: status)
-        XCTAssertEqual(content?.title, "Transcriber Error")
+        XCTAssertEqual(content?.title, "Something went wrong")
         XCTAssertEqual(content?.body, "disk full")
     }
 
     func testNotificationContentErrorWithoutMessageReturnsNil() {
         // No error string attached → suppress the notification entirely.
-        // Avoids a "Transcriber Error" banner with a blank body.
+        // Avoids a "Something went wrong" banner with a blank body.
         let content = NotificationManager.notificationContent(
             for: .error,
             status: statusWithNoMeeting(),

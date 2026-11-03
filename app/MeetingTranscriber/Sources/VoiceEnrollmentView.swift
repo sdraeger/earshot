@@ -52,7 +52,7 @@ struct VoiceEnrollmentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Text("Add Voice from Recording").font(.title2).bold()
+                Text("Add voice from recording").font(.title2).bold()
                 Spacer()
                 Button("Cancel", role: .cancel) { onClose() }
                     .keyboardShortcut(.cancelAction)
@@ -83,8 +83,8 @@ struct VoiceEnrollmentView: View {
             Text("Pick an audio file with the speaker(s) you want to enroll.")
                 .foregroundStyle(.secondary)
             HStack {
-                Button("Choose File…") { pickFile(initialDirectory: nil) }
-                Button("Browse Past Recordings…") {
+                Button("Choose file…") { pickFile(initialDirectory: nil) }
+                Button("Browse past recordings…") {
                     pickFile(initialDirectory: AppPaths.recordingsDir)
                 }
             }
@@ -162,7 +162,7 @@ struct VoiceEnrollmentView: View {
             Text("Enrollment failed").font(.headline).foregroundStyle(.red)
             Text(message).foregroundStyle(.secondary)
             HStack {
-                Button("Try Again") { stage = .pickFile }
+                Button("Try again") { stage = .pickFile }
                 Spacer()
                 Button("Close") { onClose() }
             }

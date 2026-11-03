@@ -27,7 +27,7 @@ struct ProcessingStatsView: View {
     }
 
     var body: some View {
-        Section("Processing Stats") {
+        Section("Processing stats") {
             Picker("Window", selection: $windowDays) {
                 ForEach(WindowChoice.allCases) { choice in
                     Text(choice.label).tag(choice)
@@ -52,7 +52,7 @@ struct ProcessingStatsView: View {
             }
 
             HStack {
-                Button("Open Log Folder") {
+                Button("Open log folder") {
                     NSWorkspace.shared.activateFileViewerSelecting([StageTimingLog.defaultPath])
                 }
                 Spacer()

@@ -78,7 +78,7 @@ final class WatchingControllerChannelFaultTests: XCTestCase {
     }
 
     private func micFaultDate(_ notifier: StampingNotifier) -> Date? {
-        notifier.calls.first { $0.title == "Capture Channel Silent" && $0.body == deadMicBody }?.date
+        notifier.calls.first { $0.title == "Audio source is silent" && $0.body == deadMicBody }?.date
     }
 
     /// The report arrives, and not before the window has run from `since`, the

@@ -5,6 +5,7 @@ struct SettingsView: View {
     @Bindable var settings: AppSettings
     var whisperKitEngine: WhisperKitEngine
     var parakeetEngine: ParakeetEngine
+    var modelServerEngine: ModelServerEngine = ModelServerEngine()
     var updateChecker: UpdateChecker?
 
     /// Notification visibility from `PermissionsController`, forwarded to the
@@ -76,6 +77,7 @@ struct SettingsView: View {
                 settings: settings,
                 whisperKitEngine: whisperKitEngine,
                 parakeetEngine: parakeetEngine,
+                modelServerEngine: modelServerEngine,
                 legacyModels: legacyWhisperModels,
             )
 

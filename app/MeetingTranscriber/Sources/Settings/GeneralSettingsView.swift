@@ -35,7 +35,14 @@ struct GeneralSettingsView: View {
                 }
             }
 
-            Section("Apps to Watch") {
+            Section("Notifications") {
+                Toggle("Play sounds", isOn: $settings.notificationSounds)
+                Text("Only notifications that need you, such as a meeting waiting for your OK to record, make a sound.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Apps to watch") {
                 Toggle("Microsoft Teams", isOn: $settings.watchTeams)
                 Toggle("Zoom", isOn: $settings.watchZoom)
                 Toggle("Webex", isOn: $settings.watchWebex)
@@ -46,7 +53,7 @@ struct GeneralSettingsView: View {
                 Toggle("Slack", isOn: $settings.watchSlack)
                     .accessibilityIdentifier(A11yID.watchSlackToggle)
                 customApps
-                Toggle("Browser Web Meetings", isOn: $settings.watchBrowserMeetings)
+                Toggle("Browser web meetings", isOn: $settings.watchBrowserMeetings)
                     .accessibilityIdentifier(A11yID.watchBrowserToggle)
                 Text(
                     """
@@ -63,7 +70,7 @@ struct GeneralSettingsView: View {
 
             Section("Detection") {
                 HStack {
-                    Text("Poll Interval")
+                    Text("Poll interval")
                     Spacer()
                     TextField("", value: $settings.pollInterval, format: .number)
                         .frame(width: 60)
@@ -74,7 +81,7 @@ struct GeneralSettingsView: View {
                 }
 
                 HStack {
-                    Text("Grace Period")
+                    Text("Grace period")
                     Spacer()
                     TextField("", value: $settings.endGrace, format: .number)
                         .frame(width: 60)
@@ -103,7 +110,7 @@ struct GeneralSettingsView: View {
             }
         }
         VStack(alignment: .leading, spacing: 4) {
-            Button("Add App…", action: addCustomApps)
+            Button("Add app…", action: addCustomApps)
             Text("Recording starts when an added app keeps the microphone busy for a few seconds.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -228,7 +235,7 @@ struct GeneralSettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .accessibilityIdentifier(A11yID.browserConsentWarning)
-                    Button("Open Notification Settings") {
+                    Button("Open notification settings") {
                         NSWorkspace.shared.open(Self.notificationSettingsURL)
                     }
                     .buttonStyle(.link)

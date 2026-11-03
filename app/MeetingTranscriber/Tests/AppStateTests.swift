@@ -143,7 +143,7 @@ final class AppStateTests: XCTestCase { // swiftlint:disable:this type_body_leng
         state.watching.watchLoop = loop
         loop.start()
         defer { loop.stop() }
-        XCTAssertEqual(state.currentStateLabel, "Watching for Meetings...")
+        XCTAssertEqual(state.currentStateLabel, "Watching for meetings…")
     }
 
     func testCurrentStateLabelRecordingWhenManualRecording() async throws {
@@ -782,7 +782,7 @@ final class AppStateTests: XCTestCase { // swiftlint:disable:this type_body_leng
         state.pipeline.queue.onJobStateChange?(job, .transcribing, .done)
 
         XCTAssertEqual(notifier.calls.count, 1)
-        XCTAssertEqual(notifier.calls[0].title, "Meeting Notes Ready")
+        XCTAssertEqual(notifier.calls[0].title, "Meeting notes ready")
         XCTAssertEqual(notifier.calls[0].body, "Sprint Review")
     }
 
@@ -800,7 +800,7 @@ final class AppStateTests: XCTestCase { // swiftlint:disable:this type_body_leng
         state.pipeline.queue.onJobStateChange?(job, .generatingProtocol, .done)
 
         XCTAssertEqual(notifier.calls.count, 1)
-        XCTAssertEqual(notifier.calls[0].title, "Meeting Notes Ready")
+        XCTAssertEqual(notifier.calls[0].title, "Meeting notes ready")
     }
 
     /// A voice whose embedding is NaN/Inf is left out of the speaker DB. The
@@ -923,7 +923,7 @@ final class AppStateTests: XCTestCase { // swiftlint:disable:this type_body_leng
         state.pipeline.queue.onJobStateChange?(errorJob, .transcribing, .error)
 
         XCTAssertEqual(notifier.calls.count, 1)
-        XCTAssertEqual(notifier.calls[0].title, "Error")
+        XCTAssertEqual(notifier.calls[0].title, "Processing failed")
         XCTAssertEqual(notifier.calls[0].body, "Transcription failed")
     }
 

@@ -61,9 +61,9 @@ body:
         Only useful if you answered the question above. To produce one:
 
         1. Open Meeting Transcriber → **Settings → Advanced → Diagnostics**
-        2. Toggle **Verbose Diagnostic Logging** ON
+        2. Toggle **Verbose diagnostic logging** ON
         3. Reproduce what you observed
-        4. Click **Export Diagnostics…** and Finder will reveal a `.log` file
+        4. Click **Export diagnostics…** and Finder will reveal a `.log` file
         5. Drag that `.log` file into this field
 
         Speaker names in the log are pseudonymised (e.g. `speaker_a3f2`) and

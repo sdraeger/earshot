@@ -68,7 +68,7 @@ struct AdvancedSettingsView: View {
 
             // swiftlint:disable:next closure_body_length
             Section("Diagnostics") {
-                Toggle("Verbose Diagnostic Logging", isOn: $settings.verboseDiagnostics)
+                Toggle("Verbose diagnostic logging", isOn: $settings.verboseDiagnostics)
                 Text(
                     "Logs detailed diagnostics across recording, transcription,"
                         + " diarization, and meeting notes generation. Used to debug"
@@ -80,7 +80,7 @@ struct AdvancedSettingsView: View {
                 .foregroundStyle(.secondary)
 
                 HStack {
-                    Button("Export Diagnostics…") { exportDiagnostics() }
+                    Button("Export diagnostics…") { exportDiagnostics() }
                         .disabled(isExportingDiagnostics)
                     if isExportingDiagnostics {
                         ProgressView()
@@ -99,7 +99,7 @@ struct AdvancedSettingsView: View {
                 }
 
                 #if !APPSTORE
-                    Button("Open Diagnostic Logs Folder") {
+                    Button("Open diagnostic logs folder") {
                         NSWorkspace.shared.activateFileViewerSelecting([PersistentDiagnosticLog.logDirectory])
                     }
                     Text(

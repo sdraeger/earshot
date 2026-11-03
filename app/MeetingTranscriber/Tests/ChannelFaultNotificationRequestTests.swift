@@ -29,7 +29,7 @@ final class ChannelFaultNotificationRequestTests: XCTestCase {
         controller.applyTick(recorder: recorder, now: t0.addingTimeInterval(30))
 
         let request = try XCTUnwrap(
-            scheduler.added.first { $0.content.title == "Capture Channel Silent" },
+            scheduler.added.first { $0.content.title == "Audio source is silent" },
             "scheduled: \(scheduler.added.map(\.content.title))",
         )
         XCTAssertEqual(request.content.interruptionLevel, .timeSensitive)

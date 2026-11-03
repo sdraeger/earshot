@@ -192,7 +192,7 @@ final class ChannelHealthIntegrationTests: XCTestCase {
         XCTAssertFalse(controller.micSilentActive)
         XCTAssertFalse(controller.appSilentActive)
         XCTAssertEqual(notifier.calls.count, 1)
-        XCTAssertEqual(notifier.calls[0].title, "Recording Appears Silent")
+        XCTAssertEqual(notifier.calls[0].title, "Recording is silent")
         // Suppressible on purpose: a waiting room looks exactly like this.
         XCTAssertEqual(notifier.calls.first?.urgency, .standard)
     }
@@ -349,7 +349,7 @@ final class ChannelHealthIntegrationTests: XCTestCase {
         }
 
         XCTAssertEqual(
-            notifier.calls.map(\.title), ["Capture Channel Lost"],
+            notifier.calls.map(\.title), ["Audio source lost"],
             "the watch must run whatever the menu-bar setting says",
         )
     }
@@ -391,7 +391,7 @@ final class ChannelHealthIntegrationTests: XCTestCase {
         controller.applyTick(recorder: recorder, now: t0)
         controller.applyTick(recorder: recorder, now: t0.addingTimeInterval(600))
 
-        XCTAssertEqual(notifier.calls.first?.title, "Capture Channel Silent")
+        XCTAssertEqual(notifier.calls.first?.title, "Audio source is silent")
         XCTAssertTrue(controller.appSilentOverlay)
     }
 
@@ -408,7 +408,7 @@ final class ChannelHealthIntegrationTests: XCTestCase {
         controller.applyTick(recorder: recorder, now: t0)
         controller.applyTick(recorder: recorder, now: t0.addingTimeInterval(600))
 
-        XCTAssertEqual(notifier.calls.first?.title, "Capture Channel Silent")
+        XCTAssertEqual(notifier.calls.first?.title, "Audio source is silent")
         XCTAssertTrue(controller.appSilentActive)
     }
 
