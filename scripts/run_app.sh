@@ -132,6 +132,13 @@ else
     echo "  WARNING: no codesigning identity in the keychain; this bundle is not signed"
     echo "  with a certificate. TCC binds its grants to that certificate, so without one"
     echo "  no grant made to this build survives the next rebuild."
+    # Ad-hoc sign the bundle anyway. The linker's own signature covers the
+    # executable alone, under the identifier `MeetingTranscriber` and with no
+    # Info.plist bound, so TCC never saw the bundle ID: the app was missing
+    # from System Settings' privacy lists and could not be granted anything.
+    codesign --force --sign - --entitlements "$SIGNING_ENTITLEMENTS" "$APP_BUNDLE" \
+        || { echo "ad-hoc codesign failed for $APP_BUNDLE (entitlements $SIGNING_ENTITLEMENTS)" >&2; exit 1; }
+    echo "  Signed ad hoc as $(defaults read "$APP_BUNDLE/Contents/Info" CFBundleIdentifier) (+ entitlements)"
 fi
 verify_signing "$APP_BUNDLE"
 

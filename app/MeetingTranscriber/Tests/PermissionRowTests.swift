@@ -54,6 +54,20 @@ final class PermissionRowTests: XCTestCase {
         XCTAssertFalse(names.contains("questionmark.circle"))
     }
 
+    // MARK: - Allow Button
+
+    func testAllowButtonAsksForAMissingPermission() throws {
+        var asked = false
+        let row = PermissionRow(label: "Screen Recording", detail: "Denied", granted: false) { asked = true }
+        try row.inspect().find(button: "Allow\u{2026}").tap()
+        XCTAssertTrue(asked)
+    }
+
+    func testAllowButtonHiddenOnceGranted() throws {
+        let row = PermissionRow(label: "Screen Recording", detail: "Granted", granted: true) {}
+        XCTAssertThrowsError(try row.inspect().find(button: "Allow\u{2026}"))
+    }
+
     // MARK: - Icon Priority
 
     func testGrantedTakesPriorityOverWarning() throws {

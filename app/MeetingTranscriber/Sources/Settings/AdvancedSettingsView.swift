@@ -33,38 +33,7 @@ struct AdvancedSettingsView: View {
     var body: some View {
         // swiftlint:disable:next closure_body_length
         Form {
-            Section("Permissions") {
-                PermissionRow(
-                    label: "Screen Recording",
-                    detail: Self.screenRecordingDetail,
-                    granted: screenRecordingOK,
-                    help: "\(SystemSettingsPaths.screenRecording) → enable Meeting Transcriber",
-                    settingsURL: PrivacyPane.screenCapture.url,
-                )
-                PermissionRow(
-                    label: "Microphone",
-                    detail: micPermission == .authorized ? "Granted"
-                        : micPermission == .notDetermined ? "Will prompt on first recording"
-                        : "Denied — click to open Settings",
-                    granted: micPermission == .authorized,
-                    warning: micPermission == .notDetermined,
-                    help: "System Settings → Privacy & Security → Microphone → enable Meeting Transcriber",
-                    settingsURL: PrivacyPane.microphone.url,
-                )
-                PermissionRow(
-                    label: "Accessibility",
-                    detail: "Optional — enables mute detection and meeting naming",
-                    granted: accessibilityOK,
-                    optional: true,
-                    help: "System Settings → Privacy & Security → Accessibility → enable Meeting Transcriber",
-                    settingsURL: PrivacyPane.accessibility.url,
-                )
-
-                Button("Refresh") {
-                    refreshPermissions()
-                }
-                .font(.callout)
-            }
+            permissionsSection
 
             // swiftlint:disable:next closure_body_length
             Section("Diagnostics") {
@@ -125,11 +94,69 @@ struct AdvancedSettingsView: View {
         .onAppear { refreshPermissions() }
     }
 
+    private var permissionsSection: some View {
+        // swiftlint:disable:next closure_body_length
+        Section("Permissions") {
+            PermissionRow(
+                label: "Screen Recording",
+                detail: Self.screenRecordingDetail,
+                granted: screenRecordingOK,
+                help: "\(SystemSettingsPaths.screenRecording) → enable Meeting Transcriber",
+                settingsURL: PrivacyPane.screenCapture.url,
+            ) {
+                // macOS cannot grant this in place; the request lists the app
+                // in the pane, and the switch there takes effect after a relaunch.
+                Permissions.ensureScreenRecordingAccess()
+                Self.open(.screenCapture)
+            }
+            PermissionRow(
+                label: "Microphone",
+                detail: micPermission == .authorized ? "Granted"
+                    : micPermission == .notDetermined ? "Will prompt on first recording"
+                    : "Denied — click to open Settings",
+                granted: micPermission == .authorized,
+                warning: micPermission == .notDetermined,
+                help: "System Settings → Privacy & Security → Microphone → enable Meeting Transcriber",
+                settingsURL: PrivacyPane.microphone.url,
+            ) {
+                // Undecided: macOS asks in place. Denied: only the pane can change it.
+                if micPermission == .notDetermined {
+                    Task {
+                        _ = await Permissions.ensureMicrophoneAccess()
+                        refreshPermissions()
+                    }
+                } else {
+                    Self.open(.microphone)
+                }
+            }
+            PermissionRow(
+                label: "Accessibility",
+                detail: "Optional — enables mute detection and meeting naming",
+                granted: accessibilityOK,
+                optional: true,
+                help: "System Settings → Privacy & Security → Accessibility → enable Meeting Transcriber",
+                settingsURL: PrivacyPane.accessibility.url,
+            ) {
+                Permissions.ensureAccessibilityAccess()
+                Self.open(.accessibility)
+            }
+
+            Button("Refresh") {
+                refreshPermissions()
+            }
+            .font(.callout)
+        }
+    }
+
     #if APPSTORE
         private static let screenRecordingDetail = "Required for app audio capture"
     #else
         private static let screenRecordingDetail = "Required for meeting detection and app audio capture"
     #endif
+
+    private static func open(_ pane: PrivacyPane) {
+        if let url = URL(string: pane.url) { NSWorkspace.shared.open(url) }
+    }
 
     private func refreshPermissions() {
         micPermission = AVCaptureDevice.authorizationStatus(for: .audio)

@@ -9,6 +9,9 @@ struct PermissionRow: View {
     var optional: Bool = false
     var help: String = ""
     var settingsURL: String = ""
+    /// Asks macOS for the permission, which is what lists the app in its System
+    /// Settings pane. Shown as a button while the permission is missing.
+    var onAllow: (() -> Void)?
     @State private var showingHelp = false
 
     private var icon: String {
@@ -35,6 +38,9 @@ struct PermissionRow: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
+            if !granted, let onAllow {
+                Button("Allow\u{2026}", action: onAllow)
+            }
             if !help.isEmpty {
                 Button {
                     showingHelp.toggle()

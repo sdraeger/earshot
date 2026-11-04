@@ -614,7 +614,8 @@ test_test_rpc_decides_before_it_replaces_the_executable() {
 # certificate can still run the app, but it says so. It used to die inside
 # codesign by accident (the trailer's word `valid` taken as the identity);
 # with the chooser's honest empty answer it would otherwise pass in silence,
-# the bundle unsigned and every TCC grant gone at the next rebuild.
+# the bundle unsigned and every TCC grant gone at the next rebuild. It signs
+# ad hoc, since the linker's signature alone hides the bundle ID from TCC.
 test_run_app_says_so_when_it_leaves_the_bundle_unsigned() {
     local workdir status signed rc=0
     workdir="$(mktemp -d)"
@@ -633,8 +634,9 @@ test_run_app_says_so_when_it_leaves_the_bundle_unsigned() {
         tail -5 "$workdir/run.log" | sed 's/^/    /' >&2
         rc=1
     fi
-    if [ -n "$signed" ]; then
-        echo "  signed with '$signed' although the keychain holds no identity" >&2
+    # Ad hoc, so that TCC sees the bundle ID and System Settings lists the app.
+    if [ "$signed" != "-" ]; then
+        echo "  signed with '${signed:-<nothing>}' instead of ad hoc although the keychain holds no identity" >&2
         rc=1
     fi
     if ! grep -q 'WARNING: no codesigning identity' "$workdir/run.log"; then
