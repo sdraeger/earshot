@@ -285,7 +285,7 @@ final class SpeakerNamingSession {
         diarization: DiarizationResult,
         job: (jobID: UUID, title: String, slug: String, participants: [String]),
         diarizeProcess: any DiarizationProvider,
-        isDualSource: Bool, outputDir: URL,
+        isDualSource: Bool, outputDir: URL, cues: SpeakerNameCues.Context = .init(),
     ) -> [String: String] {
         let (jobID, title, slug, participants) = job
         // No embeddings → no matching or dialog; keep the diarizer's own names.
@@ -298,7 +298,10 @@ final class SpeakerNamingSession {
         let matcher = speakerMatcherFactory()
         let verbose = matcher.matchVerbose(embeddings: embeddings)
         let matched = verbose.mapValues(\.assignedName)
-        var autoNames = matched
+        let refined = SpeakerNameCues.refine(
+            matched, context: cues, participants: participants, speakingTimes: diarization.speakingTimes,
+        )
+        var autoNames = refined.mapping
         let topCandidates = verbose.mapValues(\.topCandidates)
 
         // Pre-match participants to remaining speakers.
@@ -329,6 +332,7 @@ final class SpeakerNamingSession {
             },
             participants: participants,
             isDualSource: isDualSource,
+            nameClues: refined.clues,
         )
 
         // Persist naming data and set slug + mode early.

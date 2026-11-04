@@ -66,7 +66,10 @@ struct SpeakersSettingsView: View {
                             .multilineTextAlignment(.trailing)
                             .accessibilityIdentifier(A11yID.micNameField)
                     }
-                    .settingsNote("Your name for dual-source mode. Leave empty to diarize mic track (multi-person room).")
+                    .settingsNote(
+                        "Every voice on your microphone gets its own speaker. The one that speaks most gets this name "
+                            + "unless a voice profile or the conversation names it. Leave empty to name none.",
+                    )
                 }
                 .recordOnlyDisabled(settings.recordOnly)
             }

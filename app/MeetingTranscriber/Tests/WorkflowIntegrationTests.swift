@@ -723,6 +723,28 @@ final class WorkflowIntegrationTests: XCTestCase {
         XCTAssertTrue(h.protocolGen.generateCalled)
     }
 
+    func testWorkflowGuessesANameFromASelfIntroduction() async throws {
+        let (h, _) = try makeHarness(diarizeEnabled: true)
+        h.engine.segmentsToReturn = [
+            TimestampedSegment(start: 0, end: 5, text: "Hi everyone, I'm Sarah."),
+            TimestampedSegment(start: 5, end: 10, text: "Welcome, good to have you."),
+        ]
+        var offered: PipelineQueue.SpeakerNamingData?
+        h.queue.speakerNamingHandler = { data in
+            offered = data
+            return .skipped
+        }
+
+        h.queue.enqueue(makeJob(audioPath: h.audioPath))
+        await h.queue.processNext()
+        await awaitJobTerminalState(h.queue)
+
+        XCTAssertEqual(offered?.mapping["SPEAKER_00"], "Sarah", "the dialog opens with the guess filled in")
+        XCTAssertEqual(offered?.mapping["SPEAKER_01"], "SPEAKER_01", "a speaker nobody names stays unnamed")
+        XCTAssertEqual(offered?.nameClues?["SPEAKER_00"], "Introduced themselves: “I'm Sarah”")
+        XCTAssertTrue(h.protocolGen.capturedTranscript?.contains("Sarah:") ?? false, h.protocolGen.capturedTranscript ?? "")
+    }
+
     func testWorkflowSpeakerNamingRerun() async throws {
         let (h, _) = try makeHarness(diarizeEnabled: true)
 

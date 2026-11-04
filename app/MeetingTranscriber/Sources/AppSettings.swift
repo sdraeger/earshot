@@ -363,7 +363,7 @@ final class AppSettings { // swiftlint:disable:this type_body_length
     }
 
     /// Label for the local mic speaker in dual-source mode.
-    /// Default "Me". Empty string = diarize mic track (multi-person room).
+    /// Default "Me". Given to the voice that speaks most on the microphone when no voice profile or name cue names it; empty names none.
     var micName: String {
         didSet { defaults.set(micName, forKey: "micName") }
     }

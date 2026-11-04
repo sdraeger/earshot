@@ -433,7 +433,11 @@ struct SpeakerNamingView: View { // swiftlint:disable:this type_body_length
                         .help("Speaking time")
                 }
 
-                if let autoName = speaker.autoName {
+                if let autoName = speaker.autoName, let clue = data.nameClues?[speaker.label] {
+                    Text("Guess: \(autoName) · \(clue)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if let autoName = speaker.autoName {
                     Text("Suggested: \(autoName)")
                         .font(.caption)
                         .foregroundStyle(.secondary)

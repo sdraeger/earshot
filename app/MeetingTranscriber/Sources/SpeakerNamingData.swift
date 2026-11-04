@@ -18,6 +18,9 @@ extension PipelineQueue {
         let segments: [Segment] // for extracting speaker snippets
         let participants: [String] // Teams participant names as suggestions
         let isDualSource: Bool
+        /// Per label whose suggestion is a guess (from the conversation or the
+        /// microphone), why it was guessed. Nil in files written before guesses.
+        var nameClues: [String: String]? // swiftlint:disable:this discouraged_optional_collection
         /// Per-instance identity for SwiftUI `.onChange` change-detection.
         /// Late re-diarization can produce a `mapping`/`speakingTimes` set
         /// that compares byte-equal to the previous run (same speaker count,
@@ -29,7 +32,7 @@ extension PipelineQueue {
 
         private enum CodingKeys: String, CodingKey {
             case jobID, meetingTitle, mapping, speakingTimes, embeddings,
-                 audioPath, segments, participants, isDualSource
+                 audioPath, segments, participants, isDualSource, nameClues
         }
 
         struct Segment: Codable {

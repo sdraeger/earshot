@@ -705,7 +705,7 @@ extension PipelineQueue {
                     diarization: currentDiarization,
                     job: (jobID: ctx.jobID, title: ctx.title, slug: ctx.slug, participants: ctx.participants),
                     diarizeProcess: diarizeProcess, isDualSource: transcription.isDualSource,
-                    outputDir: outputDir,
+                    outputDir: outputDir, cues: nameCueContext(run: run, transcription: transcription),
                 )
             }
 
@@ -935,28 +935,57 @@ extension PipelineQueue {
         // rendering the default settings produce. Only this rendering drops
         // them; the stored segments keep the mark.
         let cachedSegments = cachedSegments.filter { !$0.suppressed }
-        let topology: DiarizationProcess.LabelingTopology?
+        guard let topology = labelingTopology(run: run, cachedSegments: cachedSegments, isDualSource: isDualSource) else {
+            return nil
+        }
+        let labeled = DiarizationProcess.labelSegments(topology, autoNames: autoNames)
+        return DiarizationProcess.mergeConsecutiveSpeakers(labeled).transcriptText(note: note)
+    }
+
+    private func labelingTopology(
+        run: DiarizationRun, cachedSegments: [TimestampedSegment], isDualSource: Bool,
+    ) -> DiarizationProcess.LabelingTopology? {
         if isDualSource, let appDiar = run.app, let micDiar = run.mic {
-            topology = .dualTrack(cached: cachedSegments, micLabel: micLabel, app: appDiar, mic: micDiar)
-        } else if isDualSource, let appDiar = run.app {
+            return .dualTrack(cached: cachedSegments, micLabel: micLabel, app: appDiar, mic: micDiar)
+        }
+        if isDualSource, let appDiar = run.app {
             // Mic diarization failed (silent track / no input device). Keep the
             // mic transcript with its raw `micLabel` — better than emitting
             // "speakers not identified" on a recording with good remote audio.
-            topology = .dualTrackAppOnly(cached: cachedSegments, micLabel: micLabel, app: appDiar)
-        } else if isDualSource, let micDiar = run.mic {
+            return .dualTrackAppOnly(cached: cachedSegments, micLabel: micLabel, app: appDiar)
+        }
+        if isDualSource, let micDiar = run.mic {
             // App diarization failed (silent remote side / solo meeting). Keep the
             // app transcript with its raw `Remote` tag and diarize the mic track —
             // better than emitting "speakers not identified" on a recording with
             // good local audio. Mirror of the app-only fallback above.
-            topology = .dualTrackMicOnly(cached: cachedSegments, micLabel: micLabel, mic: micDiar)
-        } else if let combined = run.combined {
-            topology = .single(segments: cachedSegments, diarization: combined)
-        } else {
-            return nil
+            return .dualTrackMicOnly(cached: cachedSegments, micLabel: micLabel, mic: micDiar)
         }
-        guard let topology else { return nil }
-        let labeled = DiarizationProcess.labelSegments(topology, autoNames: autoNames)
-        return DiarizationProcess.mergeConsecutiveSpeakers(labeled).transcriptText(note: note)
+        if let combined = run.combined {
+            return .single(segments: cachedSegments, diarization: combined)
+        }
+        return nil
+    }
+
+    /// The transcript labeled with raw diarizer labels, and which labels are
+    /// voices on the local microphone, for estimating names from the
+    /// conversation. Empty without cached segments.
+    private func nameCueContext(run: DiarizationRun, transcription: TranscriptionOutput) -> SpeakerNameCues.Context {
+        guard let combined = run.combined, let cached = transcription.cachedSegments,
+              let topology = labelingTopology(
+                  run: run, cachedSegments: cached.filter { !$0.suppressed }, isDualSource: transcription.isDualSource,
+              )
+        else { return .init() }
+        let labels = Set(combined.segments.map(\.speaker)).union(combined.speakingTimes.keys)
+        // A mic-only fallback diarizes nothing but the microphone, unprefixed.
+        let micLabels = !transcription.isDualSource ? []
+            : run.app == nil ? labels : labels.filter { SpeakerKey(encoded: $0).track == .mic }
+        return SpeakerNameCues.Context(
+            transcript: DiarizationProcess.labelSegments(
+                topology, autoNames: Dictionary(uniqueKeysWithValues: labels.map { ($0, $0) }),
+            ),
+            micLabels: micLabels, micName: micLabel,
+        )
     }
 
     /// Stage 3 — persist the transcript + audio, run protocol generation
