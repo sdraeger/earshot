@@ -70,6 +70,10 @@ final class AboutSettingsViewTests: XCTestCase {
     func testAboutSectionShowsGitHubLink() throws {
         let body = try makeAbout().inspect()
         XCTAssertNoThrow(try body.find(text: "GitHub"))
+        XCTAssertEqual(
+            try body.find(ViewType.Link.self).url(),
+            URL(string: "https://github.com/sdraeger/meeting-transcriber"),
+        )
     }
 
     func testUpdatesSectionShownWhenUpdateCheckerPresent() throws {
