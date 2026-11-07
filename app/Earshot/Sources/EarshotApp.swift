@@ -145,7 +145,7 @@ struct EarshotApp: App {
         } label: {
             menuBarLabel
         }
-        .menuBarExtraStyle(.window)
+        .menuBarExtraStyle(.menu)
 
         speakerNamingWindow
         settingsWindow

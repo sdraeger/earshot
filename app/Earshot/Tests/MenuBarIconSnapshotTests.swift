@@ -28,6 +28,22 @@ final class MenuBarIconSnapshotTests: XCTestCase {
         }
     }
 
+    /// Badges with red in them are drawn in the menu bar's colour, so the
+    /// references are pinned to light mode whatever an earlier test in the
+    /// process set.
+    private var savedAppearance: NSAppearance?
+
+    override func setUp() {
+        super.setUp()
+        savedAppearance = NSApp?.appearance
+        NSApp?.appearance = NSAppearance(named: .aqua)
+    }
+
+    override func tearDown() {
+        NSApp?.appearance = savedAppearance
+        super.tearDown()
+    }
+
     func testStaticBadgeSnapshots() throws {
         try XCTSkipIf(isCI, "Snapshot tests are machine-dependent")
         let staticBadges: [BadgeKind] = [.inactive, .userAction, .done, .error, .updateAvailable]

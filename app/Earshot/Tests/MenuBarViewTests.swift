@@ -85,13 +85,13 @@ final class MenuBarViewTests: XCTestCase {
         let meeting = MeetingInfo(app: "Teams", title: "Standup")
         let sut = try makeView(status: makeStatus(state: .recording, meeting: meeting))
         let body = try sut.inspect()
-        XCTAssertNoThrow(try body.find(text: "Standup"))
+        XCTAssertNoThrow(try body.find(textContaining: "Standup"))
     }
 
     func testMeetingInfoHiddenWhenIdle() throws {
         let sut = try makeView(status: makeStatus(state: .idle))
         let body = try sut.inspect()
-        XCTAssertThrowsError(try body.find(text: "Standup"))
+        XCTAssertThrowsError(try body.find(textContaining: "Standup"))
     }
 
     // MARK: - Error display
@@ -173,13 +173,13 @@ final class MenuBarViewTests: XCTestCase {
     func testOpenProtocolsFolderButtonExists() throws {
         let sut = try makeView(status: makeStatus())
         let body = try sut.inspect()
-        XCTAssertNoThrow(try body.find(text: "Notes folder"))
+        XCTAssertNoThrow(try body.find(text: "Open Notes Folder"))
     }
 
     func testQuitButtonExists() throws {
         let sut = try makeView(status: makeStatus())
         let body = try sut.inspect()
-        XCTAssertNoThrow(try body.find(text: "Quit"))
+        XCTAssertNoThrow(try body.find(text: "Quit Earshot"))
     }
 
     // MARK: - Record Microphone (issue #633)
@@ -284,7 +284,7 @@ final class MenuBarViewTests: XCTestCase {
             onQuit: { called = true },
         )
         let body = try sut.inspect()
-        try body.find(button: "Quit").tap()
+        try body.find(button: "Quit Earshot").tap()
         XCTAssertTrue(called)
     }
 
@@ -334,7 +334,7 @@ final class MenuBarViewTests: XCTestCase {
             onQuit: {},
         )
         let body = try sut.inspect()
-        try body.find(button: "Notes folder").tap()
+        try body.find(button: "Open Notes Folder").tap()
         XCTAssertTrue(called)
     }
 
@@ -441,8 +441,8 @@ final class MenuBarViewTests: XCTestCase {
         )
         let body = try sut.inspect()
         XCTAssertNoThrow(try body.find(text: "Processing"))
-        XCTAssertNoThrow(try body.find(text: "Standup"))
-        XCTAssertNoThrow(try body.find(text: "Transcribing… 0s"))
+        XCTAssertNoThrow(try body.find(textContaining: "Standup"))
+        XCTAssertNoThrow(try body.find(textContaining: "Transcribing… 0s"))
     }
 
     func testDismissButtonShownForCompletedJob() throws {
@@ -574,7 +574,7 @@ final class MenuBarViewTests: XCTestCase {
         )
         let body = try sut.inspect()
         XCTAssertNoThrow(try body.find(text: "Dismiss"))
-        XCTAssertNoThrow(try body.find(text: "Failed"))
+        XCTAssertNoThrow(try body.find(textContaining: "Failed"))
     }
 
     /// Retry is the only way to run a failed job again without importing its
@@ -678,7 +678,7 @@ final class MenuBarViewTests: XCTestCase {
             onQuit: {},
         )
         let body = try sut.inspect()
-        XCTAssertNoThrow(try body.find(text: "Diarization failed — speakers not identified"))
+        XCTAssertNoThrow(try body.find(textContaining: "Diarization failed — speakers not identified"))
     }
 
     // MARK: - Record App button
@@ -726,13 +726,13 @@ final class MenuBarViewTests: XCTestCase {
         // swiftlint:disable:next trailing_closure
         let sut = try makeView(status: makeStatus(state: .recording), onStopManualRecording: {})
         let body = try sut.inspect()
-        XCTAssertNoThrow(try body.find(text: "Stop recording"))
+        XCTAssertNoThrow(try body.find(text: "Stop Recording"))
     }
 
     func testStopRecordingButtonHiddenWhenNoManualRecording() throws {
         let sut = try makeView(status: makeStatus(state: .recording))
         let body = try sut.inspect()
-        XCTAssertThrowsError(try body.find(text: "Stop recording"))
+        XCTAssertThrowsError(try body.find(text: "Stop Recording"))
     }
 
     func testStopRecordingButtonCallsCallback() throws {
@@ -756,7 +756,7 @@ final class MenuBarViewTests: XCTestCase {
             onQuit: {},
         )
         let body = try sut.inspect()
-        try body.find(button: "Stop recording").tap()
+        try body.find(button: "Stop Recording").tap()
         XCTAssertTrue(called)
     }
 
@@ -786,7 +786,7 @@ final class MenuBarViewTests: XCTestCase {
             updateChecker: checkerWithUpdate(installedCask: "earshot"),
         )
         let body = try sut.inspect()
-        XCTAssertNoThrow(try body.find(text: "Copies the brew upgrade command"))
+        XCTAssertNoThrow(try body.find(textContaining: "copies the brew command"))
     }
 
     func testUpdateIndicatorHiddenWhenNoUpdate() throws {
@@ -843,7 +843,7 @@ final class MenuBarViewTests: XCTestCase {
             onQuit: {},
         )
         let body = try sut.inspect()
-        XCTAssertNoThrow(try body.find(text: "Transcription failed"))
+        XCTAssertNoThrow(try body.find(textContaining: "Transcription failed"))
     }
 
     // MARK: - Record/Stop button mutual exclusion
@@ -852,14 +852,14 @@ final class MenuBarViewTests: XCTestCase {
         let sut = try makeView(status: makeStatus(state: .recording), onStopManualRecording: nil)
         let body = try sut.inspect()
         XCTAssertThrowsError(try body.find(text: "Record an app…"))
-        XCTAssertThrowsError(try body.find(text: "Stop recording"))
+        XCTAssertThrowsError(try body.find(text: "Stop Recording"))
     }
 
     func testStopRecordingReplacesRecordAppButton() throws {
         // swiftlint:disable:next trailing_closure
         let sut = try makeView(status: makeStatus(state: .idle), onStopManualRecording: {})
         let body = try sut.inspect()
-        XCTAssertNoThrow(try body.find(text: "Stop recording"))
+        XCTAssertNoThrow(try body.find(text: "Stop Recording"))
         XCTAssertThrowsError(try body.find(text: "Record an app…"))
     }
 
@@ -877,7 +877,7 @@ final class MenuBarViewTests: XCTestCase {
 
         let sut = try makeView(status: makeStatus(), pipelineQueue: queue)
         let body = try sut.inspect()
-        XCTAssertNoThrow(try body.find(text: "Waiting…"))
+        XCTAssertNoThrow(try body.find(textContaining: "Waiting…"))
     }
 
     func testCancelButtonShownForWaitingJob() throws {
@@ -909,7 +909,7 @@ final class MenuBarViewTests: XCTestCase {
 
         let sut = try makeView(status: makeStatus(), pipelineQueue: queue)
         let body = try sut.inspect()
-        XCTAssertNoThrow(try body.find(text: "Completed"))
+        XCTAssertNoThrow(try body.find(textContaining: "Completed"))
     }
 
     func testJobLabelsAndCancelArePresent() throws {
@@ -924,8 +924,8 @@ final class MenuBarViewTests: XCTestCase {
         queue.enqueue(job)
 
         let body = try makeView(status: makeStatus(), pipelineQueue: queue).inspect()
-        XCTAssertNoThrow(try body.find(text: "Sprint"))
-        XCTAssertNoThrow(try body.find(text: "Waiting…"))
+        XCTAssertNoThrow(try body.find(textContaining: "Sprint"))
+        XCTAssertNoThrow(try body.find(textContaining: "Waiting…"))
         XCTAssertFalse(try body.find(button: "Cancel").isDisabled())
     }
 
@@ -972,10 +972,10 @@ final class MenuBarViewTests: XCTestCase {
         let sut = try makeView(status: makeStatus(), pipelineQueue: queue)
         let body = try sut.inspect()
         XCTAssertNoThrow(try body.find(button: "Cancel"))
-        XCTAssertNoThrow(try body.find(text: "Sprint"))
-        // Prefix, not the exact seconds: a loaded runner can take a second
+        XCTAssertNoThrow(try body.find(textContaining: "Sprint"))
+        // The stage, not the exact seconds: a loaded runner can take a second
         // between `updateJobState` and `inspect()`.
-        XCTAssertNoThrow(try body.find(ViewType.Text.self) { try $0.string().hasPrefix("Transcribing… ") })
+        XCTAssertNoThrow(try body.find(textContaining: "Sprint — Transcribing… "))
     }
 
     func testCancelButtonHiddenForDoneJob() throws {
@@ -1310,7 +1310,14 @@ final class MenuBarViewTests: XCTestCase {
             onQuit: {},
         )
         let body = try sut.inspect()
-        XCTAssertNoThrow(try body.find(text: "Meeting 1"))
-        XCTAssertNoThrow(try body.find(text: "Meeting 2"))
+        XCTAssertNoThrow(try body.find(textContaining: "Meeting 1"))
+        XCTAssertNoThrow(try body.find(textContaining: "Meeting 2"))
+    }
+}
+
+private extension InspectableView {
+    /// A text that contains `fragment`: menu items join a job's title and state.
+    func find(textContaining fragment: String) throws -> InspectableView<ViewType.Text> {
+        try find(ViewType.Text.self) { try $0.string().contains(fragment) }
     }
 }
