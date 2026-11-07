@@ -102,7 +102,7 @@ State writes to `AppPaths.dataDir`; IPC + queue snapshots to `ipcDir`.
 | `SettingsView.swift` | Settings window — `TabView` shell hosting seven topic-grouped sub-views in `Sources/Settings/` |
 | `Settings/GeneralSettingsView.swift` | Mode (Record-only) · Apps to Watch (Teams/Zoom/Webex/Browser/WeChat/Tencent Meeting/FaceTime/WhatsApp/Slack) · Detection (Poll Interval, Grace Period) |
 | `Settings/AudioSettingsView.swift` | Microphone device · VAD (enabled + threshold) · Per-Channel Indicator |
-| `Settings/TranscriptionSettingsView.swift` | ASR engine picker · engine-specific options · model status · Live transcription (PoC) toggle |
+| `Settings/TranscriptionSettingsView.swift` | ASR engine picker · engine-specific options · model status · Vocabulary section · Live transcription (PoC) toggle |
 | `Settings/SpeakersSettingsView.swift` | Diarization · Mic Speaker Name · Known Voices · Recognition Stats · Experimental Diarization Tuning |
 | `Settings/OutputSettingsView.swift` | LLM provider · notes language · output folder · custom prompt |
 | `Settings/AdvancedSettingsView.swift` | Permissions · Diagnostics |
@@ -110,6 +110,7 @@ State writes to `AppPaths.dataDir`; IPC + queue snapshots to `ipcDir`.
 | `Settings/HelpBadge.swift` / `Settings/SettingsHelp.swift` | Reusable "?" help-popover badge + its shared copy, used across Settings sections |
 | `Settings/View+RecordOnly.swift` | `recordOnlyDisabled(_:)` view modifier — dims + disables the Transcription/Protocol/VAD/Diarization sections when record-only mode is on |
 | `SpeakerNamingView.swift` | Speaker naming dialog after diarization |
+| `NamingJobPicker.swift` | Menu of the meetings waiting for names, above the naming dialog once more than one waits (a menu so the content-sized window stays narrow) |
 | `NamingGraceKey.swift` | Identity of one keyboard-grace window in the naming dialog — what counts as "a new grace window" (data revision + pending-job count), so the gate re-locks when another job steals focus |
 | `KnownVoicesView.swift` | Manage persisted speaker DB (rename, delete, merge) — embedded in `SpeakersSettingsView` |
 | `RecognitionStatsView.swift` | Recognition stats display — aggregate counts from `recognition_log.jsonl` |
@@ -118,6 +119,7 @@ State writes to `AppPaths.dataDir`; IPC + queue snapshots to `ipcDir`.
 | `AppSettings+Computed.swift` | Values derived from stored `AppSettings` toggles, split out to keep `AppSettings.swift` under the line cap |
 | `AppSettings+OutputDirectory.swift` | Everything derived from `customOutputDirBookmark`, split out to keep `AppSettings.swift` under the line cap |
 | `AppSettings+Vocabulary.swift` | Custom-vocabulary file selection, sandbox bookmark resolution, and validation state — shared by both ASR engines |
+| `AppSettings+TerminologyRules.swift` | Optional terminology-rules file: selection, bookmark, per-job read and the Settings status; the text area remains the default source |
 | `LegacyDefaultsMigration.swift` | One-shot carry-over of settings from the pre-rename bundle identifier, since `UserDefaults` is scoped per identifier |
 | `UpdateChecker.swift` | Checks GitHub releases for newer versions, drives the menu bar update badge |
 | `Settings/PickerLanguages.swift` | Language picker entries for WhisperKit and Parakeet language selectors |
@@ -510,8 +512,8 @@ Full design rationale (why the two remedies can't compose, the model provisionin
 
 ### Custom Vocabulary & Terminology Normalization
 
-- **Custom vocabulary** is one shared one-term-per-line file (`AppSettings.customVocabularyPath`, resolved through `VocabularyFileAccess` for sandbox bookmark access), not per engine. Parakeet always applies it via CTC boosting. WhisperKit applies it only when `AppSettings.whisperKitVocabularyPromptEnabled` (off by default) is on, via `WhisperVocabularyPrompt` turning the file into a bounded decoder-prompt hint — WhisperKit shares its 224-token decoder context between that prompt and generated tokens, so a dense recording can lose whole sentences to it; Parakeet is the recommended engine for vocabulary boosting.
-- **Terminology normalization** (`TerminologyNormalizer`) is a separate, engine-independent post-ASR pass, applied to transcript segments right after transcription: opt-in `Canonical => spoken variant | another variant` rules, configured in Settings → Transcribe → Terminology Rules.
+- **Custom vocabulary** is one shared one-term-per-line file (`AppSettings.customVocabularyPath`, resolved through `VocabularyFileAccess` for sandbox bookmark access), not per engine. `AppSettings.customVocabularyEnabled` switches it on or off for both engines. Parakeet applies it via CTC boosting. WhisperKit applies it via `WhisperVocabularyPrompt` turning the file into a bounded decoder-prompt hint — WhisperKit shares its 224-token decoder context between that prompt and generated tokens, so a dense recording can lose whole sentences to it; Parakeet is the recommended engine for vocabulary boosting.
+- **Terminology normalization** (`TerminologyNormalizer`) is a separate, engine-independent post-ASR pass, applied to transcript segments right after transcription: opt-in `Canonical => spoken variant | another variant` rules, configured in Settings → Transcription → Vocabulary → Canonical terminology, either in the text area or in an optional rules file that is read again at the start of every job (details in `docs/architecture/transcription.md`).
 
 ---
 

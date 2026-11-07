@@ -54,6 +54,7 @@ enum A11yID {
 
     static let recordOnlyBanner = "recordOnlyBanner"
     static let transcriptionSection = "transcriptionSection"
+    static let vocabularySection = "vocabularySection"
     /// Opens a confirmation dialog, so it stays off the `/ui/press` allowlist.
     static let legacyWhisperModelsTrashButton = "legacyWhisperModelsTrashButton"
 
@@ -107,12 +108,14 @@ enum A11yID {
     /// `/state`, which is what makes it a usable text-entry probe.
     static let micNameField = "micNameField"
     static let customVocabularyPathField = "customVocabularyPathField"
-    static let whisperKitVocabularyPromptToggle = "whisperKitVocabularyPromptToggle"
+    static let customVocabularyToggle = "customVocabularyToggle"
     static let whisperKitModelPicker = "whisperKitModelPicker"
     static let whisperKitCustomRepoField = "whisperKitCustomRepoField"
     static let whisperKitCustomVariantField = "whisperKitCustomVariantField"
     static let whisperKitCustomModelFolderField = "whisperKitCustomModelFolderField"
     static let terminologyRulesEditor = "terminologyRulesEditor"
+    static let terminologyRulesFilePathField = "terminologyRulesFilePathField"
+    static let terminologyRulesFilePreview = "terminologyRulesFilePreview"
 
     /// Settings sidebar row for one tab (`settings-tab-<rawValue>`). The detail
     /// pane renders only the selected tab, so a control in another tab is absent
@@ -139,6 +142,10 @@ enum A11yID {
     static let rerunButton = "rerun-button"
     static let rerunStepper = "rerun-stepper"
     static let rerunModePicker = "rerun-mode-picker"
+    /// The pending-meeting menu at the top of the naming window, shown once
+    /// more than one meeting waits. `scripts/drive-naming-field.swift
+    /// select-job` finds it by this value.
+    static let namingJobPicker = "naming-job-picker"
     /// Why the session did not take the last answer (`SpeakerNamingRefusal`).
     static let namingRefusalMessage = "naming-refusal-message"
 

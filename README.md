@@ -1,9 +1,9 @@
 # Meeting Transcriber
 
-> **The local-first meeting transcriber for macOS.** Records Teams, Zoom, and Webex calls, transcribes them on-device with Whisper / Parakeet, separates speakers, and turns the result into a Markdown protocol using your own Claude CLI or any local LLM. **No cloud. No subscription. No audio ever leaves your Mac.**
+> **The local-first meeting transcriber for macOS.** Records Teams, Zoom, and Webex calls, transcribes them on-device with Whisper / Parakeet, separates speakers, and turns the result into Markdown meeting notes using your own Claude CLI or any local LLM. **No cloud. No subscription. No audio ever leaves your Mac.**
 
 <p align="center">
-  <img src="docs/hero.gif" alt="Meeting Transcriber turning a Teams call into a Markdown protocol on-device" width="860">
+  <img src="docs/hero.gif" alt="Meeting Transcriber turning a Teams call into Markdown meeting notes on-device" width="860">
 </p>
 
 <p align="center">
@@ -55,8 +55,8 @@ flowchart TD
     D1["WhisperKit<br/>99 languages"]
     D2["Parakeet TDT v3<br/>25 EU languages"]
     E["Speaker Diarization<br/>FluidAudio · dual-track + recognition"]
-    F["Protocol Generation<br/>Claude CLI · OpenAI-compatible · none"]
-    G["Markdown Protocol<br/>Summary · Decisions · Tasks · Transcript"]
+    F["Meeting Notes Generation<br/>Claude CLI · OpenAI-compatible · none"]
+    G["Markdown Meeting Notes<br/>Summary · Decisions · Tasks · Transcript"]
 
     A --> B
     A2 --> C
@@ -92,12 +92,12 @@ flowchart TD
 - **Echo bleed handling** — On loudspeaker recordings, remote voices picked up by the microphone are detected automatically and reported. Two optional remedies, both off by default: acoustic echo cancellation removes the bleed from the microphone audio itself, and a transcript dedup leaves the duplicated lines out. The dedup is off because it can mistake a quiet remark made over the far end for echo and drop it
 - **Speaker recognition** — Voice embeddings stored across meetings, matched via cosine similarity
 - **VAD preprocessing** — Optional silence trimming via FluidAudio Silero v6 before transcription, with automatic timestamp remapping
-- **AI protocol generation** — Structured Markdown via [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code), OpenAI-compatible APIs (Ollama, LM Studio, etc.), or disabled (save transcript only)
-- **Configurable protocol prompt** — Custom prompt file support (`~/Library/Application Support/MeetingTranscriber/protocol_prompt.md`) with `{LANGUAGE}`, `{MEETING_DATE}` (`YYYY-MM-DD`), and `{MEETING_TIME}` (`HH:mm`) variables; recordings include authoritative metadata, while imports and recovery jobs resolve time placeholders to `Unknown`
+- **AI meeting notes generation** — Structured Markdown via [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code), OpenAI-compatible APIs (Ollama, LM Studio, etc.), or disabled (save transcript only)
+- **Configurable meeting notes prompt** — Custom prompt file support (`~/Library/Application Support/MeetingTranscriber/protocol_prompt.md`) with `{LANGUAGE}`, `{MEETING_DATE}` (`YYYY-MM-DD`), and `{MEETING_TIME}` (`HH:mm`) variables; recordings include authoritative metadata, while imports and recovery jobs resolve time placeholders to `Unknown`
 - **Manual recording** — Record any app via app picker, not just detected meetings
 - **Multi-format input** — Supports WAV, MP3, M4A, MP4, FLAC, plus the phone and messenger voice formats AMR, 3GP/3G2 and OPUS/OGG; MKV and WebM additionally need ffmpeg
 - **Update checker** — Notifies when a new version is available
-- **Background processing** — PipelineQueue runs transcription and protocol generation independently from recording
+- **Background processing** — PipelineQueue runs transcription and meeting notes generation independently from recording
 - **Record-only mode** — Skip the entire post-recording pipeline and drop dual-source recordings + a metadata sidecar into the output folder, for external/fleet processing (e.g. a separate GPU host)
 - **Local automation API** (Homebrew build): drive the pipeline headlessly over localhost HTTP. POST an audio file, get a diarized transcript back. See [`docs/automation-api.md`](docs/automation-api.md)
 - **Stream Deck and hotkey control** (Homebrew build): start/stop watching from a Stream Deck key, Shortcut, Raycast or any launcher. See [`docs/stream-deck.md`](docs/stream-deck.md)
@@ -210,7 +210,7 @@ The health check distinguishes *denied* from *broken*. "Broken" usually means th
 <img src="docs/menu-bar-record-only.gif" width="80" alt="Record-only mode">
 </p>
 
-A small red dot in the bottom-right corner is overlaid on top of the current icon (idle, recording, transcribing, …) whenever **Record-only mode** is enabled (Settings → General → "Record-only mode"). In this mode the app keeps detecting meetings and producing dual-source recordings, but skips the entire post-recording pipeline (VAD, transcription, diarization, protocol generation). Recordings + a per-meeting `<timestamp>_meta.json` sidecar are dropped into your configured Output Folder for an external pipeline (e.g. a Linux GPU host via Syncthing) to pick up. The dot stays visible across all states so the mode is always clearly indicated; if a permission problem coexists, the red exclamation badge takes precedence.
+A small red dot in the bottom-right corner is overlaid on top of the current icon (idle, recording, transcribing, …) whenever **Record-only mode** is enabled (Settings → General → "Record-only mode"). In this mode the app keeps detecting meetings and producing dual-source recordings, but skips the entire post-recording pipeline (VAD, transcription, diarization, meeting notes generation). Recordings + a per-meeting `<timestamp>_meta.json` sidecar are dropped into your configured Output Folder for an external pipeline (e.g. a Linux GPU host via Syncthing) to pick up. The dot stays visible across all states so the mode is always clearly indicated; if a permission problem coexists, the red exclamation badge takes precedence.
 
 ### Per-channel asymmetric-silence indicator
 
@@ -235,7 +235,7 @@ If a permission problem coexists, the red exclamation badge takes precedence ove
 
 ## Usage
 
-Launch the app — it sits in your menu bar. When a supported meeting is detected, recording starts automatically. When the meeting ends, the pipeline runs in the background: transcription → diarization → protocol generation.
+Launch the app — it sits in your menu bar. When a supported meeting is detected, recording starts automatically. When the meeting ends, the pipeline runs in the background: transcription → diarization → meeting notes generation.
 
 You can also batch-process existing audio and video files via the menu (⌘P) — supported formats: WAV, MP3, M4A, MP4, FLAC, AMR, 3GP/3G2 and OPUS/OGG (and MKV, WebM when ffmpeg is installed). Smartphone call recordings (AMR, 3GP) and voice messages (OPUS) need no extra tools.
 
@@ -281,7 +281,7 @@ Files are saved to `~/Library/Application Support/MeetingTranscriber/protocols/`
 | File | Content |
 |------|---------|
 | `20260225_1400_meeting.txt` | Raw transcript (when enabled) |
-| `20260225_1400_meeting.md` | Structured protocol (when an LLM provider is configured) |
+| `20260225_1400_meeting.md` | Structured meeting notes (when an LLM provider is configured) |
 
 In **Settings → Output**, both transcript options default to enabled for backward compatibility:
 
@@ -290,7 +290,7 @@ In **Settings → Output**, both transcript options default to enabled for backw
 
 Disable both to retain only the generated meeting notes. The recording follows its own retention policy and is not deleted by either setting. To avoid data loss, a raw transcript is retained if meeting notes generation is disabled, fails, or the job ends with an error.
 
-**Protocol structure:** Summary, Participants, Topics Discussed, Decisions, Tasks (with responsible person, deadline, priority), Open Questions, and optionally the Full Transcript.
+**Meeting notes structure:** Summary, Participants, Topics Discussed, Decisions, Tasks (with responsible person, deadline, priority), Open Questions, and optionally the Full Transcript.
 
 ---
 
@@ -334,6 +334,33 @@ The toggle persists in `UserDefaults` and takes effect on the next recording wit
 [![codecov](https://codecov.io/gh/pasrom/meeting-transcriber/branch/main/graph/badge.svg)](https://codecov.io/gh/pasrom/meeting-transcriber)
 
 Pull requests run unit tests, lint, and analyzer in [`ci.yml`](.github/workflows/ci.yml). Two complementary E2E layers run on a self-hosted Apple Silicon Mac mini against the real production models (no mocks): [`e2e.yml`](.github/workflows/e2e.yml) feeds fixture audio through each ASR engine + the WatchLoop pipeline, and [`e2e-app.yml`](.github/workflows/e2e-app.yml) builds and signs the actual `.app`, drives a simulated meeting via [`tools/meeting-simulator`](tools/meeting-simulator), and asserts on the resulting transcript over the embedded debug RPC server.
+
+---
+
+## Contributors
+
+Meeting Transcriber is built with help from many people: code, bug reports, testing, ideas and documentation. Some of the most active so far:
+
+<!-- CONTRIBUTORS-PREVIEW:START count=14 - generated from .all-contributorsrc by scripts/update-contributors.sh --render -->
+<a href="https://github.com/pasrom"><img src="https://avatars.githubusercontent.com/u/32713472?v=4&amp;s=80" width="40" height="40" alt="pasrom" title="pasrom"/></a>
+<a href="https://github.com/TrigrD3"><img src="https://avatars.githubusercontent.com/u/55515446?v=4&amp;s=80" width="40" height="40" alt="Muhammad Jatmika Aryaputra" title="Muhammad Jatmika Aryaputra"/></a>
+<a href="https://github.com/alexpfau"><img src="https://avatars.githubusercontent.com/u/77438832?v=4&amp;s=80" width="40" height="40" alt="Alex Pfau" title="Alex Pfau"/></a>
+<a href="https://github.com/execsumo"><img src="https://avatars.githubusercontent.com/u/168054536?v=4&amp;s=80" width="40" height="40" alt="Herwin" title="Herwin"/></a>
+<a href="https://github.com/iHateCode"><img src="https://avatars.githubusercontent.com/u/6393143?v=4&amp;s=80" width="40" height="40" alt="iHateCode" title="iHateCode"/></a>
+<a href="https://github.com/GB-D"><img src="https://avatars.githubusercontent.com/u/277263165?v=4&amp;s=80" width="40" height="40" alt="GB-D" title="GB-D"/></a>
+<a href="https://github.com/jhavez"><img src="https://avatars.githubusercontent.com/u/213444590?v=4&amp;s=80" width="40" height="40" alt="Julien" title="Julien"/></a>
+<a href="https://github.com/jianjettfu-oss"><img src="https://avatars.githubusercontent.com/u/229418358?v=4&amp;s=80" width="40" height="40" alt="jianjettfu-oss" title="jianjettfu-oss"/></a>
+<a href="https://danielsogl.de/"><img src="https://avatars.githubusercontent.com/u/15234844?v=4&amp;s=80" width="40" height="40" alt="Daniel Sogl" title="Daniel Sogl"/></a>
+<a href="https://github.com/duncanwood"><img src="https://avatars.githubusercontent.com/u/7288228?v=4&amp;s=80" width="40" height="40" alt="Duncan Wood" title="Duncan Wood"/></a>
+<a href="https://github.com/niftan5"><img src="https://avatars.githubusercontent.com/u/57637411?v=4&amp;s=80" width="40" height="40" alt="Steffen" title="Steffen"/></a>
+<a href="https://github.com/zunami"><img src="https://avatars.githubusercontent.com/u/4697822?v=4&amp;s=80" width="40" height="40" alt="zunami" title="zunami"/></a>
+<a href="https://github.com/DevUrandomFoo"><img src="https://avatars.githubusercontent.com/u/15967780?v=4&amp;s=80" width="40" height="40" alt="Manuel J." title="Manuel J."/></a>
+<a href="https://github.com/nsanitas"><img src="https://avatars.githubusercontent.com/u/909637?v=4&amp;s=80" width="40" height="40" alt="Nicolas Sanitas" title="Nicolas Sanitas"/></a>
+
+And [37 more](<CONTRIBUTORS.md>), credited in full there.
+<!-- CONTRIBUTORS-PREVIEW:END -->
+
+[CONTRIBUTING.md](CONTRIBUTING.md) explains how to join them.
 
 ---
 

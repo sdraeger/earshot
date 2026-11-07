@@ -56,6 +56,7 @@ struct TranscriptionSettingsView: View {
     var body: some View {
         Form {
             transcriptionSection
+            vocabularySection
             liveTranscriptionSection
             legacyModelsSection
         }
@@ -85,9 +86,6 @@ struct TranscriptionSettingsView: View {
             enginePicker
             whisperKitPickers
             parakeetLanguagePicker
-            customVocabularyRow
-            whisperKitVocabularyPromptControls
-            terminologyRulesEditor
             modelServerFields
             engineStatusView
         }
@@ -144,70 +142,6 @@ struct TranscriptionSettingsView: View {
                     Text(lang.label).tag(lang.code)
                 }
             }
-        }
-    }
-
-    @ViewBuilder private var customVocabularyRow: some View {
-        if settings.transcriptionEngine != .server {
-            vocabularyFilePicker
-                .settingsNote(settings.customVocabularyValidation.message)
-                .onAppear { settings.refreshCustomVocabularyValidation() }
-                .onChange(of: settings.customVocabularyPath) { _, _ in
-                    settings.refreshCustomVocabularyValidation()
-                }
-        }
-    }
-
-    private var vocabularyFilePicker: some View {
-        HStack {
-            TextField("Custom vocabulary file", text: Binding(
-                get: { settings.customVocabularyPath },
-                set: { settings.setCustomVocabularyPath($0) },
-            ))
-            .textFieldStyle(.roundedBorder)
-            .accessibilityIdentifier(A11yID.customVocabularyPathField)
-            Button("Choose\u{2026}") {
-                let panel = NSOpenPanel()
-                panel.allowedContentTypes = [.plainText]
-                panel.allowsMultipleSelection = false
-                if panel.runModal() == .OK, let url = panel.url {
-                    settings.setCustomVocabularyFile(url)
-                }
-            }
-        }
-        .help(Self.vocabularyHelpText(for: settings.transcriptionEngine))
-    }
-
-    @ViewBuilder
-    private var whisperKitVocabularyPromptControls: some View { // swiftlint:disable:this attributes
-        if settings.transcriptionEngine == .whisperKit {
-            Toggle("Use custom vocabulary prompt (experimental)", isOn: $settings.whisperKitVocabularyPromptEnabled)
-                .accessibilityIdentifier(A11yID.whisperKitVocabularyPromptToggle)
-                .help(Self.whisperKitVocabularyPromptHelpText)
-                .settingsNote(
-                    "Experimental: dense audio can omit whole sentences. See help for measured results; prefer Parakeet for vocabulary boosting.",
-                    "When enabled, WhisperKit uses a 32-token hint; earlier terms have priority.",
-                )
-        }
-    }
-
-    private var terminologyRulesEditor: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Canonical terminology")
-            TextEditor(text: $settings.terminologyRulesText)
-                .font(.body.monospaced())
-                .frame(minHeight: 72)
-                .accessibilityIdentifier(A11yID.terminologyRulesEditor)
-            Text(
-                "Applied to saved transcripts after ASR. One rule per line: "
-                    + "Canonical spelling => spoken variant | another variant. "
-                    + "Rules only replace whole words or phrases.",
-            )
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            Text(settings.terminologyRulesValidation.message)
-                .font(.callout)
-                .foregroundStyle(.secondary)
         }
     }
 
@@ -369,8 +303,9 @@ struct TranscriptionSettingsView: View {
                 + "Live captions do not use CTC vocabulary rescoring."
 
         case .whisperKit:
-            "Text file with one term per line. Enable the experimental custom vocabulary prompt to pass a "
-                + "soft 32-token decoder hint to WhisperKit; it is not a guaranteed correction. "
+            "Text file with one term per line. WhisperKit gets the terms as an experimental, "
+                + "soft 32-token decoder hint; it is not a guaranteed correction. "
+                + "Earlier terms have priority: put the ones that matter most first. "
                 + "It applies to live captions only when they use "
                 + "WhisperKit; language-specific live backends do not use it."
 
@@ -378,11 +313,6 @@ struct TranscriptionSettingsView: View {
             "The model server engine does not use a vocabulary file."
         }
     }
-
-    static let whisperKitVocabularyPromptHelpText = "Experimental. WhisperKit treats the vocabulary as a decoder hint, "
-        + "not a correction. In a dense four-speaker English evaluation, a 25-content-token prompt "
-        + "from this 32-token budget raised word error rate from 29% to 77% and deletions from 73 to 241. "
-        + "It can omit whole sentences. Results vary by audio; prefer Parakeet for vocabulary boosting."
 
     /// Whether any Nemotron multilingual model variant is already on disk.
     private var nemotronModelDownloaded: Bool {
@@ -493,6 +423,139 @@ struct TranscriptionSettingsView: View {
                 .font(.callout)
                 .foregroundStyle(.red)
                 .textSelection(.enabled)
+        }
+    }
+}
+
+/// The Vocabulary section. An extension so the view's main body stays under
+/// the type-length limit.
+extension TranscriptionSettingsView {
+    private var vocabularySection: some View {
+        Section("Vocabulary") {
+            customVocabularyToggle
+            customVocabularyFileRows
+            terminologyRulesEditor
+        }
+        .accessibilityIdentifier(A11yID.vocabularySection)
+        .recordOnlyDisabled(settings.recordOnly)
+    }
+
+    /// WhisperKit's help adds the experimental warning: it is the engine where the
+    /// vocabulary can cost completeness.
+    private var customVocabularyToggle: some View {
+        HelpfulToggle(
+            title: "Use custom vocabulary",
+            help: settings.transcriptionEngine == .whisperKit
+                ? SettingsHelp.customVocabularyWhisperKit
+                : SettingsHelp.customVocabulary,
+            isOn: $settings.customVocabularyEnabled,
+        )
+        .accessibilityIdentifier(A11yID.customVocabularyToggle)
+    }
+
+    /// Hidden while the switch is off, since no engine reads the file then.
+    @ViewBuilder private var customVocabularyFileRows: some View {
+        if settings.customVocabularyEnabled {
+            customVocabularyRow
+            customVocabularyValidation
+        }
+    }
+
+    private var customVocabularyRow: some View {
+        HStack {
+            TextField("Custom vocabulary file", text: Binding(
+                get: { settings.customVocabularyPath },
+                set: { settings.setCustomVocabularyPath($0) },
+            ))
+            .textFieldStyle(.roundedBorder)
+            .accessibilityIdentifier(A11yID.customVocabularyPathField)
+            Button("Choose\u{2026}") {
+                let panel = NSOpenPanel()
+                panel.allowedContentTypes = [.plainText]
+                panel.allowsMultipleSelection = false
+                if panel.runModal() == .OK, let url = panel.url {
+                    settings.setCustomVocabularyFile(url)
+                }
+            }
+        }
+        .help(Self.vocabularyHelpText(for: settings.transcriptionEngine))
+    }
+
+    private var customVocabularyValidation: some View {
+        Text(settings.customVocabularyValidation.message)
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .onAppear { settings.refreshCustomVocabularyValidation() }
+            .onChange(of: settings.customVocabularyPath) { _, _ in
+                settings.refreshCustomVocabularyValidation()
+            }
+    }
+}
+
+// MARK: - Terminology rules
+
+private extension TranscriptionSettingsView {
+    var terminologyRulesEditor: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Canonical terminology")
+            terminologyRulesFileRow
+            terminologyRulesSource
+            Text(
+                "Applied to saved transcripts after ASR. One rule per line: "
+                    + "Canonical spelling => spoken variant | another variant. "
+                    + "Rules only replace whole words or phrases.",
+            )
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            Text(settings.terminologyRulesValidation.message)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .onAppear { settings.refreshTerminologyRulesValidation() }
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                    settings.refreshTerminologyRulesValidation()
+                }
+        }
+    }
+
+    var terminologyRulesFileRow: some View {
+        HStack {
+            TextField("Terminology rules file (optional)", text: Binding(
+                get: { settings.terminologyRulesFilePath },
+                set: { settings.setTerminologyRulesFilePath($0) },
+            ))
+            .textFieldStyle(.roundedBorder)
+            .accessibilityIdentifier(A11yID.terminologyRulesFilePathField)
+            Button("Choose\u{2026}") {
+                let panel = NSOpenPanel()
+                panel.allowedContentTypes = [.plainText]
+                panel.allowsMultipleSelection = false
+                if panel.runModal() == .OK, let url = panel.url {
+                    settings.setTerminologyRulesFile(url)
+                }
+            }
+        }
+        .help("When a file is set, its rules are used instead of the text area and are read again at the start of each job.")
+    }
+
+    /// The text area while no rules file is set; otherwise the file's contents,
+    /// read-only, as of the last read: on appearing, on a change of path, when
+    /// the app becomes active and at each job start.
+    @ViewBuilder
+    var terminologyRulesSource: some View { // swiftlint:disable:this attributes
+        if settings.usesTerminologyRulesFile {
+            ScrollView {
+                Text(settings.terminologyRulesFileContents)
+                    .font(.body.monospaced())
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(minHeight: 72)
+            .accessibilityIdentifier(A11yID.terminologyRulesFilePreview)
+        } else {
+            TextEditor(text: $settings.terminologyRulesText)
+                .font(.body.monospaced())
+                .frame(minHeight: 72)
+                .accessibilityIdentifier(A11yID.terminologyRulesEditor)
         }
     }
 }
