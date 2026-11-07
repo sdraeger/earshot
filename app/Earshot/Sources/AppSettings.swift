@@ -334,6 +334,12 @@ final class AppSettings { // swiftlint:disable:this type_body_length
         didSet { defaults.set(liveCaptionsOverlayEnabled, forKey: "liveCaptionsOverlayEnabled") }
     }
 
+    /// Whether the floating recording button (`RecordingButtonPanel`) shows
+    /// while a recording runs. Missing key reads as true.
+    var recordingButtonEnabled: Bool {
+        didSet { defaults.set(recordingButtonEnabled, forKey: "recordingButtonEnabled") }
+    }
+
     /// Whether a notification that needs an answer plays a sound. Status
     /// notifications are always silent. `NotificationManager` reads the same key.
     var notificationSounds: Bool {
@@ -869,6 +875,7 @@ final class AppSettings { // swiftlint:disable:this type_body_length
         silentTrackWatchdogEnabled = defaults.bool(forKey: "silentTrackWatchdogEnabled", default: false)
         liveTranscriptionEnabled = defaults.bool(forKey: "liveTranscriptionEnabled", default: false)
         liveCaptionsOverlayEnabled = defaults.bool(forKey: "liveCaptionsOverlayEnabled", default: true)
+        recordingButtonEnabled = defaults.bool(forKey: "recordingButtonEnabled", default: true)
         notificationSounds = defaults.bool(forKey: NotificationManager.soundsDefaultsKey, default: true)
         liveCaptionsSize = defaults.string(forKey: "liveCaptionsSize")
             .flatMap(LiveCaptionsSize.init(rawValue:)) ?? .medium

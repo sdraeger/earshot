@@ -126,6 +126,8 @@ State writes to `AppPaths.dataDir`; IPC + queue snapshots to `ipcDir`.
 | `LiveCaptionsState.swift` | `@Observable` live-captions state (per-channel hypotheses + finalised utterances) + RPC-wire types |
 | `LiveCaptionsOverlay.swift` | SwiftUI caption-bar content (recent finals + per-channel hypotheses) hosted in `LiveCaptionsWindow` |
 | `LiveCaptionsWindowController.swift` | Borderless click-through NSPanel hosting the caption overlay (⌥-drag to reposition; origin persisted) |
+| `RecordingButtonPanel.swift` | Floating pill at the right screen edge while recording: voice-activity bars from the louder channel's dBFS, vertical drag (height persisted), click menu to stop; `sharingType = .none` keeps it out of screen shares |
+| `Theme.swift` | Earshot colors (paper, card, hairline, green accent) with dark-mode values |
 | `LiveCaptionsSize.swift` | Caption-bar size presets (Small/Medium/Large): font size paired with the fixed panel dimensions that fit it; `AppSettings.liveCaptionsSize` |
 | `ProcessingStatsView.swift` | Read-only average per-stage processing durations from `stage_timing.jsonl` (Settings → Advanced) |
 

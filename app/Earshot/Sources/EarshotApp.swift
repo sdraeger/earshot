@@ -83,6 +83,7 @@ struct EarshotApp: App {
     private var appDelegate // swiftlint:disable:this unused_declaration
     @State private var appState: AppState
     @State private var captionsWindow: LiveCaptionsWindowController?
+    @State private var recordingButton: RecordingButtonPanel?
     @Environment(\.openWindow)
     private var openWindow
 
@@ -245,10 +246,29 @@ struct EarshotApp: App {
                 controller.hide()
             }
         }
+        .onChange(of: appState.shouldShowRecordingButton, initial: true) { _, visible in
+            toggleRecordingButton(visible: visible)
+        }
         // Not `initial: true`: the controller is created with the current
         // preset above, and a hidden bar picks the preset up on `show()`.
         .onChange(of: appState.settings.liveCaptionsSize) { _, size in
             captionsWindow?.apply(size: size)
+        }
+    }
+
+    private func toggleRecordingButton(visible: Bool) {
+        let state = appState
+        let panel = recordingButton ?? RecordingButtonPanel(
+            level: { state.recordingLevelDBFS },
+            stopTitle: { state.recordingButtonStopTitle },
+            onStop: { state.stopFromRecordingButton() },
+            onHide: { state.settings.recordingButtonEnabled = false },
+        )
+        recordingButton = panel
+        if visible {
+            panel.show()
+        } else {
+            panel.hide()
         }
     }
 
@@ -257,6 +277,7 @@ struct EarshotApp: App {
     private var speakerNamingWindow: some Scene {
         Window("Name speakers", id: "speaker-naming") {
             speakerNamingContent
+                .tint(Theme.accent)
                 // Pin the naming window so it stays visible + on top while the
                 // user works in other apps instead of vanishing on focus loss
                 // (issue #504). Applied via the hosting NSWindow because macOS 14
