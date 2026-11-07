@@ -360,7 +360,6 @@ final class NotionClientTests: XCTestCase {
             date: Date(timeIntervalSince1970: 1_700_000_000),
             tags: ["Alice", "Bob"],
             markdown: "# Weekly Sync\n\nSummary.",
-            transcript: nil,
         )
 
         XCTAssertEqual(result.pageID, "page-1")
@@ -412,7 +411,6 @@ final class NotionClientTests: XCTestCase {
             date: Date(timeIntervalSince1970: 1_700_000_000),
             tags: ["Alice"],
             markdown: "# Weekly Sync",
-            transcript: nil,
         )
 
         XCTAssertFalse(didPatch)
@@ -464,7 +462,6 @@ final class NotionClientTests: XCTestCase {
             date: nil,
             tags: [],
             markdown: "# Weekly Sync",
-            transcript: nil,
             existingPageID: pageID,
         )
 
@@ -519,7 +516,6 @@ final class NotionClientTests: XCTestCase {
             date: nil,
             tags: [],
             markdown: "# Weekly Sync",
-            transcript: nil,
             existingPageID: pageID,
         )
 
@@ -566,7 +562,6 @@ final class NotionClientTests: XCTestCase {
                 date: nil,
                 tags: [],
                 markdown: String(repeating: "A paragraph.\n\n", count: 150),
-                transcript: nil,
             ) { page in recordedPage.set(page.pageID) }
             XCTFail("Expected the block append to fail")
         } catch {
@@ -615,13 +610,13 @@ final class NotionClientTests: XCTestCase {
         }
         let markdown = String(repeating: "Paragraph.\n\n", count: 150)
         do {
-            _ = try await client.exportMeeting(title: "Notes", date: nil, tags: [], markdown: markdown, transcript: nil)
+            _ = try await client.exportMeeting(title: "Notes", date: nil, tags: [], markdown: markdown)
             XCTFail("Expected first overflow append to fail")
         } catch {
             XCTAssertEqual(storedBlocks.count, 100)
         }
         _ = try await client.exportMeeting(
-            title: "Notes", date: nil, tags: [], markdown: markdown, transcript: nil, existingPageID: pageID,
+            title: "Notes", date: nil, tags: [], markdown: markdown, existingPageID: pageID,
         )
         XCTAssertEqual(creates, 1)
         XCTAssertEqual(storedBlocks.count, 150)
@@ -644,7 +639,7 @@ final class NotionClientTests: XCTestCase {
                 return (response, Data(#"{"id":"old-page","archived":true,"status":404,"code":"object_not_found"}"#.utf8))
             }
             let result = try await client.exportMeeting(
-                title: "Notes", date: nil, tags: [], markdown: "Notes", transcript: nil,
+                title: "Notes", date: nil, tags: [], markdown: "Notes",
                 existingPageID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             )
             XCTAssertTrue(created)

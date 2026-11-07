@@ -313,7 +313,7 @@ final class WhisperKitE2ETests: XCTestCase {
 
         // resampleFile uses loadAudioAsFloat32 → AVAudioFile or AVAsset fallback
         let resampled16k = tmpDir.appendingPathComponent("resampled_16k.wav")
-        try await AudioMixer.resampleFile(from: fixture, to: resampled16k, targetRate: 16000)
+        try await AudioMixer.resampleFile(from: fixture, to: resampled16k)
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: resampled16k.path))
 

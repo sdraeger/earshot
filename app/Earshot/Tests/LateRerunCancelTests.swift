@@ -204,7 +204,7 @@ final class LateRerunCancelTests: XCTestCase {
         let run = Task {
             try await queue.runDualTrackDiarization(
                 diarizeProcess: diarizer, tracks: tracks,
-                speakerCount: nil, title: "Cancelled", jobID: UUID(),
+                speakerCount: nil, jobID: UUID(),
             )
         }
         run.cancel()
@@ -234,7 +234,7 @@ final class LateRerunCancelTests: XCTestCase {
         let result = await Task {
             try await queue.runDualTrackDiarization(
                 diarizeProcess: diarizer, tracks: tracks,
-                speakerCount: nil, title: "Cancelled", jobID: UUID(),
+                speakerCount: nil, jobID: UUID(),
             )
         }.result
 
@@ -409,8 +409,7 @@ final class LateRerunCancelTests: XCTestCase {
     ) -> PipelineQueue {
         PipelineQueue(
             engine: engine,
-            diarizationFactory: { diarizer },
-            diarizationFactoryWithMode: nil,
+            diarizerFactory: { _ in diarizer },
             protocolGeneratorFactory: { protocolGenerator },
             outputDir: tmpDir,
             logDir: tmpDir,

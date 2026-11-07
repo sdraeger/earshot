@@ -30,8 +30,10 @@ enum MarkdownToNotionBlocks {
         return lowered.hasPrefix("## full transcript") || lowered.hasPrefix("# full transcript")
     }
 
-    /// Converts markdown text (and optional verbatim transcript) into an array of `NotionBlock`s.
-    static func convert(markdown: String, transcript: String? = nil) -> [NotionBlock] { // swiftlint:disable:this cyclomatic_complexity function_body_length
+    /// Converts markdown text into an array of `NotionBlock`s. A `Full
+    /// Transcript` section becomes collapsible toggles after one divider, so
+    /// the first export and a retry of the saved file build the same page.
+    static func convert(markdown: String) -> [NotionBlock] { // swiftlint:disable:this cyclomatic_complexity function_body_length
         var blocks: [NotionBlock] = []
         let rawLines = lines(of: markdown)
 
@@ -109,22 +111,11 @@ enum MarkdownToNotionBlocks {
             lineIndex += 1
         }
 
-        // Add explicit transcript or parsed transcript as collapsible toggle
-        let finalTranscriptText: String? = {
-            if let transcript, !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                return transcript
-            }
-            if !transcriptLines.isEmpty {
-                return transcriptLines.joined(separator: "\n\n")
-            }
-            return nil
-        }()
-
-        if let finalTranscriptText {
-            // Without it the toggle reads as part of the section above. A saved
-            // protocol re-exported on retry already carries its own divider.
+        if !transcriptLines.isEmpty {
+            // Without it the toggle reads as part of the section above. The
+            // pipeline's own Markdown already carries one before the heading.
             if blocks.last?.type != "divider" { blocks.append(makeDivider()) }
-            blocks.append(contentsOf: makeTranscriptToggles(from: finalTranscriptText))
+            blocks.append(contentsOf: makeTranscriptToggles(from: transcriptLines.joined(separator: "\n")))
         }
 
         return blocks

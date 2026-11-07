@@ -55,7 +55,7 @@ final class PipelineControllerTests: XCTestCase {
     private func makeWiredController() -> PipelineController {
         makeController(queue: PipelineQueue(
             engine: MockEngine(),
-            diarizationFactory: { MockDiarization() },
+            diarizerFactory: { _ in MockDiarization() },
             protocolGeneratorFactory: { MockProtocolGen() },
             outputDir: tmpDir,
             logDir: tmpDir,
@@ -383,7 +383,7 @@ final class PipelineControllerTests: XCTestCase {
             participants: [], micDelaySeconds: 0, trigger: .auto,
             mixFilename: "standup_mix.wav", appFilename: "standup_app.wav", micFilename: "standup_mic.wav",
         )
-        try sidecar.write(toDirectory: tmpDir, basename: "standup")
+        try sidecar.write(to: tmpDir.appendingPathComponent("standup\(RecordingSidecar.filenameSuffix)"))
 
         pc.enqueueExistingFiles([app, mic])
 

@@ -59,7 +59,7 @@ final class NotionExportUnconfiguredTests: XCTestCase {
         let resolve: () -> NotionExportResolution = { NotionExportConfiguration.resolve(settings: settings) }
         return PipelineQueue(
             engine: engine,
-            diarizationFactory: { MockDiarization() },
+            diarizerFactory: { _ in MockDiarization() },
             protocolGeneratorFactory: { protocolGen },
             outputDir: tmpDir,
             logDir: tmpDir,

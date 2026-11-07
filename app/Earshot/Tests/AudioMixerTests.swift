@@ -291,7 +291,7 @@ final class AudioMixerTests: XCTestCase {
         let samples48k = [Float](repeating: 0.5, count: 480)
         try AudioMixer.saveWAV(samples: samples48k, sampleRate: 48000, url: src)
 
-        try await AudioMixer.resampleFile(from: src, to: dst, targetRate: 16000)
+        try await AudioMixer.resampleFile(from: src, to: dst)
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: dst.path))
         let loaded = try AudioMixer.loadAudioFileAsFloat32(url: dst)
@@ -364,7 +364,7 @@ final class AudioMixerTests: XCTestCase {
         let src = fixtureURL("sine_440hz_44k.m4a")
         let dst = makeTempFile(suffix: ".wav")
 
-        try await AudioMixer.resampleFile(from: src, to: dst, targetRate: 16000)
+        try await AudioMixer.resampleFile(from: src, to: dst)
 
         let dstFile = try AVAudioFile(forReading: dst)
         XCTAssertEqual(Int(dstFile.processingFormat.sampleRate), 16000, "Output must be 16kHz")
@@ -378,7 +378,7 @@ final class AudioMixerTests: XCTestCase {
         let src = fixtureURL("sine_440hz_44k.mp3")
         let dst = makeTempFile(suffix: ".wav")
 
-        try await AudioMixer.resampleFile(from: src, to: dst, targetRate: 16000)
+        try await AudioMixer.resampleFile(from: src, to: dst)
 
         let dstFile = try AVAudioFile(forReading: dst)
         XCTAssertEqual(Int(dstFile.processingFormat.sampleRate), 16000, "Output must be 16kHz")
@@ -393,7 +393,7 @@ final class AudioMixerTests: XCTestCase {
         let src = fixtureURL("sine_440hz_44k.m4a")
         let dst = makeTempFile(suffix: ".wav")
 
-        try await AudioMixer.resampleFile(from: src, to: dst, targetRate: 16000)
+        try await AudioMixer.resampleFile(from: src, to: dst)
 
         let srcFile = try AVAudioFile(forReading: src)
         let dstFile = try AVAudioFile(forReading: dst)
@@ -406,7 +406,7 @@ final class AudioMixerTests: XCTestCase {
         let src = fixtureURL("sine_440hz_44k.m4a")
         let dst = makeTempFile(suffix: ".wav")
 
-        try await AudioMixer.resampleFile(from: src, to: dst, targetRate: 16000)
+        try await AudioMixer.resampleFile(from: src, to: dst)
 
         let loaded = try AudioMixer.loadAudioFileAsFloat32(url: dst)
         // Sine wave should have significant energy (not silence). Typed-binding
@@ -484,7 +484,7 @@ final class AudioMixerTests: XCTestCase {
         let input = Self.generateSine(frequency: 440, sampleRate: 48000, duration: 1.0)
         try AudioMixer.saveWAV(samples: input, sampleRate: 48000, url: src)
 
-        try await AudioMixer.resampleFile(from: src, to: dst, targetRate: 16000)
+        try await AudioMixer.resampleFile(from: src, to: dst)
 
         let loaded = try AudioMixer.loadAudioFileAsFloat32(url: dst)
         let peak = Self.peakFrequency(samples: loaded, sampleRate: 16000)
@@ -511,7 +511,7 @@ final class AudioMixerTests: XCTestCase {
         let src = fixtureURL("sine_440hz_44k.m4a")
         let dst = makeTempFile(suffix: ".wav")
 
-        try await AudioMixer.resampleFile(from: src, to: dst, targetRate: 16000)
+        try await AudioMixer.resampleFile(from: src, to: dst)
 
         let loaded = try AudioMixer.loadAudioFileAsFloat32(url: dst)
         let peak = Self.peakFrequency(samples: loaded, sampleRate: 16000)

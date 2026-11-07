@@ -202,7 +202,7 @@ struct VoiceEnrollmentView: View {
         diarizationTask = Task {
             do {
                 let result = try await diarizerFactory().run(
-                    audioPath: url, numSpeakers: numSpeakers, meetingTitle: url.lastPathComponent,
+                    audioPath: url, numSpeakers: numSpeakers,
                 )
                 guard !Task.isCancelled else { return }
                 stopElapsedTimer()

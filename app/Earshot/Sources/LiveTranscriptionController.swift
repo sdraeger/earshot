@@ -16,8 +16,7 @@ private let logger = Logger(subsystem: AppPaths.logSubsystem, category: "LiveTra
 ///     `AppAudioCapture`'s `StreamingMonoResampler`); the app feed still runs
 ///     `LiveAudioResampler` for the resampler-nil fallback path, where raw
 ///     device-rate buffers come through (16 kHz mono passes through unchanged).
-///   - one engine instance shared by both channels (Parakeet today —
-///     other engines fall back to `TranscriptionError.streamingNotSupported`).
+///   - one engine instance shared by both channels.
 ///
 /// Dataflow: each channel is a bounded `AsyncStream<LiveAudioBuffer>` feed.
 /// The sink closure yields into the stream synchronously on the audio
@@ -414,7 +413,7 @@ final class LiveTranscriptionController {
         let logChannel = channel.rawValue
         return StreamingTranscriber(
             channelLabel: logChannel,
-            vad: vad,
+            detector: FluidVADBoundaryDetector(vad: vad),
             transcribe: { samples in
                 try await proxy.transcribeSamples(samples)
             },

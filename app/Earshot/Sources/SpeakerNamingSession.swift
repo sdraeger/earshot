@@ -47,7 +47,7 @@ protocol SpeakerNamingSessionDelegate: AnyObject {
     func runDualTrackDiarization(
         diarizeProcess: any DiarizationProvider,
         tracks: (app: URL, mic: URL, micDelay: TimeInterval, viability: DualTrackViability?),
-        speakerCount: Int?, title: String, jobID: UUID,
+        speakerCount: Int?, jobID: UUID,
     ) async throws -> DiarizationRun
     /// Render the speaker-labeled transcript from a diarization run + cached
     /// transcript segments (a queue pipeline stage, reused by the late rewrite).
@@ -108,11 +108,9 @@ final class SpeakerNamingSession {
     /// Disk persistence for speaker-naming sidecars (keyed by per-job slug).
     private let namingStore: SpeakerNamingStore
     let speakerMatcherFactory: () -> SpeakerMatcher
-    let diarizationFactory: (() -> any DiarizationProvider)?
-    /// Optional mode-overriding factory used by `lateDiarization` when the user
-    /// picks a different mode in the re-run UI. `nil` = mode override not
-    /// supported; `lateDiarization` falls back to `diarizationFactory()`.
-    let diarizationFactoryWithMode: ((DiarizerMode) -> any DiarizationProvider)?
+    /// Builds the diarizer for one run: the given mode for a re-run in a
+    /// mode the user picked, the current setting for nil.
+    let diarizerFactory: ((DiarizerMode?) -> any DiarizationProvider)?
     let protocolGeneratorFactory: (() -> (any ProtocolGenerating)?)?
     let outputDir: URL?
     /// nil disables JSONL logging. AppState injects a real instance for
@@ -150,18 +148,15 @@ final class SpeakerNamingSession {
     private var stashedTopCandidates: [UUID: [String: [TopCandidate]]] = [:]
 
     init(
-        namingStore: SpeakerNamingStore,
         speakerMatcherFactory: @escaping () -> SpeakerMatcher,
-        diarizationFactory: (() -> any DiarizationProvider)? = nil,
-        diarizationFactoryWithMode: ((DiarizerMode) -> any DiarizationProvider)? = nil,
+        diarizerFactory: ((DiarizerMode?) -> any DiarizationProvider)? = nil,
         protocolGeneratorFactory: (() -> (any ProtocolGenerating)?)? = nil,
         outputDir: URL? = nil,
         recognitionStatsLog: RecognitionStatsLog? = nil,
     ) {
-        self.namingStore = namingStore
+        namingStore = SpeakerNamingStore(outputDir: outputDir)
         self.speakerMatcherFactory = speakerMatcherFactory
-        self.diarizationFactory = diarizationFactory
-        self.diarizationFactoryWithMode = diarizationFactoryWithMode
+        self.diarizerFactory = diarizerFactory
         self.protocolGeneratorFactory = protocolGeneratorFactory
         self.outputDir = outputDir
         self.recognitionStatsLog = recognitionStatsLog
@@ -284,14 +279,16 @@ final class SpeakerNamingSession {
     func resolveSpeakerNames(
         diarization: DiarizationResult,
         job: (jobID: UUID, title: String, slug: String, participants: [String]),
-        diarizeProcess: any DiarizationProvider,
-        isDualSource: Bool, outputDir: URL, cues: SpeakerNameCues.Context = .init(),
+        diarizerMode: DiarizerMode,
+        isDualSource: Bool, cues: SpeakerNameCues.Context = .init(),
     ) -> [String: String] {
         let (jobID, title, slug, participants) = job
         // No embeddings → no matching or dialog; keep the diarizer's own names.
         // A job cancelled while it was diarized gets no naming data, sidecar or
         // stashed forensics: this is where the run's naming writes start.
-        guard let embeddings = diarization.embeddings, delegate?.isStillQueued(jobID) ?? true else {
+        // No output folder, no sidecars: only a queue without a diarizer is built so.
+        guard let embeddings = diarization.embeddings, let outputDir,
+              delegate?.isStillQueued(jobID) ?? true else {
             return diarization.autoNames
         }
 
@@ -338,7 +335,7 @@ final class SpeakerNamingSession {
         // Persist naming data and set slug + mode early.
         let saved = saveNamingData(namingData, slug: slug, in: outputDir)
         delegate?.setNamingMetadata(
-            jobID: jobID, slug: slug, usedDiarizerMode: diarizeProcess.mode,
+            jobID: jobID, slug: slug, usedDiarizerMode: diarizerMode,
             wroteSidecarsIn: saved ? outputDir : nil,
         )
 

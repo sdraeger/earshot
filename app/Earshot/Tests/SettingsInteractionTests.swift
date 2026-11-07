@@ -45,8 +45,7 @@ final class SettingsInteractionTests: XCTestCase {
         settings.transcriptionEngine = .whisperKit
         let view = TranscriptionSettingsView(
             settings: settings,
-            whisperKitEngine: WhisperKitEngine(),
-            parakeetEngine: ParakeetEngine(),
+            engines: .forTesting(settings: settings),
         )
 
         let picker = try view.inspect().find(ViewType.Picker.self) { picker in
@@ -328,8 +327,7 @@ final class SettingsInteractionTests: XCTestCase {
         XCTAssertTrue(settings.liveCaptionsOverlayEnabled, "precondition: overlay defaults on")
         let view = TranscriptionSettingsView(
             settings: settings,
-            whisperKitEngine: WhisperKitEngine(),
-            parakeetEngine: ParakeetEngine(),
+            engines: .forTesting(settings: settings),
         )
         let toggle = try view.inspect()
             .find(viewWithAccessibilityIdentifier: A11yID.liveCaptionsOverlayToggle)
@@ -346,8 +344,7 @@ final class SettingsInteractionTests: XCTestCase {
         settings.liveTranscriptionEnabled = false
         let view = TranscriptionSettingsView(
             settings: settings,
-            whisperKitEngine: WhisperKitEngine(),
-            parakeetEngine: ParakeetEngine(),
+            engines: .forTesting(settings: settings),
         )
         let toggle = try view.inspect()
             .find(viewWithAccessibilityIdentifier: A11yID.liveCaptionsOverlayToggle)
@@ -362,8 +359,7 @@ final class SettingsInteractionTests: XCTestCase {
         XCTAssertEqual(settings.liveCaptionsSize, .medium, "precondition: default preset")
         let view = TranscriptionSettingsView(
             settings: settings,
-            whisperKitEngine: WhisperKitEngine(),
-            parakeetEngine: ParakeetEngine(),
+            engines: .forTesting(settings: settings),
         )
 
         let picker = try view.inspect()
@@ -382,8 +378,7 @@ final class SettingsInteractionTests: XCTestCase {
         settings.liveCaptionsOverlayEnabled = false
         let view = TranscriptionSettingsView(
             settings: settings,
-            whisperKitEngine: WhisperKitEngine(),
-            parakeetEngine: ParakeetEngine(),
+            engines: .forTesting(settings: settings),
         )
         let picker = try view.inspect()
             .find(viewWithAccessibilityIdentifier: A11yID.liveCaptionsSizePicker)

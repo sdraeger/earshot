@@ -50,7 +50,7 @@ final class PipelineQueueRetryTests: XCTestCase {
     ) -> PipelineQueue {
         PipelineQueue(
             engine: engine,
-            diarizationFactory: { diarization ?? MockDiarization() },
+            diarizerFactory: { _ in diarization ?? MockDiarization() },
             protocolGeneratorFactory: { protocolGen },
             outputDir: outputDir ?? tmpDir,
             logDir: tmpDir,

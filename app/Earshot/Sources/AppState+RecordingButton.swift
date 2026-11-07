@@ -1,3 +1,4 @@
+import AudioTapLib
 import Foundation
 
 /// What the floating recording button (`RecordingButtonPanel`) reads and does.
@@ -12,7 +13,8 @@ extension AppState {
     /// -120 when nothing records.
     var recordingLevelDBFS: Double {
         guard let recorder = watching.watchLoop?.activeRecorder else { return -120 }
-        return max(recorder.micLevelDBFS, recorder.appLevelDBFS)
+        let status = recorder.captureStatus
+        return max(status.mic.levelDBFS, status.app.levelDBFS)
     }
 
     /// What the button's Stop item does: end a manual recording, or stop

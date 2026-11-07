@@ -88,7 +88,7 @@ final class FluidDiarizerTests: XCTestCase {
         let diarizer = FluidDiarizer(mode: .offline, offlineProcessor: mock)
 
         let result = try await diarizer.run(
-            audioPath: Self.dummyURL, numSpeakers: 5, meetingTitle: "Test",
+            audioPath: Self.dummyURL, numSpeakers: 5,
         )
         XCTAssertEqual(callCount, 2, "Should retry once after failure")
         XCTAssertEqual(result.segments.count, 1)
@@ -103,7 +103,7 @@ final class FluidDiarizerTests: XCTestCase {
 
         do {
             _ = try await diarizer.run(
-                audioPath: Self.dummyURL, numSpeakers: nil, meetingTitle: "Test",
+                audioPath: Self.dummyURL, numSpeakers: nil,
             )
             XCTFail("Expected error to propagate when numSpeakers is nil")
         } catch {
@@ -121,7 +121,7 @@ final class FluidDiarizerTests: XCTestCase {
         let diarizer = FluidDiarizer(mode: .offline, offlineProcessor: mock)
 
         _ = try await diarizer.run(
-            audioPath: Self.dummyURL, numSpeakers: 3, meetingTitle: "Test",
+            audioPath: Self.dummyURL, numSpeakers: 3,
         )
         XCTAssertEqual(callCount, 1, "Should not retry on success")
     }
@@ -135,7 +135,7 @@ final class FluidDiarizerTests: XCTestCase {
 
         do {
             _ = try await diarizer.run(
-                audioPath: Self.dummyURL, numSpeakers: 5, meetingTitle: "Test",
+                audioPath: Self.dummyURL, numSpeakers: 5,
             )
             XCTFail("Expected error when both attempts fail")
         } catch {

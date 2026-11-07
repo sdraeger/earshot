@@ -1,7 +1,7 @@
 import Foundation
 
 /// Cross-validation result between nominal and stream rates.
-public enum CrossValidationResult: Equatable, Sendable {
+enum CrossValidationResult: Equatable, Sendable {
     case consistent(rate: Int)
     case mismatch(nominal: Int, stream: Int)
     case onlyNominal(rate: Int)
@@ -11,7 +11,7 @@ public enum CrossValidationResult: Equatable, Sendable {
 
 /// Which rung of the sample-rate priority ladder produced the resolved rate.
 /// Lets the caller emit the same diagnostics after delegating the decision.
-public enum RateSource: Equatable, Sendable {
+enum RateSource: Equatable, Sendable {
     case consistent // nominal == stream
     case mismatchPreferNominal // nominal != stream, nominal chosen (BT HFP guard, #379)
     case onlyNominal
@@ -24,7 +24,7 @@ public enum RateSource: Equatable, Sendable {
     /// What the capture log prints for this rung. Spelled out rather than
     /// reflected off the case name, because the log line's shape is documented
     /// and a Swift rename would otherwise change it without touching the docs.
-    public var logLabel: String {
+    var logLabel: String {
         switch self {
         case .consistent: "nominal and stream agree"
         case .mismatchPreferNominal: "nominal, stream disagreed"
@@ -36,9 +36,9 @@ public enum RateSource: Equatable, Sendable {
 }
 
 /// Outcome of the sample-rate priority ladder.
-public struct ResolvedRate: Equatable, Sendable {
-    public let rate: Int
-    public let source: RateSource
+struct ResolvedRate: Equatable, Sendable {
+    let rate: Int
+    let source: RateSource
 }
 
 /// Pure functions for sample rate detection and validation.
@@ -53,14 +53,14 @@ public enum SampleRateQuery {
     ///
     /// It used to also report *how* the rate was arrived at, which nothing read:
     /// the rung is what the caller wants, and `chooseRate` already returns that.
-    public static func validateSampleRate(queriedRate: Int, requestedRate: Int) -> Int {
+    static func validateSampleRate(queriedRate: Int, requestedRate: Int) -> Int {
         guard queriedRate > 0, queriedRate <= maxPlausibleRate else { return requestedRate }
         return queriedRate
     }
 
     /// Cross-validate nominal device rate against stream physical format rate.
     /// When both are available and differ, the stream rate is more trustworthy.
-    public static func crossValidateRate(
+    static func crossValidateRate(
         nominalRate: Int,
         streamRate: Int,
     ) -> CrossValidationResult {
@@ -108,7 +108,7 @@ public enum SampleRateQuery {
     /// delivers at (issue #683: measured 48000 with the device at 44.1, 48 and
     /// 96 kHz), so it carries no information about the buffers and, placed on
     /// top, it made the two rungs below unreachable.
-    public static func chooseRate(
+    static func chooseRate(
         nominalRate: Int,
         streamRate: Int,
         requestedRate: Int,
@@ -177,7 +177,7 @@ public enum SampleRateQuery {
     ///
     /// `current <= 0` means nothing has been resolved yet, so any plausible
     /// standard measurement is accepted.
-    public static func confirmedRateChange(measured: Double, current: Int) -> Int? {
+    static func confirmedRateChange(measured: Double, current: Int) -> Int? {
         guard measured.isFinite, measured > 0, measured <= Double(maxPlausibleRate) else {
             return nil
         }

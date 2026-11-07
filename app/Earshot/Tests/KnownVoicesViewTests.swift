@@ -57,6 +57,16 @@ final class KnownVoicesViewTests: XCTestCase { // swiftlint:disable:this balance
         XCTAssertEqual(calls, 1)
     }
 
+    func testFinishingEnrollmentInvokesOnMutate() {
+        var calls = 0
+        // swiftlint:disable:next trailing_closure
+        let view = KnownVoicesView(matcher: SpeakerMatcher(dbPath: dbPath), onMutate: { calls += 1 })
+
+        view.finishEnrollment()
+
+        XCTAssertEqual(calls, 1)
+    }
+
     func testDeleteInvokesOnMutate() {
         let matcher = SpeakerMatcher(dbPath: dbPath)
         matcher.saveDB([StoredSpeaker(name: "Doomed", embeddings: [[1, 0, 0]])])

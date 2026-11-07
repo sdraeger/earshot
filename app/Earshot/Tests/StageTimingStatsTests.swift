@@ -2,6 +2,12 @@
 import XCTest
 
 final class StageTimingStatsTests: XCTestCase {
+    /// Per-stage aggregates for events that share one configuration per stage,
+    /// as every event `event(_:wall:audio:)` builds does.
+    private func byStage(_ events: [StageTimingEvent]) -> [StageKind: StageTimingStats.StageAggregate] {
+        Dictionary(uniqueKeysWithValues: StageTimingStats.aggregateByConfig(events: events).map { ($0.key.stage, $0.value) })
+    }
+
     private func event(
         _ stage: StageKind, wall: Double, audio: Double, ts: Date = Date(),
         engine: String? = "parakeet", mode: String? = nil,
@@ -87,7 +93,7 @@ final class StageTimingStatsTests: XCTestCase {
             event(.diarizing, wall: 400, audio: 4000),
             event(.transcribing, wall: 120, audio: 6000),
         ]
-        let agg = StageTimingStats.aggregate(events: events)
+        let agg = byStage(events)
 
         XCTAssertEqual(agg[.diarizing]?.count, 2)
         XCTAssertEqual(agg[.diarizing]?.avgWallClockSeconds ?? 0, 500, accuracy: 0.001)
@@ -102,14 +108,14 @@ final class StageTimingStatsTests: XCTestCase {
             event(.diarizing, wall: 600, audio: 6000),
             event(.diarizing, wall: 400, audio: 4000),
         ]
-        let agg = StageTimingStats.aggregate(events: events)
+        let agg = byStage(events)
         XCTAssertEqual(agg[.diarizing]?.avgRTF ?? -1, 0.1, accuracy: 0.0001)
     }
 
     func testAvgRTFNilWhenNoPositiveAudio() {
         // A stage whose events all report 0s of audio can't be normalised.
         let events = [event(.transcribing, wall: 30, audio: 0)]
-        let agg = StageTimingStats.aggregate(events: events)
+        let agg = byStage(events)
         XCTAssertEqual(agg[.transcribing]?.count, 1)
         XCTAssertNil(agg[.transcribing]?.avgRTF)
     }
@@ -121,14 +127,14 @@ final class StageTimingStatsTests: XCTestCase {
             event(.diarizing, wall: 500, audio: 5000),
             event(.diarizing, wall: 999, audio: 0),
         ]
-        let agg = StageTimingStats.aggregate(events: events)
+        let agg = byStage(events)
         XCTAssertEqual(agg[.diarizing]?.count, 2)
         XCTAssertEqual(agg[.diarizing]?.avgRTF ?? -1, 0.1, accuracy: 0.0001)
         XCTAssertEqual(agg[.diarizing]?.avgWallClockSeconds ?? 0, 749.5, accuracy: 0.001)
     }
 
     func testAggregateEmptyForNoEvents() {
-        XCTAssertTrue(StageTimingStats.aggregate(events: []).isEmpty)
+        XCTAssertTrue(byStage([]).isEmpty)
     }
 
     // MARK: - JobState → StageKind mapping

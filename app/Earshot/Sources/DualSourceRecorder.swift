@@ -25,11 +25,11 @@ struct RecordingResult {
 /// unit-testable). `requested*` describe the file the capture session is
 /// expected to produce — 16 kHz mono since `AppAudioCapture` resamples in the
 /// IOProc — so a logged mismatch flags the unexpected fallback/legacy path, not
-/// routine device renegotiation. `targetRate` is the rate we resample/mix to.
+/// routine device renegotiation. The output is always
+/// `AudioConstants.targetSampleRate`.
 struct CaptureFormat {
     let requestedChannels: Int
     let requestedRate: Int
-    let targetRate: Int
 }
 
 /// Orchestrates app audio capture (via AudioTapLib) + mic recording, then mixes.
@@ -43,44 +43,11 @@ class DualSourceRecorder: RecordingProvider {
     private(set) var recordingStartDate: Date = .distantPast
     private var startTimestamp: String?
 
-    var appLevelDBFS: Double {
-        captureSession?.appLevelDBFS ?? -120
-    }
-
-    var micLevelDBFS: Double {
-        captureSession?.micLevelDBFS ?? -120
-    }
-
-    var appSignalAges: ChannelSignalAges {
-        captureSession?.appSignalAges ?? .unknown
-    }
-
-    var micSignalAges: ChannelSignalAges {
-        captureSession?.micSignalAges ?? .unknown
-    }
-
-    var appCaptureGaveUp: Bool {
-        captureSession?.appCaptureGaveUp ?? false
-    }
-
-    var micCaptureGaveUp: Bool {
-        captureSession?.micCaptureGaveUp ?? false
-    }
-
-    var micCaptureStartTimedOut: Bool {
-        captureSession?.micCaptureStartTimedOut ?? false
-    }
-
-    var appSilentTrackWatchdogGaveUp: Bool {
-        captureSession?.appSilentTrackWatchdogGaveUp ?? false
-    }
-
-    var appCarriesOnlyNoiseFloor: Bool {
-        captureSession?.appCarriesOnlyNoiseFloor ?? false
-    }
-
-    var micCaptureStall: MicCaptureStall {
-        captureSession?.micCaptureStall ?? MicCaptureStall()
+    /// The session's status, or `.idle` between recordings: silence and
+    /// "never opened", since a spurious give-up would report a capture died
+    /// that never ran.
+    var captureStatus: CaptureStatus {
+        captureSession?.status ?? .idle
     }
 
     /// Requested app-audio capture format (what the CATap aggregate device is
@@ -92,7 +59,6 @@ class DualSourceRecorder: RecordingProvider {
     nonisolated static let defaultAppChannels = 2
 
     private let recordRate = DualSourceRecorder.defaultRecordRate
-    private let targetRate = AudioConstants.targetSampleRate
     private let appChannels = DualSourceRecorder.defaultAppChannels
 
     /// The staging directory every other consumer reads independently: the
@@ -342,7 +308,6 @@ class DualSourceRecorder: RecordingProvider {
             format: CaptureFormat(
                 requestedChannels: channels,
                 requestedRate: rate,
-                targetRate: AudioConstants.targetSampleRate,
             ),
         )
         return recording.mixPath
@@ -411,11 +376,15 @@ class DualSourceRecorder: RecordingProvider {
     /// doubles, which record nothing, do not all have to learn it.
     var silentTrackWatchdogEnabled = false
 
+    /// Whether the next capture session logs verbose capture diagnostics. Set
+    /// by the recorder factory from `AppSettings.verboseDiagnostics`, for the
+    /// same reason as `silentTrackWatchdogEnabled`.
+    var debugLogging = false
+
     /// Start recording whichever channels `source` asks for.
     func start(
         source: RecordingSource,
         micDeviceUID: String? = nil,
-        debugLogging: Bool = false,
     ) throws {
         guard !isRecording else { return }
         // The compiler no longer needs this — the 14.2 floor is enforced inside
@@ -532,7 +501,7 @@ class DualSourceRecorder: RecordingProvider {
             recordingsDir: recordingsDir,
             timestamp: ts,
             recordingStartDate: recordingStartDate,
-            format: CaptureFormat(requestedChannels: 1, requestedRate: targetRate, targetRate: targetRate),
+            format: CaptureFormat(requestedChannels: 1, requestedRate: AudioConstants.targetSampleRate),
         )
     }
 

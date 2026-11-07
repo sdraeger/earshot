@@ -267,10 +267,8 @@ extension SpeakerNamingSession {
     /// started.
     ///
     /// `mode` optionally overrides the diarizer mode. `nil` keeps the current
-    /// global setting via `diarizationFactory()`. Non-nil uses
-    /// `diarizationFactoryWithMode` to instantiate a one-off diarizer in the
-    /// requested mode, so the user can recover from a wrong-mode-at-recording
-    /// time without leaving the naming dialog.
+    /// setting; a mode builds a one-off diarizer in it, so the user can recover
+    /// from a wrong mode at recording time without leaving the naming dialog.
     func lateRerunPlan(jobID: UUID, mode: DiarizerMode?) throws(SpeakerNamingRefusal) -> LateRerunPlan {
         guard let delegate,
               let namingData = speakerNamingDataByJob[jobID],
@@ -285,7 +283,7 @@ extension SpeakerNamingSession {
         }
         // After the audio, which is cheap to check and the one the user cannot
         // fix by choosing another mode.
-        guard let diarizer = diarizationFactory.map({ resolveLateDiarizer(mode: mode, defaultFactory: $0) }),
+        guard let diarizer = diarizerFactory?(mode),
               diarizer.isAvailable
         else {
             logger.warning("Diarization not available for late re-run")
@@ -317,7 +315,7 @@ extension SpeakerNamingSession {
                 diarizer: plan.diarizer,
                 recording: (dir: plan.recordingsDir, slug: plan.slug, jobID: jobID, micDelay: plan.job.micDelay),
                 isDualSource: plan.namingData.isDualSource,
-                speakerCount: speakerCount, title: title,
+                speakerCount: speakerCount,
             )
             // The job can be cancelled while the diarizer runs, and a diarizer
             // that ignores cancellation still returns. Everything below writes
@@ -404,23 +402,6 @@ extension SpeakerNamingSession {
         NotificationCenter.default.post(name: .showSpeakerNaming, object: nil)
     }
 
-    /// Resolve the diarizer for a late re-run: a mode override uses the
-    /// mode-aware factory (falling back to `defaultFactory` plus a warning when
-    /// none is wired); `nil` keeps the current global setting.
-    private func resolveLateDiarizer(
-        mode: DiarizerMode?, defaultFactory: () -> any DiarizationProvider,
-    ) -> any DiarizationProvider {
-        if let mode, let factory = diarizationFactoryWithMode {
-            return factory(mode)
-        }
-        if let mode {
-            logger.warning(
-                "Late re-diarize requested mode=\(mode.rawValue, privacy: .public) but no mode-aware factory wired; falling back to global setting",
-            )
-        }
-        return defaultFactory()
-    }
-
     /// Re-diarize the persisted 16 kHz audio for a job. Dispatches between
     /// dual-source (separate app + mic tracks merged, via the shared queue
     /// helper) and single-source (mix only).
@@ -446,7 +427,6 @@ extension SpeakerNamingSession {
         recording: (dir: URL, slug: String, jobID: UUID, micDelay: TimeInterval),
         isDualSource: Bool,
         speakerCount: Int,
-        title: String,
     ) async throws -> DiarizationRun {
         let (recordingsDir, slug, jobID, micDelay) = recording
         if isDualSource {
@@ -467,12 +447,12 @@ extension SpeakerNamingSession {
                     micDelay: micDelay,
                     viability: delegate.job(withID: jobID)?.trackViability,
                 ),
-                speakerCount: speakerCount, title: title, jobID: jobID,
+                speakerCount: speakerCount, jobID: jobID,
             )
         }
         let mix16k = recordingsDir.appendingPathComponent("\(slug)_16k.wav")
         let diarization = try await diarizer.run(
-            audioPath: mix16k, numSpeakers: speakerCount, meetingTitle: title,
+            audioPath: mix16k, numSpeakers: speakerCount,
         )
         return DiarizationRun(app: nil, mic: nil, combined: diarization)
     }

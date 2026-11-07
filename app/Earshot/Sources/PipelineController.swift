@@ -104,6 +104,11 @@ final class PipelineController {
     /// by user actions while `AppState` is alive. Captures the owner weakly.
     private var engineProvider: (() -> (any TranscribingEngine)?)?
 
+    /// The two history logs, one actor each for the controller's life, so
+    /// every queue it builds and the Settings views read through the same one.
+    let recognitionStatsLog: RecognitionStatsLog
+    let stageTimingLog: StageTimingLog
+
     init(
         settings: AppSettings,
         notifier: any AppNotifying,
@@ -113,6 +118,8 @@ final class PipelineController {
         self.settings = settings
         self.notifier = notifier
         self.queueEnvironment = queueEnvironment
+        recognitionStatsLog = RecognitionStatsLog(path: queueEnvironment.recognitionStatsLog)
+        stageTimingLog = StageTimingLog(path: queueEnvironment.stageTimingLog)
         self.outputDirectory = OutputDirectoryResolver(settings: settings, notifier: notifier)
         self.terminalJobStore = terminalJobStore
             ?? TerminalJobStore(
@@ -290,8 +297,7 @@ final class PipelineController {
         guard let engine = engineProvider?() else { return nil }
         return PipelineQueue(
             engine: engine,
-            diarizationFactory: { [self] in makeFluidDiarizer(mode: settings.diarizerMode) },
-            diarizationFactoryWithMode: { [self] mode in makeFluidDiarizer(mode: mode) },
+            diarizerFactory: { [self] mode in makeFluidDiarizer(mode: mode ?? settings.diarizerMode) },
             protocolGeneratorFactory: { [self] in makeProtocolGenerator() },
             // Captured by value: this is the moment the destination of every job
             // this queue will run is decided, so a fallback is reported here and
@@ -304,23 +310,14 @@ final class PipelineController {
             echoCancellationEnabled: { [settings] in settings.echoCancellationEnabled },
             numSpeakers: settings.numSpeakers,
             micLabel: settings.micName,
-            includeFullTranscriptInProtocol: settings.includeFullTranscriptInProtocol,
-            saveRawTranscriptSeparately: settings.saveRawTranscriptSeparately,
-            useAITitleForFilenames: settings.useAITitleForFilenames,
-            transcriptOutputOptionsProvider: { [settings] in
-                TranscriptOutputOptions(
-                    includeFullTranscriptInProtocol: settings.includeFullTranscriptInProtocol,
-                    saveRawTranscriptSeparately: settings.saveRawTranscriptSeparately,
-                    useAITitleForFilenames: settings.useAITitleForFilenames,
-                )
-            },
+            transcriptOutputOptions: { [settings] in settings.transcriptOutputOptions },
             speakerMatcherFactory: SpeakerMatcher.factory(dbPath: speakersDB, notifier: notifier),
-            vadConfig: settings.vadEnabled ? VADConfig(threshold: settings.vadThreshold) : nil,
-            recognitionStatsLog: RecognitionStatsLog(path: queueEnvironment.recognitionStatsLog),
+            vadThreshold: settings.vadEnabled ? settings.vadThreshold : nil,
+            recognitionStatsLog: recognitionStatsLog,
             terminologyNormalizer: { [weak settings] in
                 settings?.terminologyNormalizerForJob() ?? TerminologyNormalizer()
             },
-            stageTimingLog: StageTimingLog(path: queueEnvironment.stageTimingLog),
+            stageTimingLog: stageTimingLog,
             notionExportConfigurationProvider: { [settings] in NotionExportConfiguration.resolve(settings: settings) },
             terminalJobStore: terminalJobStore,
             securityScope: queueEnvironment.securityScope,

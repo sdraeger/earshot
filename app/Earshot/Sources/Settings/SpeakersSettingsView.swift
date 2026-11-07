@@ -11,16 +11,7 @@ struct SpeakersSettingsView: View {
     @Bindable var settings: AppSettings
     var recognitionStatsLog: RecognitionStatsLog
     var stageTimingLog: StageTimingLog
-    var enrollmentDiarizerFactory: (() -> any DiarizationProvider)?
-    var namingDialogActive: Bool
-    var pipelineBusy: Bool
-    /// Called whenever the user mutates the speakers DB from the Known
-    /// Voices sheet (rename / delete / merge). Used to refresh
-    /// `PipelineQueue.knownSpeakerNames` so the next naming dialog sees
-    /// up-to-date chips. Optional — tests and the parent that doesn't
-    /// own a PipelineQueue can omit.
-    var onSpeakerMutate: (() -> Void)?
-    var matcherFactory: () -> SpeakerMatcher = { SpeakerMatcher() }
+    var editing = SpeakerDBEditing()
 
     /// Holds the lazily-created matcher while the Known Voices sheet is up.
     /// `SpeakerMatcher.init` reads + decodes speakers.json, so it must not run
@@ -79,7 +70,7 @@ struct SpeakersSettingsView: View {
 
             Section {
                 Button("Manage\u{2026}") {
-                    knownVoicesSheet = KnownVoicesSheetItem(matcher: matcherFactory())
+                    knownVoicesSheet = KnownVoicesSheetItem(matcher: editing.makeMatcher())
                 }
                 .settingsNote("Rename, delete, or merge entries in your speaker DB.")
             } header: {
@@ -94,10 +85,10 @@ struct SpeakersSettingsView: View {
         .sheet(item: $knownVoicesSheet) { item in
             KnownVoicesView(
                 matcher: item.matcher,
-                diarizerFactory: enrollmentDiarizerFactory,
-                namingDialogActive: namingDialogActive,
-                pipelineBusy: pipelineBusy,
-                onMutate: onSpeakerMutate,
+                diarizerFactory: editing.makeDiarizer,
+                namingDialogActive: editing.namingDialogActive,
+                pipelineBusy: editing.pipelineBusy,
+                onMutate: editing.didMutate,
             )
         }
     }

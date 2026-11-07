@@ -10,7 +10,7 @@ final class StopCountingRecorder: RecordingProvider {
     private(set) var syncStops = 0
     private(set) var offMainStops = 0
 
-    func start(source _: RecordingSource, micDeviceUID _: String?, debugLogging _: Bool) {
+    func start(source _: RecordingSource, micDeviceUID _: String?) {
         startCalled = true
     }
 

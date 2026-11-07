@@ -93,9 +93,9 @@ final class WhisperVocabularyPromptTests: XCTestCase {
     }
 
     func testTermsFromFile_returnsNilForEmptyOrUnreadablePath() {
-        XCTAssertNil(WhisperVocabularyPrompt.terms(fromFileAt: ""))
+        XCTAssertNil(terms(fromFileAt: ""))
         XCTAssertNil(
-            WhisperVocabularyPrompt.terms(
+            terms(
                 fromFileAt: "/tmp/not-present-vocabulary-\(UUID().uuidString).txt",
             ),
         )
@@ -106,7 +106,7 @@ final class WhisperVocabularyPromptTests: XCTestCase {
         let file = try makeVocabularyFile(contents: contents)
         defer { try? FileManager.default.removeItem(at: file) }
 
-        XCTAssertEqual(WhisperVocabularyPrompt.terms(fromFileAt: file.path)?.count, 256)
+        XCTAssertEqual(terms(fromFileAt: file.path)?.count, 256)
     }
 
     func testTermsFromFile_rejects257UniqueTerms() throws {
@@ -114,7 +114,7 @@ final class WhisperVocabularyPromptTests: XCTestCase {
         let file = try makeVocabularyFile(contents: contents)
         defer { try? FileManager.default.removeItem(at: file) }
 
-        XCTAssertNil(WhisperVocabularyPrompt.terms(fromFileAt: file.path))
+        XCTAssertNil(terms(fromFileAt: file.path))
     }
 
     func testTermsFromFile_acceptsA512ByteTerm() throws {
@@ -122,7 +122,7 @@ final class WhisperVocabularyPromptTests: XCTestCase {
         let file = try makeVocabularyFile(contents: term)
         defer { try? FileManager.default.removeItem(at: file) }
 
-        XCTAssertEqual(WhisperVocabularyPrompt.terms(fromFileAt: file.path), [term])
+        XCTAssertEqual(terms(fromFileAt: file.path), [term])
     }
 
     func testTermsFromFile_rejectsA513ByteTerm() throws {
@@ -130,7 +130,7 @@ final class WhisperVocabularyPromptTests: XCTestCase {
         let file = try makeVocabularyFile(contents: term)
         defer { try? FileManager.default.removeItem(at: file) }
 
-        XCTAssertNil(WhisperVocabularyPrompt.terms(fromFileAt: file.path))
+        XCTAssertNil(terms(fromFileAt: file.path))
     }
 
     func testCacheKey_changesWhenVocabularyPathOrModelChanges() {
@@ -174,5 +174,14 @@ final class WhisperVocabularyPromptTests: XCTestCase {
             .appendingPathComponent("vocabulary-prompt-\(UUID().uuidString).txt")
         try contents.write(to: file, atomically: true, encoding: .utf8)
         return file
+    }
+
+    /// The terms the shared reader accepts from the file at `path`, nil when
+    /// it has none to give.
+    private func terms(fromFileAt path: String) -> [String]? { // swiftlint:disable:this discouraged_optional_collection
+        guard let revision = WhisperVocabularyPrompt.fileRevision(at: path),
+              case let .terms(terms) = WhisperVocabularyPrompt.read(fileAt: path, revision: revision)
+        else { return nil }
+        return terms
     }
 }

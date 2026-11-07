@@ -23,7 +23,7 @@ class WatchLoop {
     // Manual recording
     private(set) var manualRecordingInfo: ManualRecordingInfo?
     /// Exposed for read-only access — AppState's per-channel level monitor polls
-    /// `appLevelDBFS` / `micLevelDBFS` here at ~10 Hz to drive the asymmetric-silence
+    /// `captureStatus` here at ~10 Hz to drive the asymmetric-silence
     /// indicator. Setter stays private so the recording lifecycle flows through
     /// this class only.
     private(set) var activeRecorder: (any RecordingProvider)?
@@ -49,9 +49,6 @@ class WatchLoop {
     let micDeviceUID: () -> String?
     /// The running recording's source, nil once it ended; see `activeRecordingSource`.
     private(set) var recordingSource: RecordingSource?
-    /// Dynamic accessor — read at recording-start time so toggling the setting
-    /// at runtime takes effect on the next recording without an app restart.
-    let verboseDiagnostics: () -> Bool
     /// Dynamic accessor — when true, skip the post-processing pipeline and
     /// instead write a `<basename>_meta.json` sidecar next to the recording.
     let recordOnly: () -> Bool
@@ -125,7 +122,6 @@ class WatchLoop {
         maxDuration: TimeInterval = 14400,
         noMic: @escaping () -> Bool = { false },
         micDeviceUID: @escaping () -> String? = { nil },
-        verboseDiagnostics: @escaping () -> Bool = { false },
         recordOnly: @escaping () -> Bool = { false },
         recordOnlyDestination: @escaping () -> RecordOnlyDestination = {
             .unscoped(AppPaths.recordingsDir)
@@ -148,7 +144,6 @@ class WatchLoop {
         self.maxDuration = maxDuration
         self.noMic = noMic
         self.micDeviceUID = micDeviceUID
-        self.verboseDiagnostics = verboseDiagnostics
         self.recordOnly = recordOnly
         self.recordOnlyDestination = recordOnlyDestination
         self.recordOnlyFileTransfer = recordOnlyFileTransfer
@@ -279,10 +274,7 @@ class WatchLoop {
         let recorder = await recorderFactory()
         // The quit may have begun while the recorder was being built.
         guard !finishingForQuit else { throw CancellationError() }
-        try recorder.start(
-            source: source, micDeviceUID: micDeviceUID,
-            debugLogging: verboseDiagnostics(),
-        )
+        try recorder.start(source: source, micDeviceUID: micDeviceUID)
 
         let pid = source.appPID
         recordingSource = source
@@ -441,11 +433,7 @@ class WatchLoop {
         // A quit or a stop that came while the recorder was being built: a
         // recording started now would end at once, empty, as an error.
         try Task.checkCancellation()
-        try recorder.start(
-            source: source,
-            micDeviceUID: micDeviceUID,
-            debugLogging: verboseDiagnostics(),
-        )
+        try recorder.start(source: source, micDeviceUID: micDeviceUID)
         activeRecorder = recorder
         defer { activeRecorder = nil }
 

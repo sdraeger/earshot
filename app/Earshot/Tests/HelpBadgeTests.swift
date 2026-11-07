@@ -203,10 +203,6 @@ final class HelpBadgeTests: XCTestCase {
                 settings: settings,
                 recognitionStatsLog: RecognitionStatsLog(),
                 stageTimingLog: StageTimingLog(),
-                enrollmentDiarizerFactory: nil,
-                namingDialogActive: false,
-                pipelineBusy: false,
-                matcherFactory: { SpeakerMatcher() },
             ).inspect()),
         ] {
             for tooltipped in view.findAll(where: { (try? $0.help()) != nil }) {

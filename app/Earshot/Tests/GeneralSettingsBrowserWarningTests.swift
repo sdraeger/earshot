@@ -87,13 +87,19 @@ final class GeneralSettingsBrowserWarningTests: XCTestCase {
     /// The General tab is reached through `SettingsView`, so the value has to
     /// survive one more hop than the tests above exercise. Without this, passing
     /// nil (or the wrong property) from the scene would go unnoticed.
-    func test_settingsView_forwardsAuthorizationToTheGeneralTab() throws {
-        let view = try SettingsView(
-            settings: makeSettings(browserMeetings: true),
-            whisperKitEngine: WhisperKitEngine(),
-            parakeetEngine: ParakeetEngine(),
+    func test_settingsView_forwardsAuthorizationToTheGeneralTab() async throws {
+        let settings = try makeSettings(browserMeetings: true)
+        let notifier = RecordingNotifier()
+        notifier.reportedVisibility = visibility(authorization: .denied)
+        let permissions = PermissionsController(notifier: notifier) {
+            HealthCheckResult(screenRecording: .healthy, microphone: .healthy)
+        }
+        await permissions.check()
+        let view = SettingsView(
+            settings: settings,
+            engines: .forTesting(settings: settings),
             updateChecker: nil,
-            notificationVisibility: visibility(authorization: .denied),
+            permissions: permissions,
             recognitionStatsLog: RecognitionStatsLog(),
             stageTimingLog: StageTimingLog(),
         )

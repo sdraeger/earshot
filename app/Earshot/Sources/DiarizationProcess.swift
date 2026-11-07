@@ -29,7 +29,7 @@ protocol DiarizationProvider: Sendable {
     /// re-run UI in `SpeakerNamingView` can initialise its mode picker to
     /// the mode that was actually used at recording time.
     var mode: DiarizerMode { get }
-    func run(audioPath: URL, numSpeakers: Int?, meetingTitle: String) async throws -> DiarizationResult
+    func run(audioPath: URL, numSpeakers: Int?) async throws -> DiarizationResult
 }
 
 /// Speaker assignment utilities.
@@ -290,13 +290,43 @@ enum DiarizationProcess {
 }
 
 extension DiarizationProcess {
+    /// Speaker-labels transcript segments for whichever diarization `run`
+    /// holds: both tracks, one track after the other failed, or the single
+    /// mixed track. Nil when the run holds none, leaving the caller's
+    /// transcript as it is. `autoNames` maps diarizer ids to names, `R_`/`M_`
+    /// prefixed when both tracks were diarized.
+    ///
+    /// Suppressed echo copies are dropped before anything gets a speaker: left
+    /// in, they would be labeled like real speech and merged into adjacent
+    /// same-speaker blocks, where the transcript's own filter no longer sees them.
+    static func labelSegments(
+        _ segments: [TimestampedSegment], run: DiarizationRun,
+        isDualSource: Bool, micLabel: String, autoNames: [String: String],
+    ) -> [TimestampedSegment]? { // swiftlint:disable:this discouraged_optional_collection
+        let segments = segments.filter { !$0.suppressed }
+        let topology: LabelingTopology
+        if isDualSource, let app = run.app, let mic = run.mic {
+            topology = .dualTrack(cached: segments, micLabel: micLabel, app: app, mic: mic)
+        } else if isDualSource, let app = run.app {
+            // Mic diarization failed (silent track, no input device): the mic
+            // transcript keeps its raw `micLabel`, better than "speakers not
+            // identified" on a recording with good remote audio.
+            topology = .dualTrackAppOnly(cached: segments, micLabel: micLabel, app: app)
+        } else if isDualSource, let mic = run.mic {
+            // App diarization failed (silent remote side, solo meeting): the
+            // app transcript keeps its raw `Remote` tag. Mirror of the above.
+            topology = .dualTrackMicOnly(cached: segments, micLabel: micLabel, mic: mic)
+        } else if let combined = run.combined {
+            topology = .single(segments: segments, diarization: combined)
+        } else {
+            return nil
+        }
+        return label(topology, autoNames: autoNames)
+    }
+
     /// The diarization topologies the pipeline produces, each carrying the data
-    /// its speaker assignment needs (single-source, dual-track, and the app-only
-    /// and mic-only single-track fallbacks). `labelSegments` collapses what used
-    /// to be near-duplicate inline assignment blocks in `PipelineQueue.diarize`;
-    /// the merge + formatting tail they all shared is now applied once at the
-    /// call site.
-    enum LabelingTopology {
+    /// its speaker assignment needs.
+    private enum LabelingTopology {
         /// Single mixed track: every transcript segment is assigned against one
         /// diarization.
         case single(segments: [TimestampedSegment], diarization: DiarizationResult)
@@ -315,10 +345,7 @@ extension DiarizationProcess {
         case dualTrackMicOnly(cached: [TimestampedSegment], micLabel: String, mic: DiarizationResult)
     }
 
-    /// Apply speaker labels for any diarization topology, returning segments
-    /// ready for `mergeConsecutiveSpeakers` + formatting. `autoNames` carries
-    /// the speaker→name mapping (`R_`/`M_`-prefixed for the dual-track cases).
-    static func labelSegments(_ topology: LabelingTopology, autoNames: [String: String]) -> [TimestampedSegment] {
+    private static func label(_ topology: LabelingTopology, autoNames: [String: String]) -> [TimestampedSegment] {
         switch topology {
         case let .single(segments, diarization):
             let named = DiarizationResult(
@@ -401,4 +428,16 @@ enum DiarizationError: LocalizedError {
         case .tooLittleSpeech: "Too little speech to tell speakers apart"
         }
     }
+}
+
+/// Raw diarization output for one run of the diarize loop. `combined` is the
+/// result fed into speaker naming (the prefixed dual-track merge, the app-only
+/// or mic-only single-track fallback, or the single-source result); `app`/`mic`
+/// are retained for the dual-track assignment step. Internal top-level (not `PipelineQueue`-nested)
+/// because it crosses the queue ↔ `SpeakerNamingSession` boundary in both
+/// directions via `SpeakerNamingSessionDelegate`.
+struct DiarizationRun {
+    let app: DiarizationResult?
+    let mic: DiarizationResult?
+    let combined: DiarizationResult?
 }

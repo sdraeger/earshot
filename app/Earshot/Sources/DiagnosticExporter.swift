@@ -18,6 +18,24 @@ enum DiagnosticExporter {
         let settings: [String: String]
     }
 
+    /// This build, this macOS and the settings a diagnosis usually needs.
+    @MainActor
+    static func headerInfo(settings: AppSettings) -> HeaderInfo {
+        HeaderInfo(
+            appVersion: Bundle.main.appVersion,
+            commit: Bundle.main.gitCommitHash,
+            macOSVersion: ProcessInfo.processInfo.operatingSystemVersionString,
+            settings: [
+                "verboseDiagnostics": "\(settings.verboseDiagnostics)",
+                "diarize": "\(settings.diarize)",
+                "vadEnabled": "\(settings.vadEnabled)",
+                "transcriptionEngine": settings.transcriptionEngine.rawValue,
+                "protocolProvider": settings.protocolProvider.rawValue,
+                "recordOnly": "\(settings.recordOnly)",
+            ],
+        )
+    }
+
     /// Shared formatter — `ISO8601DateFormatter` init is non-trivial.
     /// `nonisolated(unsafe)`: thread-safe for read-only use since macOS 10.9
     /// despite not being formally `Sendable`.
@@ -39,33 +57,18 @@ enum DiagnosticExporter {
     /// Pure function — settings dict is stringified verbatim into `key=value`
     /// pairs, sorted alphabetically for deterministic output. No PII is
     /// expected in `settings` (UI flags only).
-    static func makeHeader(
-        appVersion: String,
-        commit: String,
-        macOSVersion: String,
-        settings: [String: String],
-    ) -> String {
-        let pairs = settings.sorted { $0.key < $1.key }
+    static func makeHeader(_ info: HeaderInfo) -> String {
+        let pairs = info.settings.sorted { $0.key < $1.key }
             .map { "\($0.key)=\($0.value)" }
             .joined(separator: " ")
         let timestamp = formatter.string(from: Date())
         return """
-        # Earshot \(appVersion) (\(commit))
-        # macOS \(macOSVersion)
+        # Earshot \(info.appVersion) (\(info.commit))
+        # macOS \(info.macOSVersion)
         # exported_at=\(timestamp)
         # settings: \(pairs)
         # ---
         """
-    }
-
-    /// Build header from a `HeaderInfo` bundle.
-    static func makeHeader(_ info: HeaderInfo) -> String {
-        makeHeader(
-            appVersion: info.appVersion,
-            commit: info.commit,
-            macOSVersion: info.macOSVersion,
-            settings: info.settings,
-        )
     }
 
     /// Reads the last `windowSeconds` of unified-log entries for our subsystems

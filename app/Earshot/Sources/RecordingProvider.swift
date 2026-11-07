@@ -4,7 +4,7 @@ import Foundation
 /// Abstraction for recording, enabling mock injection in tests.
 @MainActor
 protocol RecordingProvider {
-    func start(source: RecordingSource, micDeviceUID: String?, debugLogging: Bool) throws
+    func start(source: RecordingSource, micDeviceUID: String?) throws
     func stop() throws -> RecordingResult
 
     /// `stop()` with the file work (reading the tracks back, mixing, writing
@@ -15,59 +15,31 @@ protocol RecordingProvider {
     /// `stop()`, for doubles that have no file work to move.
     func stopOffMain() async throws -> RecordingResult
 
-    /// Instantaneous app-audio level in dBFS. -120 when no capture session is
-    /// active or the tap stopped delivering buffers in the last 0.5 s.
-    /// Drives the menu-bar asymmetric-silence indicator. Default: -120
-    /// (mocks that don't simulate audio levels stay silent).
-    var appLevelDBFS: Double { get }
+    /// Each channel's level, buffer ages and failure flags, read together so
+    /// one polling tick decides from one moment. Default: both channels
+    /// delivering signal right now, so a double that does not simulate capture
+    /// never looks broken; it has to say so before it can be reported.
+    var captureStatus: CaptureStatus { get }
+}
 
-    /// Instantaneous mic level in dBFS, with the same semantics as
-    /// `appLevelDBFS`.
-    var micLevelDBFS: Double { get }
+extension CaptureStatus {
+    /// Both channels delivered a buffer carrying signal just now, at -120 dBFS.
+    /// What a provider reports when it does not simulate capture at all.
+    static let deliveringNow = CaptureStatus(
+        mic: CaptureChannelStatus(ages: .deliveringSignalNow),
+        app: CaptureChannelStatus(ages: .deliveringSignalNow),
+    )
 
-    /// True once a channel's capture was abandoned for good (issue #588),
-    /// whether a restart attempt never returned or the retry budget ran out.
-    /// The level alone cannot say this: a channel that fell silent may come
-    /// back, one that gave up will not.
-    /// Default false so mocks that do not simulate capture failures stay quiet.
-    var appCaptureGaveUp: Bool { get }
-    var micCaptureGaveUp: Bool { get }
-
-    /// True when the microphone's give-up was a first start that did not
-    /// return within its deadline (issue #778), not a failed restart. Only
-    /// the notice's wording depends on it. Default false.
-    var micCaptureStartTimedOut: Bool { get }
-
-    /// True once the opt-in silent-track watchdog stopped rebuilding the app
-    /// capture because its rebuilds did not restore signal (issue #672). Not a
-    /// give-up: the channel still captures. Default false.
-    var appSilentTrackWatchdogGaveUp: Bool { get }
-
-    /// The app tap's noise-floor verdict (issue #699), see
-    /// `AppNoiseFloorSensor`. Default false.
-    var appCarriesOnlyNoiseFloor: Bool { get }
-
-    /// Whether the microphone is released because it went without audio for
-    /// the capture layer's whole budget, and how many times it was (issues
-    /// #724, #706). Unlike a give-up it can clear: a device change brings the
-    /// microphone back.
-    var micCaptureStall: MicCaptureStall { get }
-
-    /// How long each channel has gone without a buffer, and without one
-    /// carrying signal. This is what says whether a channel is broken;
-    /// `appLevelDBFS` / `micLevelDBFS` only say how loud it is, and report the
-    /// same -120 for a muted device, a dead tap and a channel that was never
-    /// opened. Defaults describe a channel delivering normally, so a double
-    /// that does not simulate capture never looks broken.
-    var appSignalAges: ChannelSignalAges { get }
-    var micSignalAges: ChannelSignalAges { get }
+    subscript(channel: AudioChannel) -> CaptureChannelStatus {
+        switch channel {
+        case .mic: mic
+        case .app: app
+        }
+    }
 }
 
 extension ChannelSignalAges {
-    /// A channel that delivered a buffer carrying signal just now. What a
-    /// provider reports when it does not simulate capture at all, so a double
-    /// has to say explicitly that a channel is broken before it can be
-    /// reported as such.
+    /// A channel that delivered a buffer carrying signal just now.
     static let deliveringSignalNow = ChannelSignalAges(secondsSinceLastBuffer: 0, secondsSinceLastEnergy: 0)
 }
 
@@ -79,43 +51,7 @@ extension RecordingProvider {
         try stop()
     }
 
-    var appLevelDBFS: Double {
-        -120
-    }
-
-    var micLevelDBFS: Double {
-        -120
-    }
-
-    var appCaptureGaveUp: Bool {
-        false
-    }
-
-    var micCaptureGaveUp: Bool {
-        false
-    }
-
-    var micCaptureStartTimedOut: Bool {
-        false
-    }
-
-    var appSilentTrackWatchdogGaveUp: Bool {
-        false
-    }
-
-    var appCarriesOnlyNoiseFloor: Bool {
-        false
-    }
-
-    var micCaptureStall: MicCaptureStall {
-        MicCaptureStall()
-    }
-
-    var appSignalAges: ChannelSignalAges {
-        .deliveringSignalNow
-    }
-
-    var micSignalAges: ChannelSignalAges {
-        .deliveringSignalNow
+    var captureStatus: CaptureStatus {
+        .deliveringNow
     }
 }

@@ -46,7 +46,7 @@ final class QuitFinishesRecordingTests: XCTestCase {
             self.mixSeconds = mixSeconds
         }
 
-        func start(source _: RecordingSource, micDeviceUID _: String?, debugLogging _: Bool) {}
+        func start(source _: RecordingSource, micDeviceUID _: String?) {}
 
         func stop() -> RecordingResult {
             Thread.sleep(forTimeInterval: mixSeconds)

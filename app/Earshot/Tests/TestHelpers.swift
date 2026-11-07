@@ -369,7 +369,7 @@ final class MockDiarization: DiarizationProvider, @unchecked Sendable {
     /// Runs inside each call with that call's 1-based number.
     var onRun: ((Int) -> Void)?
 
-    func run(audioPath: URL, numSpeakers: Int?, meetingTitle _: String) throws -> DiarizationResult {
+    func run(audioPath: URL, numSpeakers: Int?) throws -> DiarizationResult {
         runCount += 1
         onRun?(runCount)
         receivedNumSpeakers.append(numSpeakers)

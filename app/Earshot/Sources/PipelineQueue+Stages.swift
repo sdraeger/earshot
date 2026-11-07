@@ -37,13 +37,10 @@ extension PipelineQueue {
         /// the same one. The job holds the fact it comes from; this is that
         /// fact's rendering for the length of one run.
         let note: String?
-        /// Segments cached for diarization reuse (avoids double transcription).
-        let cachedSegments: [TimestampedSegment]? // swiftlint:disable:this discouraged_optional_collection
+        /// The transcript's segments, reused by diarization so nothing is
+        /// transcribed twice.
+        let segments: [TimestampedSegment]
         let isDualSource: Bool
-        /// The exact rules snapshot used for the initial transcription. The
-        /// defensive re-transcription fallback must not pick up Settings edits
-        /// made while this job is being processed.
-        let terminologyNormalizer: TerminologyNormalizer
     }
 
     /// Typed errors thrown by the pipeline stages.
@@ -113,7 +110,7 @@ extension PipelineQueue {
             participants: job.participants,
             // Anchor the basename on the meeting start; reimport/orphan jobs
             // have no recorded start, so fall back to the enqueue time.
-            slug: namingSlug(title: job.meetingTitle, jobID: job.id, startTime: job.artifactStartTime),
+            slug: SpeakerNamingStore.slug(title: job.meetingTitle, jobID: job.id, startTime: job.artifactStartTime),
         )
     }
 
@@ -254,7 +251,7 @@ extension PipelineQueue {
             // segments, and the rendered string would then pass a check meant
             // to catch exactly that: a note-only transcript saved as a success,
             // with a protocol generated from one sentence.
-            let body = transcription.cachedSegments?.transcriptText(note: nil) ?? transcription.transcript
+            let body = transcription.segments.transcriptText(note: nil)
             guard !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 // Compute input RMS only on the failure path — loading the whole
                 // mix file is expensive (~MB-per-minute) and we only need it when
@@ -271,10 +268,7 @@ extension PipelineQueue {
             saveTranscriptDraft(transcription.transcript, ctx: ctx, outputDir: outputDir)
 
             let diarization = try await stage(ctx.jobID) {
-                try await diarize(
-                    transcription, ctx: ctx, engine: engine,
-                    workDir: workDir, outputDir: outputDir,
-                )
+                try await diarize(transcription, ctx: ctx, engine: engine, workDir: workDir)
             }
 
             try await stage(ctx.jobID) {
@@ -562,17 +556,14 @@ extension PipelineQueue {
         // with differently normalized app and microphone segments.
         let normalizer = terminologyNormalizer()
         let transcript: String
-        // Segments cached for potential diarization reuse (avoids double transcription)
-        var cachedSegments: [TimestampedSegment]? // swiftlint:disable:this discouraged_optional_collection
+        let segments: [TimestampedSegment]
         let isDualSource = ctx.appPath != nil && ctx.micPath != nil
         if let appAudioPath = ctx.appPath, let micAudioPath = ctx.micPath {
-            let segments = try await transcribeDualSource(
+            segments = try await normalize(transcribeDualSource(
                 ctx, engine: engine, workDir: workDir,
                 appAudioPath: appAudioPath, micAudioPath: micAudioPath,
-            )
-            let normalizedSegments = normalize(segments, with: normalizer)
-            cachedSegments = normalizedSegments
-            transcript = normalizedSegments.transcriptText(note: transcriptNote(ctx.jobID))
+            ), with: normalizer)
+            transcript = segments.transcriptText(note: transcriptNote(ctx.jobID))
         } else {
             // Single-source: resample mix to 16kHz
             guard let mixPath = ctx.mixPath else {
@@ -584,7 +575,7 @@ extension PipelineQueue {
             // Optional VAD preprocessing: trim silence before transcription
             var vadMap: VadSegmentMap?
             let transcriptionPath: URL
-            if vadConfig != nil, let vadResult = try await preprocessWithVAD(audioPath: mix16k, workDir: workDir) {
+            if vadThreshold != nil, let vadResult = try await preprocessWithVAD(audioPath: mix16k, workDir: workDir) {
                 transcriptionPath = vadResult.trimmedPath
                 vadMap = vadResult.map
             } else {
@@ -592,22 +583,18 @@ extension PipelineQueue {
             }
 
             // Use transcribeSegments to cache results for diarization
-            let rawSegments = try await engine.transcribeSegments(audioPath: transcriptionPath)
-            var segments = normalize(rawSegments, with: normalizer)
-
+            let normalized = try await normalize(
+                engine.transcribeSegments(audioPath: transcriptionPath), with: normalizer,
+            )
             // Remap timestamps back to original timeline if VAD was used
-            if let map = vadMap {
-                segments = map.remapTimestamps(segments)
-            }
-
-            cachedSegments = segments
+            segments = vadMap.map { $0.remapTimestamps(normalized) } ?? normalized
             // Single-source has one track and no viability verdict, so nothing
             // to annotate.
             transcript = segments.transcriptText(note: nil)
         }
 
-        let segCount = cachedSegments?.count ?? 0
-        let totalSecs = cachedSegments?.last?.end ?? 0
+        let segCount = segments.count
+        let totalSecs = segments.last?.end ?? 0
         // Stash for stage-timing RTF: diarization/protocol of this job process
         // the same audio length. Not for a job cancelled while it was
         // transcribed: removing it cleared this bookkeeping, and writing it
@@ -620,9 +607,8 @@ extension PipelineQueue {
         return TranscriptionOutput(
             transcript: transcript,
             note: transcriptNote(ctx.jobID),
-            cachedSegments: cachedSegments,
+            segments: segments,
             isDualSource: isDualSource,
-            terminologyNormalizer: normalizer,
         )
     }
 
@@ -631,13 +617,12 @@ extension PipelineQueue {
         with normalizer: TerminologyNormalizer,
     ) -> [TimestampedSegment] {
         guard !normalizer.isEmpty else { return segments }
+        // Only the text changes: rebuilding the segment field by field dropped
+        // `suppressed`, and the echo copies the merge marked came back.
         return segments.map { segment in
-            TimestampedSegment(
-                start: segment.start,
-                end: segment.end,
-                text: normalizer.normalize(segment.text),
-                speaker: segment.speaker,
-            )
+            var segment = segment
+            segment.text = normalizer.normalize(segment.text)
+            return segment
         }
     }
 
@@ -656,11 +641,11 @@ extension PipelineQueue {
     /// refuses any other error escaping past the block.
     private func diarize(
         _ transcription: TranscriptionOutput, ctx: JobContext,
-        engine: any TranscribingEngine, workDir: URL, outputDir: URL,
+        engine: any TranscribingEngine, workDir: URL,
     ) async throws(CancellationError) -> (transcript: String, speakerNames: [String]) {
         var output = (transcript: transcription.transcript, speakerNames: [String]())
 
-        guard diarizeEnabled, let diarizationFactory else { return output }
+        guard diarizeEnabled, let diarizerFactory else { return output }
         // An engine without per-utterance timestamps (one that emits a single
         // whole-recording segment) can't be diarized — assignSpeakers would
         // collapse the entire meeting onto one speaker. Skip it and tell the
@@ -674,7 +659,7 @@ extension PipelineQueue {
             )
             return output
         }
-        let diarizeProcess = diarizationFactory()
+        let diarizeProcess = diarizerFactory(nil)
         guard diarizeProcess.isAvailable else {
             logger.info("[\(ctx.shortID, privacy: .public)] diarization_skipped")
             return output
@@ -688,7 +673,7 @@ extension PipelineQueue {
             // unreadable source here failed the whole job, discarding a
             // transcript that was already finished. Stage 3 tolerates a missing
             // mix, so there is nothing further downstream that needs it.
-            let mix16k = try await ensureMixAudio(workDir: workDir, ctx: ctx)
+            try await ensureMixAudio(workDir: workDir, ctx: ctx)
             let speakerCount = numSpeakers > 0 ? numSpeakers : nil
             let run = try await runDiarization(
                 diarizeProcess: diarizeProcess, useDualTrack: transcription.isDualSource,
@@ -704,14 +689,15 @@ extension PipelineQueue {
                 autoNames = naming.resolveSpeakerNames(
                     diarization: currentDiarization,
                     job: (jobID: ctx.jobID, title: ctx.title, slug: ctx.slug, participants: ctx.participants),
-                    diarizeProcess: diarizeProcess, isDualSource: transcription.isDualSource,
-                    outputDir: outputDir, cues: nameCueContext(run: run, transcription: transcription),
+                    diarizerMode: diarizeProcess.mode, isDualSource: transcription.isDualSource,
+                    cues: nameCueContext(run: run, transcription: transcription),
                 )
             }
 
-            if let labeled = try await labeledTranscript(
-                from: run, autoNames: autoNames, transcription: transcription,
-                engine: engine, mix16k: mix16k,
+            if let labeled = renderLabeledTranscript(
+                run: run, cachedSegments: transcription.segments,
+                isDualSource: transcription.isDualSource, autoNames: autoNames,
+                note: transcription.note,
             ) {
                 output = (transcript: labeled, speakerNames: Array(autoNames.values))
             }
@@ -740,16 +726,19 @@ extension PipelineQueue {
         return "Diarization failed — speakers not identified"
     }
 
-    /// Ensure a 16 kHz mix exists for diarization, returning its path. Single
-    /// source already resampled it in the transcribe stage; paired imports
-    /// without a real `_mix.wav` mix `app + mic` directly into the workdir cache
-    /// (no persistent mix file written).
-    private func ensureMixAudio(workDir: URL, ctx: JobContext) async throws -> URL {
+    /// Ensure `mix_16k.wav` exists in the work folder for the naming dialog and
+    /// a single-source re-run. Single source already resampled it in the
+    /// transcribe stage; paired imports without a real `_mix.wav` mix the two
+    /// tracks the transcribe stage resampled to 16 kHz, since `AudioMixer.mix`
+    /// does not resample and the originals may be at any rate.
+    private func ensureMixAudio(workDir: URL, ctx: JobContext) async throws {
         let mix16k = workDir.appendingPathComponent("mix_16k.wav")
-        guard !FileManager.default.fileExists(atPath: mix16k.path) else { return mix16k }
+        guard !FileManager.default.fileExists(atPath: mix16k.path) else { return }
         if let mixPath = ctx.mixPath, FileManager.default.fileExists(atPath: mixPath.path) {
             try await AudioMixer.resampleFile(from: mixPath, to: mix16k)
-        } else if let appAudioPath = ctx.appPath, let micAudioPath = ctx.micPath {
+        } else if ctx.appPath != nil, ctx.micPath != nil {
+            let appAudioPath = workDir.appendingPathComponent("app_16k.wav")
+            let micAudioPath = workDir.appendingPathComponent("mic_16k.wav")
             // Off the main actor: this decodes both full tracks and writes a WAV.
             let micDelay = ctx.micDelay
             try await Task.detached(priority: .userInitiated) {
@@ -762,7 +751,6 @@ extension PipelineQueue {
         } else {
             throw PipelineError.noMixAudioForDiarization
         }
-        return mix16k
     }
 
     /// Run diarization for one loop iteration. Dual-track diarizes the app and
@@ -778,7 +766,7 @@ extension PipelineQueue {
         guard useDualTrack else {
             let diarization = try await diarizeProcess.run(
                 audioPath: workDir.appendingPathComponent("mix_16k.wav"),
-                numSpeakers: speakerCount, meetingTitle: ctx.title,
+                numSpeakers: speakerCount,
             )
             return DiarizationRun(app: nil, mic: nil, combined: diarization)
         }
@@ -791,7 +779,7 @@ extension PipelineQueue {
                 micDelay: ctx.micDelay,
                 viability: job(withID: ctx.jobID)?.trackViability,
             ),
-            speakerCount: speakerCount, title: ctx.title, jobID: ctx.jobID,
+            speakerCount: speakerCount, jobID: ctx.jobID,
         )
     }
 
@@ -815,7 +803,7 @@ extension PipelineQueue {
     func runDualTrackDiarization(
         diarizeProcess: any DiarizationProvider,
         tracks: (app: URL, mic: URL, micDelay: TimeInterval, viability: DualTrackViability?),
-        speakerCount: Int?, title: String, jobID: UUID,
+        speakerCount: Int?, jobID: UUID,
     ) async throws -> DiarizationRun {
         let sid = PipelineJob.shortID(for: jobID)
 
@@ -824,7 +812,7 @@ extension PipelineQueue {
         if tracks.viability?.carriesAppAudio ?? true {
             do {
                 appDiarization = try await diarizeProcess.run(
-                    audioPath: tracks.app, numSpeakers: speakerCount, meetingTitle: title,
+                    audioPath: tracks.app, numSpeakers: speakerCount,
                 )
             } catch {
                 appError = error
@@ -842,7 +830,6 @@ extension PipelineQueue {
                 let rawMic = try await diarizeProcess.run(
                     audioPath: tracks.mic,
                     numSpeakers: nil, // auto-detect local speakers
-                    meetingTitle: title,
                 )
                 // Shift the mic diarization onto the app/canonical timeline so it
                 // aligns with the mic transcript segments, which
@@ -898,37 +885,10 @@ extension PipelineQueue {
         return DiarizationRun(app: appDiarization, mic: micDiarization, combined: combined)
     }
 
-    /// Apply speaker names to the transcript for whichever topology the run
-    /// produced (dual-track, mic-fail app-only fallback, app-fail mic-only
-    /// fallback, or single-source), returning the labeled transcript, or `nil`
-    /// when no diarization is available, leaving the caller's transcript
-    /// unchanged. The topologies share the merge + format tail, applied once here.
-    private func labeledTranscript(
-        from run: DiarizationRun, autoNames: [String: String],
-        transcription: TranscriptionOutput, engine: any TranscribingEngine, mix16k: URL,
-    ) async throws -> String? {
-        // cachedSegments is set by the transcribe stage in practice; the
-        // single-source branch re-transcribes defensively if it's somehow nil.
-        let cachedSegments: [TimestampedSegment]
-        if let cached = transcription.cachedSegments {
-            cachedSegments = cached
-        } else if transcription.isDualSource {
-            return nil
-        } else {
-            let rawSegments = try await engine.transcribeSegments(audioPath: mix16k)
-            cachedSegments = normalize(rawSegments, with: transcription.terminologyNormalizer)
-        }
-        return renderLabeledTranscript(
-            run: run, cachedSegments: cachedSegments,
-            isDualSource: transcription.isDualSource, autoNames: autoNames,
-            note: transcription.note,
-        )
-    }
-
     /// Render the speaker-labeled transcript text from a diarization run +
     /// transcript segments: pick the topology, assign speakers, merge
     /// consecutive blocks, and format. Shared by the batch path
-    /// (`labeledTranscript`) and the late re-diarization rewrite
+    /// (`diarize`) and the late re-diarization rewrite
     /// (the session's `rewriteTranscriptFromLateRun`) so both re-segment
     /// identically. Returns nil when the run carries no usable diarization.
     /// Internal (not private) because it is a `SpeakerNamingSessionDelegate`
@@ -937,62 +897,26 @@ extension PipelineQueue {
         run: DiarizationRun, cachedSegments: [TimestampedSegment],
         isDualSource: Bool, autoNames: [String: String], note: String?,
     ) -> String? {
-        // Suppressed copies leave before anything gets a speaker. Left in,
-        // they would be labeled like real speech and merged into adjacent
-        // same-speaker blocks, where the trailing `transcriptText` filter can
-        // no longer see them — the duplicates would return in exactly the
-        // rendering the default settings produce. Only this rendering drops
-        // them; the stored segments keep the mark.
-        let cachedSegments = cachedSegments.filter { !$0.suppressed }
-        guard let topology = labelingTopology(run: run, cachedSegments: cachedSegments, isDualSource: isDualSource) else {
-            return nil
-        }
-        let labeled = DiarizationProcess.labelSegments(topology, autoNames: autoNames)
+        guard let labeled = DiarizationProcess.labelSegments(
+            cachedSegments, run: run, isDualSource: isDualSource, micLabel: micLabel, autoNames: autoNames,
+        ) else { return nil }
         return DiarizationProcess.mergeConsecutiveSpeakers(labeled).transcriptText(note: note)
-    }
-
-    private func labelingTopology(
-        run: DiarizationRun, cachedSegments: [TimestampedSegment], isDualSource: Bool,
-    ) -> DiarizationProcess.LabelingTopology? {
-        if isDualSource, let appDiar = run.app, let micDiar = run.mic {
-            return .dualTrack(cached: cachedSegments, micLabel: micLabel, app: appDiar, mic: micDiar)
-        }
-        if isDualSource, let appDiar = run.app {
-            // Mic diarization failed (silent track / no input device). Keep the
-            // mic transcript with its raw `micLabel` — better than emitting
-            // "speakers not identified" on a recording with good remote audio.
-            return .dualTrackAppOnly(cached: cachedSegments, micLabel: micLabel, app: appDiar)
-        }
-        if isDualSource, let micDiar = run.mic {
-            // App diarization failed (silent remote side / solo meeting). Keep the
-            // app transcript with its raw `Remote` tag and diarize the mic track —
-            // better than emitting "speakers not identified" on a recording with
-            // good local audio. Mirror of the app-only fallback above.
-            return .dualTrackMicOnly(cached: cachedSegments, micLabel: micLabel, mic: micDiar)
-        }
-        if let combined = run.combined {
-            return .single(segments: cachedSegments, diarization: combined)
-        }
-        return nil
     }
 
     /// The transcript labeled with raw diarizer labels, and which labels are
     /// voices on the local microphone, for estimating names from the
     /// conversation. Empty without cached segments.
     private func nameCueContext(run: DiarizationRun, transcription: TranscriptionOutput) -> SpeakerNameCues.Context {
-        guard let combined = run.combined, let cached = transcription.cachedSegments,
-              let topology = labelingTopology(
-                  run: run, cachedSegments: cached.filter { !$0.suppressed }, isDualSource: transcription.isDualSource,
-              )
-        else { return .init() }
+        guard let combined = run.combined else { return .init() }
         let labels = Set(combined.segments.map(\.speaker)).union(combined.speakingTimes.keys)
         // A mic-only fallback diarizes nothing but the microphone, unprefixed.
         let micLabels = !transcription.isDualSource ? []
             : run.app == nil ? labels : labels.filter { SpeakerKey(encoded: $0).track == .mic }
         return SpeakerNameCues.Context(
             transcript: DiarizationProcess.labelSegments(
-                topology, autoNames: Dictionary(uniqueKeysWithValues: labels.map { ($0, $0) }),
-            ),
+                transcription.segments, run: run, isDualSource: transcription.isDualSource,
+                micLabel: micLabel, autoNames: Dictionary(uniqueKeysWithValues: labels.map { ($0, $0) }),
+            ) ?? [],
             micLabels: micLabels, micName: micLabel,
         )
     }
@@ -1047,11 +971,9 @@ extension PipelineQueue {
         }
 
         // --- Persist transcript segments for late re-assignment ---
-        if let cachedSegments = transcription.cachedSegments {
-            let segPath = recordingsDir.appendingPathComponent("\(ctx.slug)_segments.json")
-            if let data = try? JSONEncoder().encode(cachedSegments) {
-                try? data.write(to: segPath, options: .atomic)
-            }
+        let segPath = recordingsDir.appendingPathComponent("\(ctx.slug)_segments.json")
+        if let data = try? JSONEncoder().encode(transcription.segments) {
+            try? data.write(to: segPath, options: .atomic)
         }
 
         // --- Protocol Generation (optional) ---
@@ -1117,7 +1039,7 @@ extension PipelineQueue {
         // only after a transcript exists, so namingSlug is set on every real
         // path; the fallback only keeps generation working without one.
         let initialBasename = job.namingSlug
-            ?? Self.namingSlug(title: title, jobID: jobID, startTime: Date())
+            ?? SpeakerNamingStore.slug(title: title, jobID: jobID, startTime: Date())
         let meetingStartTime = job.meetingStartTime
         updateJobState(id: jobID, to: .generatingProtocol)
         let protocolMD: String
@@ -1179,8 +1101,7 @@ extension PipelineQueue {
         if let configuration {
             queueNotionExport(
                 PendingNotionExport(
-                    protocolMD: protocolMD,
-                    transcript: outputOptions.includeFullTranscriptInProtocol ? transcript : nil,
+                    markdown: markdown,
                     speakerNames: speakerNames,
                     configuration: configuration,
                     savedLocally: savedLocally,
@@ -1314,10 +1235,10 @@ extension PipelineQueue {
     /// or nil if no speech regions are detected.
     private func preprocessWithVAD(audioPath: URL, workDir: URL) async throws
         -> (trimmedPath: URL, map: VadSegmentMap)? {
-        guard let vadConfig else { return nil }
+        guard let vadThreshold else { return nil }
 
         let vadInstance = vad ?? {
-            let v = FluidVAD(threshold: vadConfig.threshold)
+            let v = FluidVAD(threshold: vadThreshold)
             vad = v
             return v
         }()

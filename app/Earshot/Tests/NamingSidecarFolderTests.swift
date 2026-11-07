@@ -161,10 +161,10 @@ final class NamingSidecarFolderTests: XCTestCase {
         try Data([0]).write(to: blocked)
 
         XCTAssertEqual(
-            try recordedFoldersOfFirstPass(writingTo: writable).map { $0?.standardizedFileURL.path },
+            recordedFoldersOfFirstPass(writingTo: writable).map { $0?.standardizedFileURL.path },
             [writable.standardizedFileURL.path],
         )
-        XCTAssertEqual(try recordedFoldersOfFirstPass(writingTo: blocked), [nil])
+        XCTAssertEqual(recordedFoldersOfFirstPass(writingTo: blocked), [nil])
     }
 
     // MARK: - Arrangement
@@ -268,12 +268,10 @@ final class NamingSidecarFolderTests: XCTestCase {
         return ProtocolArrangement(session: session, delegate: delegate, job: job, transcriptDir: transcriptDir)
     }
 
-    /// Runs the first pass's naming stage writing to `outputDir` and returns
-    /// what each of its metadata calls told the queue it wrote to. The session
-    /// gets a folder of its own, so the folder recorded can only be the one
-    /// the stage was handed.
-    private func recordedFoldersOfFirstPass(writingTo outputDir: URL) throws -> [URL?] {
-        let session = try NamingSessionFixture.session(outputDir: makeTempDirectory(prefix: "FirstPassSession"))
+    /// Runs the first pass's naming stage of a session writing to `outputDir`
+    /// and returns what each of its metadata calls told the queue it wrote to.
+    private func recordedFoldersOfFirstPass(writingTo outputDir: URL) -> [URL?] {
+        let session = NamingSessionFixture.session(outputDir: outputDir)
         let delegate = NamingSessionMockDelegate()
         session.delegate = delegate
         let job = NamingSessionFixture.pendingJob(namingSlug: nil, transcriptPath: nil)
@@ -282,8 +280,8 @@ final class NamingSidecarFolderTests: XCTestCase {
         _ = session.resolveSpeakerNames(
             diarization: Self.oneSpeaker,
             job: (jobID: job.id, title: "Standup", slug: slug, participants: []),
-            diarizeProcess: MockDiarization(),
-            isDualSource: false, outputDir: outputDir,
+            diarizerMode: .offline,
+            isDualSource: false,
         )
 
         return delegate.recordedSidecarDirs

@@ -1,10 +1,8 @@
 @testable import Earshot
 import XCTest
 
-/// Unit tests for `DiarizationProcess.labelSegments`, the topology-dispatching
-/// speaker-assignment entry point that unifies the three formerly-inline
-/// assignment blocks in `PipelineQueue.diarize` (single-source / dual-track /
-/// dual-track mic-fail app-only fallback).
+/// Unit tests for `DiarizationProcess.labelSegments`: which diarization a run
+/// holds decides how each segment gets its speaker.
 final class DiarizationLabelSegmentsTests: XCTestCase {
     func testLabelSegmentsSingleAppliesAutoNames() {
         let segments = [
@@ -21,10 +19,10 @@ final class DiarizationLabelSegmentsTests: XCTestCase {
             embeddings: nil,
         )
         let result = DiarizationProcess.labelSegments(
-            .single(segments: segments, diarization: diarization),
-            autoNames: ["SPEAKER_0": "Alice", "SPEAKER_1": "Bob"],
+            segments, run: DiarizationRun(app: nil, mic: nil, combined: diarization),
+            isDualSource: false, micLabel: "Me", autoNames: ["SPEAKER_0": "Alice", "SPEAKER_1": "Bob"],
         )
-        XCTAssertEqual(result.map(\.speaker), ["Alice", "Bob"])
+        XCTAssertEqual(result?.map(\.speaker), ["Alice", "Bob"])
     }
 
     func testLabelSegmentsDualTrackUnprefixesAndAssignsPerTrack() {
@@ -43,11 +41,11 @@ final class DiarizationLabelSegmentsTests: XCTestCase {
         )
         // autoNames arrive R_/M_-prefixed (as mergeDualTrackDiarization produces).
         let result = DiarizationProcess.labelSegments(
-            .dualTrack(cached: cached, micLabel: "Me", app: app, mic: mic),
-            autoNames: ["R_S0": "Alice", "M_S0": "Bob"],
+            cached, run: DiarizationRun(app: app, mic: mic, combined: nil),
+            isDualSource: true, micLabel: "Me", autoNames: ["R_S0": "Alice", "M_S0": "Bob"],
         )
-        XCTAssertEqual(result.map(\.speaker), ["Alice", "Bob"])
-        XCTAssertEqual(result.map(\.text), ["app line", "mic line"])
+        XCTAssertEqual(result?.map(\.speaker), ["Alice", "Bob"])
+        XCTAssertEqual(result?.map(\.text), ["app line", "mic line"])
     }
 
     func testLabelSegmentsDualTrackAppOnlyKeepsRawMicLabel() {
@@ -63,14 +61,14 @@ final class DiarizationLabelSegmentsTests: XCTestCase {
             speakingTimes: ["SPEAKER_0": 5], autoNames: [:], embeddings: nil,
         )
         let result = DiarizationProcess.labelSegments(
-            .dualTrackAppOnly(cached: cached, micLabel: "Me", app: app),
-            autoNames: ["SPEAKER_0": "Alice"],
+            cached, run: DiarizationRun(app: app, mic: nil, combined: app),
+            isDualSource: true, micLabel: "Me", autoNames: ["SPEAKER_0": "Alice"],
         )
         // App segments are assigned their matched name (the autoNames keys are
         // already unprefixed in this fallback, since `combined == appDiarization`).
         // Mic segments keep their raw micLabel (mic wasn't diarized).
-        XCTAssertEqual(result.map(\.speaker), ["Alice", "Me"])
-        XCTAssertEqual(result.map(\.text), ["app line", "mic line"])
+        XCTAssertEqual(result?.map(\.speaker), ["Alice", "Me"])
+        XCTAssertEqual(result?.map(\.text), ["app line", "mic line"])
     }
 
     func testLabelSegmentsDualTrackMicOnlyKeepsRawRemoteLabel() {
@@ -87,13 +85,37 @@ final class DiarizationLabelSegmentsTests: XCTestCase {
             speakingTimes: ["SPEAKER_0": 5], autoNames: [:], embeddings: nil,
         )
         let result = DiarizationProcess.labelSegments(
-            .dualTrackMicOnly(cached: cached, micLabel: "Me", mic: mic),
-            autoNames: ["SPEAKER_0": "Bob"],
+            cached, run: DiarizationRun(app: nil, mic: mic, combined: mic),
+            isDualSource: true, micLabel: "Me", autoNames: ["SPEAKER_0": "Bob"],
         )
         // Mic segments get their matched name; app segments keep their raw
         // "Remote" tag (the app track wasn't diarized).
-        XCTAssertEqual(result.map(\.speaker), ["Remote", "Bob"])
-        XCTAssertEqual(result.map(\.text), ["app line", "mic line"])
+        XCTAssertEqual(result?.map(\.speaker), ["Remote", "Bob"])
+        XCTAssertEqual(result?.map(\.text), ["app line", "mic line"])
+    }
+
+    func testNoDiarizationLeavesTheTranscriptAlone() {
+        let segments = [TimestampedSegment(start: 0, end: 5, text: "Hello")]
+        XCTAssertNil(DiarizationProcess.labelSegments(
+            segments, run: DiarizationRun(app: nil, mic: nil, combined: nil),
+            isDualSource: false, micLabel: "Me", autoNames: [:],
+        ))
+    }
+
+    func testSuppressedEchoCopiesAreDropped() {
+        let segments = [
+            TimestampedSegment(start: 0, end: 5, text: "Hello"),
+            TimestampedSegment(start: 5, end: 10, text: "Hello", suppressed: true),
+        ]
+        let diarization = DiarizationResult(
+            segments: [.init(start: 0, end: 10, speaker: "SPEAKER_0")],
+            speakingTimes: ["SPEAKER_0": 10], autoNames: [:], embeddings: nil,
+        )
+        let result = DiarizationProcess.labelSegments(
+            segments, run: DiarizationRun(app: nil, mic: nil, combined: diarization),
+            isDualSource: false, micLabel: "Me", autoNames: ["SPEAKER_0": "Alice"],
+        )
+        XCTAssertEqual(result?.map(\.start), [0])
     }
 
     // MARK: - unprefixNames

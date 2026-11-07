@@ -11,18 +11,14 @@ struct TranscriptOutputOptions {
     let includeFullTranscriptInProtocol: Bool
     let saveRawTranscriptSeparately: Bool
     let useAITitleForFilenames: Bool
-}
 
-/// Raw diarization output for one run of the diarize loop. `combined` is the
-/// result fed into speaker naming (the prefixed dual-track merge, the app-only
-/// or mic-only single-track fallback, or the single-source result); `app`/`mic`
-/// are retained for the dual-track assignment step. Internal top-level (not `PipelineQueue`-nested)
-/// because it crosses the queue ↔ `SpeakerNamingSession` boundary in both
-/// directions via `SpeakerNamingSessionDelegate`.
-struct DiarizationRun {
-    let app: DiarizationResult?
-    let mic: DiarizationResult?
-    let combined: DiarizationResult?
+    /// What a job got before it carried its own options, and what a queue
+    /// built without settings stamps.
+    static let legacyDefault = Self(
+        includeFullTranscriptInProtocol: true,
+        saveRawTranscriptSeparately: true,
+        useAITitleForFilenames: false,
+    )
 }
 
 @MainActor
@@ -66,12 +62,9 @@ class PipelineQueue {
 
     // Dependencies for processing
     let engine: (any TranscribingEngine)?
-    let diarizationFactory: (() -> any DiarizationProvider)?
-    /// Optional mode-overriding factory used by `lateDiarization` when the
-    /// user picks a different mode in the re-run UI. `nil` = mode override
-    /// not supported, `lateDiarization` falls back to `diarizationFactory()`
-    /// (current global setting). Production wires both via `AppState`.
-    let diarizationFactoryWithMode: ((DiarizerMode) -> any DiarizationProvider)?
+    /// Builds the diarizer for one run: the given mode for a re-run in a
+    /// mode the user picked, the current setting for nil.
+    let diarizerFactory: ((DiarizerMode?) -> any DiarizationProvider)?
     let protocolGeneratorFactory: (() -> (any ProtocolGenerating)?)?
     let outputDir: URL?
     /// Opens and closes security-scoped access on `outputDir`. Injectable so a
@@ -106,7 +99,7 @@ class PipelineQueue {
     /// the switch said yes and the next recording was processed by a queue
     /// still holding no. Its neighbours here are still copies, which is the
     /// same latent problem; widening that is not this change's to make, and
-    /// `transcriptOutputOptionsProvider` below shows the shape it would take.
+    /// `transcriptOutputOptions` below shows the shape it would take.
     private let isEchoCancellationEnabled: () -> Bool
 
     var echoCancellationEnabled: Bool {
@@ -125,13 +118,14 @@ class PipelineQueue {
     let numSpeakers: Int
     let micLabel: String
     /// Compatibility policy for snapshots created before a job carried its own
-    /// output options.
+    /// output options: the settings as they were when this queue was built.
     private let fallbackTranscriptOutputOptions: TranscriptOutputOptions
     /// Reads the current Settings only when a job is enqueued; the values are
     /// then copied onto the job and remain stable for its whole lifecycle.
-    private let transcriptOutputOptionsProvider: () -> TranscriptOutputOptions
+    private let currentTranscriptOutputOptions: () -> TranscriptOutputOptions
     let speakerMatcherFactory: () -> SpeakerMatcher
-    let vadConfig: VADConfig?
+    /// Speech threshold for trimming silence before transcription; nil skips it.
+    let vadThreshold: Float?
     /// nil disables JSONL logging. AppState injects a real instance for production;
     /// tests leave it nil unless they explicitly want to assert on the log.
     let recognitionStatsLog: RecognitionStatsLog?
@@ -256,13 +250,6 @@ class PipelineQueue {
         speakerNamingData(forJobID: nil)
     }
 
-    /// Filesystem slug for a job's persisted artefacts. Thin alias for
-    /// `SpeakerNamingStore.slug` — kept so existing call sites (`processNext`,
-    /// tests) don't have to reach into the store for a pure helper.
-    static func namingSlug(title: String, jobID: UUID, startTime: Date) -> String {
-        SpeakerNamingStore.slug(title: title, jobID: jobID, startTime: startTime)
-    }
-
     /// The job the naming window shows: `preferred` while it is awaiting
     /// naming, else the first job that is. Only ever a job awaiting naming.
     /// A selection can outlive that state (a re-run moves its job to
@@ -305,14 +292,6 @@ class PipelineQueue {
     func completeSpeakerNaming(
         jobID: UUID, result: SpeakerNamingResult, source: RecognitionSource = .dialog,
     ) -> SpeakerNamingRefusal? {
-        naming.completeSpeakerNaming(jobID: jobID, result: result, source: source)
-    }
-
-    /// Called by the UI when the user confirms or skips speaker naming without a
-    /// specific job in hand — resolves the first pending job and forwards to
-    /// the session, which takes answers only for a job awaiting naming.
-    func completeSpeakerNaming(result: SpeakerNamingResult, source: RecognitionSource = .dialog) {
-        guard let jobID = pendingSpeakerNamingJobs.first?.id else { return }
         naming.completeSpeakerNaming(jobID: jobID, result: result, source: source)
     }
 
@@ -359,8 +338,7 @@ class PipelineQueue {
         self.processedLedger = ProcessedRecordingsLedger(logDir: self.logDir)
         eventLog = PipelineEventLog(logDir: self.logDir)
         self.engine = nil
-        self.diarizationFactory = nil
-        self.diarizationFactoryWithMode = nil
+        diarizerFactory = nil
         self.protocolGeneratorFactory = nil
         self.outputDir = nil
         securityScope = .live
@@ -372,16 +350,11 @@ class PipelineQueue {
         self.echoCancellerFactory = echoCancellerFactory ?? { Self.bundledEchoCanceller() }
         self.numSpeakers = 0
         self.micLabel = "Me"
-        let outputOptions = TranscriptOutputOptions(
-            includeFullTranscriptInProtocol: true,
-            saveRawTranscriptSeparately: true,
-            useAITitleForFilenames: false,
-        )
-        fallbackTranscriptOutputOptions = outputOptions
-        transcriptOutputOptionsProvider = { outputOptions }
+        fallbackTranscriptOutputOptions = .legacyDefault
+        currentTranscriptOutputOptions = { .legacyDefault }
         self.speakerMatcherFactory = speakerMatcherFactory
         self.snapshotWriter = snapshotWriter
-        self.vadConfig = nil
+        self.vadThreshold = nil
         self.recognitionStatsLog = nil
         terminologyNormalizer = { TerminologyNormalizer() }
         self.stageTimingLog = stageTimingLog
@@ -390,7 +363,6 @@ class PipelineQueue {
         self.terminalJobStore = terminalJobStore
         self.inFlightRuns = inFlightRuns ?? .shared
         naming = SpeakerNamingSession(
-            namingStore: SpeakerNamingStore(outputDir: nil),
             speakerMatcherFactory: speakerMatcherFactory,
         )
         naming.delegate = self
@@ -462,8 +434,7 @@ class PipelineQueue {
     /// Full init with all processing dependencies.
     init(
         engine: any TranscribingEngine,
-        diarizationFactory: @escaping () -> any DiarizationProvider,
-        diarizationFactoryWithMode: ((DiarizerMode) -> any DiarizationProvider)? = nil,
+        diarizerFactory: @escaping (DiarizerMode?) -> any DiarizationProvider,
         protocolGeneratorFactory: @escaping () -> (any ProtocolGenerating)?,
         outputDir: URL,
         logDir: URL,
@@ -474,13 +445,10 @@ class PipelineQueue {
         echoCancellerFactory: (() -> (any EchoCancelling)?)? = nil,
         numSpeakers: Int = 0,
         micLabel: String = "Me",
-        includeFullTranscriptInProtocol: Bool = true,
-        saveRawTranscriptSeparately: Bool = true,
-        useAITitleForFilenames: Bool = false,
-        transcriptOutputOptionsProvider: (() -> TranscriptOutputOptions)? = nil,
+        transcriptOutputOptions: @escaping () -> TranscriptOutputOptions = { .legacyDefault },
         speakerMatcherFactory: @escaping () -> SpeakerMatcher = PipelineQueue.throwawayMatcherFactory(),
         snapshotWriter: @escaping @Sendable ([PipelineJob], URL) throws -> Void = PipelineSnapshot.save,
-        vadConfig: VADConfig? = nil,
+        vadThreshold: Float? = nil,
         recognitionStatsLog: RecognitionStatsLog? = nil,
         terminologyNormalizer: @escaping () -> TerminologyNormalizer = { TerminologyNormalizer() },
         stageTimingLog: StageTimingLog? = nil,
@@ -494,8 +462,7 @@ class PipelineQueue {
         self.processedLedger = ProcessedRecordingsLedger(logDir: self.logDir)
         eventLog = PipelineEventLog(logDir: self.logDir)
         self.engine = engine
-        self.diarizationFactory = diarizationFactory
-        self.diarizationFactoryWithMode = diarizationFactoryWithMode
+        self.diarizerFactory = diarizerFactory
         self.protocolGeneratorFactory = protocolGeneratorFactory
         self.outputDir = outputDir
         self.securityScope = securityScope
@@ -515,16 +482,11 @@ class PipelineQueue {
         // of micLabel for both the tagging and the re-split, so sanitizing here
         // keeps them consistent.)
         self.micLabel = micLabel == DiarizationProcess.remoteSpeakerLabel ? "Me" : micLabel
-        let outputOptions = TranscriptOutputOptions(
-            includeFullTranscriptInProtocol: includeFullTranscriptInProtocol,
-            saveRawTranscriptSeparately: saveRawTranscriptSeparately,
-            useAITitleForFilenames: useAITitleForFilenames,
-        )
-        fallbackTranscriptOutputOptions = outputOptions
-        self.transcriptOutputOptionsProvider = transcriptOutputOptionsProvider ?? { outputOptions }
+        fallbackTranscriptOutputOptions = transcriptOutputOptions()
+        currentTranscriptOutputOptions = transcriptOutputOptions
         self.speakerMatcherFactory = speakerMatcherFactory
         self.snapshotWriter = snapshotWriter
-        self.vadConfig = vadConfig
+        self.vadThreshold = vadThreshold
         self.recognitionStatsLog = recognitionStatsLog
         self.terminologyNormalizer = terminologyNormalizer
         self.stageTimingLog = stageTimingLog
@@ -533,10 +495,8 @@ class PipelineQueue {
         self.terminalJobStore = terminalJobStore
         self.inFlightRuns = inFlightRuns ?? .shared
         naming = SpeakerNamingSession(
-            namingStore: SpeakerNamingStore(outputDir: outputDir),
             speakerMatcherFactory: speakerMatcherFactory,
-            diarizationFactory: diarizationFactory,
-            diarizationFactoryWithMode: diarizationFactoryWithMode,
+            diarizerFactory: diarizerFactory,
             protocolGeneratorFactory: protocolGeneratorFactory,
             outputDir: outputDir,
             recognitionStatsLog: recognitionStatsLog,
@@ -597,7 +557,7 @@ class PipelineQueue {
     /// same admission rule as regular enqueueing so a later settings change
     /// cannot change output handling for an already recovered recording.
     func stampTranscriptOutputOptions(on job: inout PipelineJob) {
-        let outputOptions = transcriptOutputOptionsProvider()
+        let outputOptions = currentTranscriptOutputOptions()
         if job.includeFullTranscriptInProtocol == nil {
             job.includeFullTranscriptInProtocol = outputOptions.includeFullTranscriptInProtocol
         }

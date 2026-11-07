@@ -17,7 +17,7 @@ final class WhisperKitVocabularyFlowTests: XCTestCase {
         engine.customVocabularyPath = vocabularyFile.path
         engine.installVocabularyTermsLoaderForTesting { _, _ in
             loader.loadCount += 1
-            return .loaded(["Northstar"])
+            return .terms(["Northstar"])
         }
         engine.installDecodingClientForTesting(client)
 
@@ -109,7 +109,7 @@ final class WhisperKitVocabularyFlowTests: XCTestCase {
         engine.vocabularyPromptEnabled = true
         engine.installVocabularyTermsLoaderForTesting { _, _ in
             loader.loadCount += 1
-            return .loaded(["Northstar"])
+            return .terms(["Northstar"])
         }
         engine.installDecodingClientForTesting(client)
 
@@ -135,7 +135,7 @@ final class WhisperKitVocabularyFlowTests: XCTestCase {
         engine.vocabularyPromptEnabled = true
         engine.installVocabularyTermsLoaderForTesting { _, _ in
             loader.loadCount += 1
-            return .loaded(["Northstar"])
+            return .terms(["Northstar"])
         }
         engine.installDecodingClientForTesting(client)
 
@@ -156,7 +156,7 @@ final class WhisperKitVocabularyFlowTests: XCTestCase {
         engine.vocabularyPromptEnabled = true
         engine.installVocabularyTermsLoaderForTesting { _, _ in
             loader.loadCount += 1
-            return .unavailable
+            return .rejected(.unavailable)
         }
         engine.installDecodingClientForTesting(client)
 

@@ -4,9 +4,9 @@ import UniformTypeIdentifiers
 
 struct TranscriptionSettingsView: View {
     @Bindable var settings: AppSettings
-    var whisperKitEngine: WhisperKitEngine
-    var parakeetEngine: ParakeetEngine
-    var modelServerEngine: ModelServerEngine
+    /// The engines, for their state and the model load. Not observable itself:
+    /// the view observes the engine instances it reads through it.
+    let engines: EngineController
 
     /// Set when the user flips live captions on while a first-use Nemotron model
     /// download is pending — defers the actual enable to the consent alert.
@@ -18,27 +18,19 @@ struct TranscriptionSettingsView: View {
     @State private var customModelDrafts: WhisperKitCustomModelDrafts
 
     /// WhisperKit models earlier builds left in `Documents`. Nil leaves the row
-    /// out, so a view built without one (as most view tests do) is never bound
-    /// to the real `Documents` and Trash; `SettingsView` passes the live one.
-    @State private var legacyModels: LegacyWhisperModelsState?
+    /// out, as the view tests and the App Store build have it.
+    private var legacyModels: LegacyWhisperModelsState? {
+        engines.legacyWhisperModels
+    }
 
-    init(
-        settings: AppSettings,
-        whisperKitEngine: WhisperKitEngine,
-        parakeetEngine: ParakeetEngine,
-        modelServerEngine: ModelServerEngine = ModelServerEngine(),
-        legacyModels: LegacyWhisperModelsState? = nil,
-    ) {
+    init(settings: AppSettings, engines: EngineController) {
         self.settings = settings
-        self.whisperKitEngine = whisperKitEngine
-        self.parakeetEngine = parakeetEngine
-        self.modelServerEngine = modelServerEngine
+        self.engines = engines
         // Created here, not as a default value: for an `@Observable` type the
         // default-value form creates the object only once the view is installed,
         // so a view inspected outside a hierarchy, as the view tests do, would get
         // a new object on every read and lose each edit.
         _customModelDrafts = State(initialValue: WhisperKitCustomModelDrafts())
-        _legacyModels = State(initialValue: legacyModels)
     }
 
     /// Also the variants `LegacyWhisperModelsState` may offer to remove from the
@@ -366,14 +358,6 @@ struct TranscriptionSettingsView: View {
             + "switching mid-recording is not supported."
     }
 
-    private var activeEngine: any TranscribingEngine {
-        switch settings.transcriptionEngine {
-        case .parakeet: parakeetEngine
-        case .whisperKit: whisperKitEngine
-        case .server: modelServerEngine
-        }
-    }
-
     @ViewBuilder private var modelServerFields: some View {
         if settings.transcriptionEngine == .server {
             ModelServerSettingsFields(settings: settings)
@@ -382,7 +366,7 @@ struct TranscriptionSettingsView: View {
 
     @ViewBuilder
     private var engineStatusView: some View { // swiftlint:disable:this attributes
-        let engine = activeEngine
+        let engine = engines.activeTranscriptionEngine
         switch engine.modelState {
         case .downloading:
             ProgressView(value: engine.downloadProgress)
@@ -404,12 +388,10 @@ struct TranscriptionSettingsView: View {
 
         case .unloaded:
             Button("Load model") {
-                if settings.transcriptionEngine == .whisperKit {
-                    customModelDrafts.commitPending(to: settings)
-                    let model = settings.whisperKitModelSelection
-                    whisperKitEngine.applyModelVariant(model.variant, origin: model.origin)
-                }
-                Task { await engine.loadModel() }
+                customModelDrafts.commitPending(to: settings)
+                // Through the warm-up queue, so it never compiles at the same
+                // time as a live-caption model.
+                Task { await engines.preloadActiveModel() }
             }
         }
 
@@ -417,12 +399,12 @@ struct TranscriptionSettingsView: View {
         // no reason while a model is loaded (a failed reload that keeps its pipe
         // keeps the requested model, since any model change drops the pipe), so
         // this shows only beside "Load Model".
-        if settings.transcriptionEngine == .whisperKit, let reason = whisperKitEngine.loadFailureReason {
+        if settings.transcriptionEngine == .whisperKit, let reason = engines.whisperKit.loadFailureReason {
             Text(reason)
                 .font(.callout)
                 .foregroundStyle(.red)
         }
-        if settings.transcriptionEngine == .server, let reason = modelServerEngine.loadFailureReason {
+        if settings.transcriptionEngine == .server, let reason = engines.modelServer.loadFailureReason {
             Text(reason)
                 .font(.callout)
                 .foregroundStyle(.red)

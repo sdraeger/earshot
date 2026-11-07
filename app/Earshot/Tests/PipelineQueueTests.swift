@@ -16,7 +16,7 @@ final class PipelineQueueTests: XCTestCase {
 
         func exportMeeting( // swiftlint:disable:this function_parameter_count
             title _: String, date _: Date?, tags: [String], markdown _: String,
-            transcript _: String?, existingPageID _: String?,
+            existingPageID _: String?,
             onPageCreated _: @Sendable (NotionPageResult) async -> Void,
         ) -> NotionPageResult {
             receivedTags = tags
@@ -636,8 +636,8 @@ final class PipelineQueueTests: XCTestCase {
         failing.insertJobForTesting(job)
         failing.updateJobState(id: job.id, to: .error, error: "Empty transcript")
 
-        let nextLaunch = PipelineQueue(logDir: tmpDir)
-        await nextLaunch.recoverOrphanedRecordings(recordingsDir: recDir)
+        let nextLaunch = PipelineQueue(logDir: tmpDir, stagingDir: recDir)
+        await nextLaunch.recoverOrphanedRecordings()
 
         XCTAssertTrue(
             nextLaunch.jobs.isEmpty,
@@ -750,8 +750,8 @@ final class PipelineQueueTests: XCTestCase {
 
         queue.cancelJob(id: job.id)
 
-        let rebuilt = PipelineQueue(logDir: tmpDir)
-        await rebuilt.recoverOrphanedRecordings(recordingsDir: recDir)
+        let rebuilt = PipelineQueue(logDir: tmpDir, stagingDir: recDir)
+        await rebuilt.recoverOrphanedRecordings()
         XCTAssertTrue(
             rebuilt.jobs.isEmpty,
             "the cancelled recording was offered again as a recovered one",
@@ -777,8 +777,8 @@ final class PipelineQueueTests: XCTestCase {
 
         queue.cancelJob(id: job.id)
 
-        let rebuilt = PipelineQueue(logDir: tmpDir)
-        await rebuilt.recoverOrphanedRecordings(recordingsDir: recDir)
+        let rebuilt = PipelineQueue(logDir: tmpDir, stagingDir: recDir)
+        await rebuilt.recoverOrphanedRecordings()
         XCTAssertTrue(
             rebuilt.jobs.isEmpty,
             "the cancelled recording was offered again as a recovered one",
@@ -798,8 +798,8 @@ final class PipelineQueueTests: XCTestCase {
         let registry = InFlightRunRegistry()
         XCTAssertEqual(registry.begin(jobID: UUID(), mixPath: mixFile), .claimed, "test premise: the claim was free")
 
-        let freshQueue = PipelineQueue(logDir: tmpDir, inFlightRuns: registry)
-        await freshQueue.recoverOrphanedRecordings(recordingsDir: recDir)
+        let freshQueue = PipelineQueue(logDir: tmpDir, stagingDir: recDir, inFlightRuns: registry)
+        await freshQueue.recoverOrphanedRecordings()
 
         XCTAssertTrue(
             freshQueue.jobs.isEmpty,
@@ -814,8 +814,8 @@ final class PipelineQueueTests: XCTestCase {
         let mixFile = recDir.appendingPathComponent("20260311_100000_mix.wav")
         try Data(repeating: 0xFF, count: 100).write(to: mixFile)
 
-        let freshQueue = PipelineQueue(logDir: tmpDir)
-        await freshQueue.recoverOrphanedRecordings(recordingsDir: recDir)
+        let freshQueue = PipelineQueue(logDir: tmpDir, stagingDir: recDir)
+        await freshQueue.recoverOrphanedRecordings()
 
         XCTAssertEqual(freshQueue.jobs.count, 1)
         XCTAssertEqual(freshQueue.jobs[0].meetingTitle, "Recovered Recording (20260311_100000)")
@@ -833,12 +833,13 @@ final class PipelineQueueTests: XCTestCase {
         let engine = MockEngine()
         let freshQueue = PipelineQueue(
             engine: engine,
-            diarizationFactory: { MockDiarization() },
+            diarizerFactory: { _ in MockDiarization() },
             protocolGeneratorFactory: { MockProtocolGen() },
             outputDir: tmpDir,
             logDir: tmpDir,
+            stagingDir: recDir,
             // swiftlint:disable:next trailing_closure
-            transcriptOutputOptionsProvider: {
+            transcriptOutputOptions: {
                 TranscriptOutputOptions(
                     includeFullTranscriptInProtocol: false,
                     saveRawTranscriptSeparately: false,
@@ -847,7 +848,7 @@ final class PipelineQueueTests: XCTestCase {
             },
         )
 
-        await freshQueue.recoverOrphanedRecordings(recordingsDir: recDir)
+        await freshQueue.recoverOrphanedRecordings()
 
         let recovered = try XCTUnwrap(freshQueue.jobs.first)
         XCTAssertFalse(try XCTUnwrap(recovered.includeFullTranscriptInProtocol))
@@ -861,7 +862,7 @@ final class PipelineQueueTests: XCTestCase {
         let mixFile = recDir.appendingPathComponent("20260311_100000_mix.wav")
         try Data(repeating: 0xFF, count: 100).write(to: mixFile)
 
-        let freshQueue = PipelineQueue(logDir: tmpDir)
+        let freshQueue = PipelineQueue(logDir: tmpDir, stagingDir: recDir)
         let existing = PipelineJob(
             meetingTitle: "Already Tracked",
             appName: "Teams",
@@ -870,7 +871,7 @@ final class PipelineQueueTests: XCTestCase {
         )
         freshQueue.enqueue(existing)
 
-        await freshQueue.recoverOrphanedRecordings(recordingsDir: recDir)
+        await freshQueue.recoverOrphanedRecordings()
         XCTAssertEqual(freshQueue.jobs.count, 1)
         XCTAssertEqual(freshQueue.jobs[0].meetingTitle, "Already Tracked")
     }
@@ -882,8 +883,8 @@ final class PipelineQueueTests: XCTestCase {
         let mixFile = recDir.appendingPathComponent("20260311_100000_mix.wav")
         try Data(repeating: 0x00, count: 44).write(to: mixFile)
 
-        let freshQueue = PipelineQueue(logDir: tmpDir)
-        await freshQueue.recoverOrphanedRecordings(recordingsDir: recDir)
+        let freshQueue = PipelineQueue(logDir: tmpDir, stagingDir: recDir)
+        await freshQueue.recoverOrphanedRecordings()
 
         XCTAssertEqual(freshQueue.jobs.count, 0)
     }
@@ -897,8 +898,8 @@ final class PipelineQueueTests: XCTestCase {
         try Data(repeating: 0xFF, count: 100).write(to: recDir.appendingPathComponent("\(prefix)_app.wav"))
         try Data(repeating: 0xFF, count: 100).write(to: recDir.appendingPathComponent("\(prefix)_mic.wav"))
 
-        let freshQueue = PipelineQueue(logDir: tmpDir)
-        await freshQueue.recoverOrphanedRecordings(recordingsDir: recDir)
+        let freshQueue = PipelineQueue(logDir: tmpDir, stagingDir: recDir)
+        await freshQueue.recoverOrphanedRecordings()
 
         XCTAssertEqual(freshQueue.jobs.count, 1)
         XCTAssertNotNil(freshQueue.jobs[0].appPath)
@@ -912,8 +913,8 @@ final class PipelineQueueTests: XCTestCase {
         let mixFile = recDir.appendingPathComponent("20250101_100000_mix.wav")
         try Data(repeating: 0xFF, count: 100).write(to: mixFile)
 
-        let freshQueue = PipelineQueue(logDir: tmpDir)
-        await freshQueue.recoverOrphanedRecordings(recordingsDir: recDir, maxAge: 0)
+        let freshQueue = PipelineQueue(logDir: tmpDir, stagingDir: recDir)
+        await freshQueue.recoverOrphanedRecordings(maxAge: 0)
 
         XCTAssertEqual(freshQueue.jobs.count, 0)
     }
@@ -926,10 +927,10 @@ final class PipelineQueueTests: XCTestCase {
         try Data(repeating: 0xFF, count: 100).write(to: mixFile)
 
         // Mark it as already processed
-        let freshQueue = PipelineQueue(logDir: tmpDir)
+        let freshQueue = PipelineQueue(logDir: tmpDir, stagingDir: recDir)
         freshQueue.processedLedger.markProcessed(mixPath: mixFile)
 
-        await freshQueue.recoverOrphanedRecordings(recordingsDir: recDir)
+        await freshQueue.recoverOrphanedRecordings()
         XCTAssertEqual(freshQueue.jobs.count, 0)
     }
 
@@ -952,15 +953,15 @@ final class PipelineQueueTests: XCTestCase {
         queue.updateJobState(id: job.id, to: .error, error: "Empty transcript")
 
         // A fresh queue (simulates pressing Start Watching) must not recover the failed recording
-        let freshQueue = PipelineQueue(logDir: tmpDir)
-        await freshQueue.recoverOrphanedRecordings(recordingsDir: recDir)
+        let freshQueue = PipelineQueue(logDir: tmpDir, stagingDir: recDir)
+        await freshQueue.recoverOrphanedRecordings()
         XCTAssertTrue(freshQueue.jobs.isEmpty, "Failed recording should not be re-queued")
     }
 
     func testRecoverEmptyDirIsNoOp() async {
         let recDir = tmpDir.appendingPathComponent("nonexistent_recordings")
-        let freshQueue = PipelineQueue(logDir: tmpDir)
-        await freshQueue.recoverOrphanedRecordings(recordingsDir: recDir)
+        let freshQueue = PipelineQueue(logDir: tmpDir, stagingDir: recDir)
+        await freshQueue.recoverOrphanedRecordings()
         XCTAssertTrue(freshQueue.jobs.isEmpty)
     }
 
@@ -975,8 +976,8 @@ final class PipelineQueueTests: XCTestCase {
             try Data(repeating: 0xFF, count: 100).write(to: mixFile)
         }
 
-        let freshQueue = PipelineQueue(logDir: tmpDir)
-        async let recovery: Void = freshQueue.recoverOrphanedRecordings(recordingsDir: recDir)
+        let freshQueue = PipelineQueue(logDir: tmpDir, stagingDir: recDir)
+        async let recovery: Void = freshQueue.recoverOrphanedRecordings()
 
         var counter = 0
         for _ in 0 ..< 10000 {
@@ -993,7 +994,7 @@ final class PipelineQueueTests: XCTestCase {
     private func makeProcessingQueue() -> PipelineQueue {
         PipelineQueue(
             engine: WhisperKitEngine(),
-            diarizationFactory: { MockDiarization() },
+            diarizerFactory: { _ in MockDiarization() },
             protocolGeneratorFactory: { MockProtocolGen() },
             outputDir: tmpDir,
             logDir: tmpDir,
@@ -1103,16 +1104,14 @@ final class PipelineQueueTests: XCTestCase {
     private func makeMockProcessingQueue(
         engine: MockEngine? = nil,
         terminologyNormalizer: @escaping () -> TerminologyNormalizer = { TerminologyNormalizer() },
-        diarizationFactory: @escaping () -> any DiarizationProvider = { MockDiarization() },
-        diarizationFactoryWithMode: ((DiarizerMode) -> any DiarizationProvider)? = nil,
+        diarizerFactory: @escaping (DiarizerMode?) -> any DiarizationProvider = { _ in MockDiarization() },
         diarizeEnabled: Bool = false,
         numSpeakers: Int = 0,
     ) -> (PipelineQueue, MockEngine) {
         let engine = engine ?? MockEngine()
         let q = PipelineQueue(
             engine: engine,
-            diarizationFactory: diarizationFactory,
-            diarizationFactoryWithMode: diarizationFactoryWithMode,
+            diarizerFactory: diarizerFactory,
             protocolGeneratorFactory: { MockProtocolGen() },
             outputDir: tmpDir,
             logDir: tmpDir,
@@ -1163,6 +1162,31 @@ final class PipelineQueueTests: XCTestCase {
         let transcriptURL = try XCTUnwrap(queue.jobs.first?.transcriptPath)
         let transcript = try String(contentsOf: transcriptURL, encoding: .utf8)
         XCTAssertTrue(transcript.contains("Aster reviewed Northstar."), transcript)
+    }
+
+    /// Normalizing changes only the text: an echo copy the merge marked
+    /// suppressed stays out of the transcript when rules are active.
+    func testTerminologyRulesKeepSuppressedEchoCopiesOut() async throws {
+        let engine = MockEngine()
+        engine.segmentsToReturn = [
+            TimestampedSegment(start: 0, end: 5, text: "Astor reviewed it."),
+            TimestampedSegment(start: 5, end: 10, text: "Echo of the speaker.", suppressed: true),
+        ]
+        let (queue, _) = makeMockProcessingQueue(engine: engine) {
+            TerminologyNormalizer(rulesText: "Aster => Astor")
+        }
+        let audioPath = try createTestAudioFile(in: tmpDir)
+        queue.enqueue(PipelineJob(
+            meetingTitle: "Echo Terminology", appName: "File",
+            mixPath: audioPath, appPath: nil, micPath: nil, micDelay: 0,
+        ))
+
+        await queue.processNext()
+
+        let transcriptURL = try XCTUnwrap(queue.jobs.first?.transcriptPath)
+        let transcript = try String(contentsOf: transcriptURL, encoding: .utf8)
+        XCTAssertTrue(transcript.contains("Aster reviewed it."), transcript)
+        XCTAssertFalse(transcript.contains("Echo of the speaker."), transcript)
     }
 
     /// The rules file is read in the per-job snapshot: an edit between two
@@ -1257,8 +1281,7 @@ final class PipelineQueueTests: XCTestCase {
         try FileManager.default.createDirectory(at: ownDir, withIntermediateDirectories: true)
         return PipelineQueue(
             engine: engine,
-            diarizationFactory: { MockDiarization() },
-            diarizationFactoryWithMode: nil,
+            diarizerFactory: { _ in MockDiarization() },
             protocolGeneratorFactory: { MockProtocolGen() },
             outputDir: outputDir ?? ownDir,
             logDir: ownDir,
@@ -1388,17 +1411,13 @@ final class PipelineQueueTests: XCTestCase {
         )
     }
 
-    /// Preparing the mix for diarization sits outside the block that treats a
-    /// diarization failure as a warning, so a file problem there fails the whole
-    /// job instead of costing only the speaker labels. The transcript is already
-    /// finished at that point and stage 3 tolerates a missing mix, so losing it
-    /// buys nothing.
-    ///
-    /// Only a paired source can reach that failure: a single-source job already
-    /// wrote the 16 kHz mix during transcription, so the step returns early. The
-    /// sources are removed once transcription has consumed them, which is the
-    /// state a concurrent run or a user tidying a folder can produce.
-    func testDiarizationLosingItsAudioCostsOnlySpeakerLabels() async throws {
+    /// Once transcription has resampled a paired source's tracks into the work
+    /// folder, diarization and its mix need nothing else: sources removed after
+    /// that point, the state a concurrent run or a user tidying a folder can
+    /// produce, cost neither the job nor its speaker labels. The mix is built
+    /// from those 16 kHz tracks, because `AudioMixer.mix` does not resample and
+    /// the originals may be at any rate.
+    func testDiarizationDoesNotNeedTheSourcesAfterTranscription() async throws {
         let engine = MockEngine()
         engine.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "Recorded fine")]
         let job = try makeDualSourceJob(title: "Vanishing Sources")
@@ -1427,9 +1446,9 @@ final class PipelineQueueTests: XCTestCase {
             finished?.state, .done,
             "job ended in \(String(describing: finished?.state)): \(finished?.error ?? "no error recorded")",
         )
-        XCTAssertTrue(
-            finished?.warnings.contains { $0.contains("Diarization") } ?? false,
-            "the lost diarization was not reported as a warning",
+        XCTAssertFalse(
+            finished?.warnings.contains { $0.contains("Diarization") } ?? true,
+            "diarization failed although the work folder held both tracks",
         )
         // The point of the whole change: the finished transcript is kept.
         let transcript = finished?.transcriptPath
@@ -1732,7 +1751,7 @@ final class PipelineQueueTests: XCTestCase {
         var draftsAtDiarizationEntry: [String] = []
         let queue = PipelineQueue(
             engine: engine,
-            diarizationFactory: {
+            diarizerFactory: { _ in
                 let names = (try? FileManager.default
                     .contentsOfDirectory(atPath: protocolsDir.path)) ?? []
                 draftsAtDiarizationEntry = names.compactMap { name in
@@ -1740,7 +1759,6 @@ final class PipelineQueueTests: XCTestCase {
                 }
                 return MockDiarization()
             },
-            diarizationFactoryWithMode: nil,
             protocolGeneratorFactory: { MockProtocolGen() },
             outputDir: tmpDir,
             logDir: tmpDir,
@@ -1857,11 +1875,10 @@ final class PipelineQueueTests: XCTestCase {
     ) -> PipelineQueue {
         PipelineQueue(
             engine: engine,
-            diarizationFactory: {
+            diarizerFactory: { _ in
                 beforeDiarizing?()
                 return diar
             },
-            diarizationFactoryWithMode: nil,
             protocolGeneratorFactory: { protocolGen },
             outputDir: tmpDir,
             logDir: tmpDir,
@@ -1871,7 +1888,14 @@ final class PipelineQueueTests: XCTestCase {
             diarizeEnabled: true,
             numSpeakers: 0,
             micLabel: micLabel,
-            useAITitleForFilenames: useAITitleForFilenames,
+            // swiftlint:disable:next trailing_closure
+            transcriptOutputOptions: {
+                TranscriptOutputOptions(
+                    includeFullTranscriptInProtocol: true,
+                    saveRawTranscriptSeparately: true,
+                    useAITitleForFilenames: useAITitleForFilenames,
+                )
+            },
         )
     }
 
@@ -1908,7 +1932,7 @@ final class PipelineQueueTests: XCTestCase {
             embeddings: ["SPEAKER_0": [1, 0, 0]],
         )
         let (pQueue, _) = makeMockProcessingQueue(
-            engine: engine, diarizationFactory: { mockDiar }, diarizeEnabled: true,
+            engine: engine, diarizerFactory: { _ in mockDiar }, diarizeEnabled: true,
         )
         let job = try PipelineJob(
             meetingTitle: title, appName: "Teams",
@@ -2053,7 +2077,7 @@ final class PipelineQueueTests: XCTestCase {
         // test would go red for a reason that has nothing to do with #726.
         let restored = PipelineQueue(
             engine: MockEngine(),
-            diarizationFactory: { MockDiarization() },
+            diarizerFactory: { _ in MockDiarization() },
             protocolGeneratorFactory: { nil },
             outputDir: tmpDir,
             logDir: tmpDir,
@@ -2080,7 +2104,7 @@ final class PipelineQueueTests: XCTestCase {
         engine.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "Hello world")]
         let q = PipelineQueue(
             engine: engine,
-            diarizationFactory: { MockDiarization() },
+            diarizerFactory: { _ in MockDiarization() },
             protocolGeneratorFactory: { nil },
             outputDir: tmpDir,
             logDir: tmpDir,
@@ -2153,7 +2177,7 @@ final class PipelineQueueTests: XCTestCase {
     ) -> PipelineQueue {
         PipelineQueue(
             engine: engine,
-            diarizationFactory: { MockDiarization() },
+            diarizerFactory: { _ in MockDiarization() },
             protocolGeneratorFactory: { protocolGen },
             outputDir: tmpDir,
             logDir: tmpDir,
@@ -2358,7 +2382,7 @@ final class PipelineQueueTests: XCTestCase {
         let engine = MockEngine()
         let restored = PipelineQueue(
             engine: engine,
-            diarizationFactory: { MockDiarization() },
+            diarizerFactory: { _ in MockDiarization() },
             protocolGeneratorFactory: { nil },
             outputDir: tmpDir,
             logDir: tmpDir,
@@ -2500,7 +2524,7 @@ final class PipelineQueueTests: XCTestCase {
         await q.processNext()
 
         // enqueuedAt is captured in init, so the expected stem is deterministic.
-        let expectedStem = PipelineQueue.namingSlug(
+        let expectedStem = SpeakerNamingStore.slug(
             title: "Reimport Test", jobID: job.id, startTime: job.enqueuedAt,
         )
         let txt = tmpDir.appendingPathComponent("protocols").appendingPathComponent("\(expectedStem).txt")
@@ -3090,7 +3114,7 @@ final class PipelineQueueTests: XCTestCase {
         )
         let (pQueue, _) = makeMockProcessingQueue(
             engine: engine,
-            diarizationFactory: { mockDiar },
+            diarizerFactory: { _ in mockDiar },
             diarizeEnabled: true,
         )
 
@@ -3136,7 +3160,7 @@ final class PipelineQueueTests: XCTestCase {
         )
         let (pQueue, _) = makeMockProcessingQueue(
             engine: engine,
-            diarizationFactory: { mockDiar },
+            diarizerFactory: { _ in mockDiar },
             diarizeEnabled: true,
         )
 
@@ -3177,7 +3201,7 @@ final class PipelineQueueTests: XCTestCase {
         )
         let (pQueue, _) = makeMockProcessingQueue(
             engine: engine,
-            diarizationFactory: { mockDiar },
+            diarizerFactory: { _ in mockDiar },
             diarizeEnabled: true,
         )
 
@@ -3231,8 +3255,8 @@ final class PipelineQueueTests: XCTestCase {
         let modeOverrideCalls = OSAllocatedUnfairLock<[DiarizerMode]>(initialState: [])
         let (pQueue, _) = makeMockProcessingQueue(
             engine: engine,
-            diarizationFactory: { offlineDiar },
-            diarizationFactoryWithMode: { mode in
+            diarizerFactory: { mode in
+                guard let mode else { return offlineDiar }
                 modeOverrideCalls.withLock { $0.append(mode) }
                 return mode == .sortformer ? sortformerDiar : offlineDiar
             },
@@ -3276,8 +3300,9 @@ final class PipelineQueueTests: XCTestCase {
     func testCompleteSpeakerNamingDoubleResumeIsNoOp() {
         // completeSpeakerNaming should not crash when called twice
         let queue = PipelineQueue(logDir: tmpDir)
-        queue.completeSpeakerNaming(result: .skipped)
-        queue.completeSpeakerNaming(result: .skipped) // should not crash
+        let id = UUID()
+        queue.completeSpeakerNaming(jobID: id, result: .skipped)
+        queue.completeSpeakerNaming(jobID: id, result: .skipped) // should not crash
     }
 
     func testOnJobStateChangeCallbackFired() {
@@ -3446,7 +3471,7 @@ final class PipelineQueueTests: XCTestCase {
 
         let queue1 = PipelineQueue(
             engine: engine,
-            diarizationFactory: { MockDiarization() },
+            diarizerFactory: { _ in MockDiarization() },
             protocolGeneratorFactory: { protocolGen },
             outputDir: tmpDir,
             logDir: tmpDir,
@@ -3477,7 +3502,7 @@ final class PipelineQueueTests: XCTestCase {
 
         let queue2 = PipelineQueue(
             engine: engine2,
-            diarizationFactory: { MockDiarization() },
+            diarizerFactory: { _ in MockDiarization() },
             protocolGeneratorFactory: { protocolGen2 },
             outputDir: tmpDir,
             logDir: tmpDir,
@@ -3505,7 +3530,7 @@ final class PipelineQueueTests: XCTestCase {
 
         let queue1 = PipelineQueue(
             engine: engine,
-            diarizationFactory: { MockDiarization() },
+            diarizerFactory: { _ in MockDiarization() },
             protocolGeneratorFactory: { MockProtocolGen() },
             outputDir: tmpDir,
             logDir: tmpDir,
@@ -3533,7 +3558,7 @@ final class PipelineQueueTests: XCTestCase {
 
         let queue2 = PipelineQueue(
             engine: engine2,
-            diarizationFactory: { MockDiarization() },
+            diarizerFactory: { _ in MockDiarization() },
             protocolGeneratorFactory: { protocolGen2 },
             outputDir: tmpDir,
             logDir: tmpDir,
@@ -3658,7 +3683,7 @@ final class PipelineQueueTests: XCTestCase {
         )
         let (pQueue, _) = makeMockProcessingQueue(
             engine: engine,
-            diarizationFactory: { mockDiar },
+            diarizerFactory: { _ in mockDiar },
             diarizeEnabled: true,
         )
         // Don't set speakerNamingHandler — pipeline proceeds with auto-names immediately
@@ -3710,7 +3735,7 @@ final class PipelineQueueTests: XCTestCase {
         )
         let (pQueue, _) = makeMockProcessingQueue(
             engine: engine,
-            diarizationFactory: { mockDiar },
+            diarizerFactory: { _ in mockDiar },
             diarizeEnabled: true,
         )
 
@@ -3752,7 +3777,7 @@ final class PipelineQueueTests: XCTestCase {
         )
         let (pQueue, _) = makeMockProcessingQueue(
             engine: engine,
-            diarizationFactory: { mockDiar },
+            diarizerFactory: { _ in mockDiar },
             diarizeEnabled: true,
         )
         // No speakerNamingHandler — the production/headless path. autoSkipNaming
@@ -3868,7 +3893,7 @@ final class PipelineQueueTests: XCTestCase {
 
         let queue = PipelineQueue(
             engine: MockEngine(),
-            diarizationFactory: { MockDiarization() },
+            diarizerFactory: { _ in MockDiarization() },
             protocolGeneratorFactory: { nil },
             outputDir: outputDir,
             logDir: tmpDir,
@@ -4091,7 +4116,7 @@ final class PipelineQueueTests: XCTestCase {
         )
         let (pQueue, _) = makeMockProcessingQueue(
             engine: engine,
-            diarizationFactory: { mockDiar },
+            diarizerFactory: { _ in mockDiar },
             diarizeEnabled: true,
         )
         // No handler → pipeline proceeds immediately with auto-names
@@ -4212,7 +4237,7 @@ final class PipelineQueueTests: XCTestCase {
         )
         let (pQueue, _) = makeMockProcessingQueue(
             engine: engine,
-            diarizationFactory: { mockDiar },
+            diarizerFactory: { _ in mockDiar },
             diarizeEnabled: true,
         )
 
@@ -4415,8 +4440,8 @@ final class PipelineQueueTests: XCTestCase {
         let modeOverrideCalls = OSAllocatedUnfairLock<[DiarizerMode]>(initialState: [])
         let (pQueue, _) = makeMockProcessingQueue(
             engine: engine,
-            diarizationFactory: { offlineDiar },
-            diarizationFactoryWithMode: { mode in
+            diarizerFactory: { mode in
+                guard let mode else { return offlineDiar }
                 modeOverrideCalls.withLock { $0.append(mode) }
                 return mode == .sortformer ? sortformerDiar : offlineDiar
             },
@@ -4450,12 +4475,10 @@ final class PipelineQueueTests: XCTestCase {
         XCTAssertEqual(pQueue.jobs.first?.state, .done)
     }
 
-    /// `.rerunWithMode(_, _)` falls back to the no-arg factory when no
-    /// mode-aware factory is wired (covers tests and any callsite that
-    /// hasn't been migrated yet). The mode metadata follows the actual
-    /// provider — so a default-mode `MockDiarization` keeps the job's
-    /// `usedDiarizerMode` consistent with what ran.
-    func testLateRerunWithModeOverrideFallsBackToDefaultFactory() async throws {
+    /// The mode metadata follows the diarizer that actually ran: a factory
+    /// that hands back an offline diarizer for a `.rerunWithMode(.sortformer, _)`
+    /// leaves the job's `usedDiarizerMode` at offline.
+    func testLateRerunRecordsTheModeThatRan() async throws {
         let engine = MockEngine()
         engine.segmentsToReturn = [
             TimestampedSegment(start: 0, end: 5, text: "Hello"),
@@ -4468,10 +4491,10 @@ final class PipelineQueueTests: XCTestCase {
             autoNames: [:],
             embeddings: ["SPEAKER_0": [1, 0, 0]],
         )
-        // No `diarizationFactoryWithMode` provided — covers the fallback path.
+        // Ignores the requested mode.
         let (pQueue, _) = makeMockProcessingQueue(
             engine: engine,
-            diarizationFactory: { mockDiar },
+            diarizerFactory: { _ in mockDiar },
             diarizeEnabled: true,
         )
 
@@ -4529,7 +4552,7 @@ final class PipelineQueueTests: XCTestCase {
         )
         let (pQueue, _) = makeMockProcessingQueue(
             engine: engine,
-            diarizationFactory: { mockDiar },
+            diarizerFactory: { _ in mockDiar },
             diarizeEnabled: true,
         )
 
@@ -4586,7 +4609,7 @@ final class PipelineQueueTests: XCTestCase {
         )
         let (pQueue, _) = makeMockProcessingQueue(
             engine: engine,
-            diarizationFactory: { mockDiar },
+            diarizerFactory: { _ in mockDiar },
             diarizeEnabled: true,
         )
 
@@ -4655,7 +4678,7 @@ final class PipelineQueueTests: XCTestCase {
         )
         let (pQueue, _) = makeMockProcessingQueue(
             engine: engine,
-            diarizationFactory: { mockDiar },
+            diarizerFactory: { _ in mockDiar },
             diarizeEnabled: true,
         )
 
@@ -4710,7 +4733,7 @@ final class PipelineQueueTests: XCTestCase {
         )
         let (pQueue, _) = makeMockProcessingQueue(
             engine: engine,
-            diarizationFactory: { mockDiar },
+            diarizerFactory: { _ in mockDiar },
             diarizeEnabled: true,
         )
 
@@ -4763,7 +4786,7 @@ final class PipelineQueueTests: XCTestCase {
     ) -> PipelineQueue {
         PipelineQueue(
             engine: MockEngine(),
-            diarizationFactory: { MockDiarization() },
+            diarizerFactory: { _ in MockDiarization() },
             protocolGeneratorFactory: { nil },
             outputDir: outputDir,
             logDir: tmpDir,
@@ -5443,47 +5466,6 @@ final class PipelineQueueTests: XCTestCase {
         XCTAssertEqual(
             factoryCalls, baseline,
             "Reading knownSpeakerNames must not invoke speakerMatcherFactory",
-        )
-    }
-
-    // MARK: - M3: slug uniqueness
-
-    /// Two back-to-back meetings with identical titles (e.g. recurring
-    /// "Daily Standup") would otherwise share the same on-disk slug — the
-    /// second job's `_naming.json` / `_16k.wav` overwrites the first's, and
-    /// snapshot rebuild then maps the survivor's data onto both UUIDs.
-    /// Embedding the job's short-id keeps each on-disk artefact distinct.
-    func test_namingSlug_differsForSameTitleDifferentJobs() throws {
-        let start = try localDate(2026, 3, 4, 9, 15)
-        let slug1 = PipelineQueue.namingSlug(title: "Daily Standup", jobID: UUID(), startTime: start)
-        let slug2 = PipelineQueue.namingSlug(title: "Daily Standup", jobID: UUID(), startTime: start)
-        XCTAssertNotEqual(
-            slug1, slug2,
-            "Identical titles must produce distinct slugs when job IDs differ",
-        )
-    }
-
-    /// Determinism: same input → same slug. Snapshot rebuild relies on this
-    /// to find a job's persisted `_naming.json` after a relaunch.
-    func test_namingSlug_isDeterministicForSameJob() throws {
-        let id = UUID()
-        let start = try localDate(2026, 3, 4, 9, 15)
-        let first = PipelineQueue.namingSlug(title: "Daily Standup", jobID: id, startTime: start)
-        let second = PipelineQueue.namingSlug(title: "Daily Standup", jobID: id, startTime: start)
-        XCTAssertEqual(first, second)
-    }
-
-    func test_namingSlug_embedsTitleAndShortID() throws {
-        let id = UUID()
-        let slug = try PipelineQueue.namingSlug(title: "Daily Standup", jobID: id, startTime: localDate(2026, 3, 4, 9, 15))
-        XCTAssertTrue(
-            slug.contains(PipelineJob.shortID(for: id)),
-            "Slug must include the job short-ID for uniqueness across same-title runs",
-        )
-        // Title-derived part should still be present (filesystem-friendly form).
-        XCTAssertTrue(
-            slug.lowercased().contains("daily") && slug.lowercased().contains("standup"),
-            "Slug should still encode the title for human-readable filenames",
         )
     }
 }

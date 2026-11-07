@@ -2,8 +2,12 @@
 import XCTest
 
 final class DiagnosticExporterTests: XCTestCase {
+    private func makeHeader(appVersion: String, commit: String, macOSVersion: String, settings: [String: String]) -> String {
+        DiagnosticExporter.makeHeader(.init(appVersion: appVersion, commit: commit, macOSVersion: macOSVersion, settings: settings))
+    }
+
     func test_makeHeader_includesAppVersion() {
-        let header = DiagnosticExporter.makeHeader(
+        let header = makeHeader(
             appVersion: "1.2.3",
             commit: "abcdef",
             macOSVersion: "14.5",
@@ -13,24 +17,21 @@ final class DiagnosticExporterTests: XCTestCase {
     }
 
     func test_makeHeader_includesCommit() {
-        let header = DiagnosticExporter.makeHeader(
-            appVersion: "0.1.0", commit: "deadbeef",
+        let header = makeHeader(appVersion: "0.1.0", commit: "deadbeef",
             macOSVersion: "14.5", settings: [:],
         )
         XCTAssertTrue(header.contains("deadbeef"))
     }
 
     func test_makeHeader_includesMacOSVersion() {
-        let header = DiagnosticExporter.makeHeader(
-            appVersion: "0.1.0", commit: "x",
+        let header = makeHeader(appVersion: "0.1.0", commit: "x",
             macOSVersion: "15.1.2", settings: [:],
         )
         XCTAssertTrue(header.contains("15.1.2"))
     }
 
     func test_makeHeader_includesSettings() {
-        let header = DiagnosticExporter.makeHeader(
-            appVersion: "0.1.0", commit: "x", macOSVersion: "14.0",
+        let header = makeHeader(appVersion: "0.1.0", commit: "x", macOSVersion: "14.0",
             settings: ["verboseDiagnostics": "true", "diarize": "false"],
         )
         XCTAssertTrue(header.contains("verboseDiagnostics=true"))
@@ -38,8 +39,7 @@ final class DiagnosticExporterTests: XCTestCase {
     }
 
     func test_makeHeader_settingsSortedAlphabetically() throws {
-        let header = DiagnosticExporter.makeHeader(
-            appVersion: "0", commit: "x", macOSVersion: "0",
+        let header = makeHeader(appVersion: "0", commit: "x", macOSVersion: "0",
             settings: ["zebra": "1", "apple": "2", "mango": "3"],
         )
         let appleIdx = try XCTUnwrap(header.range(of: "apple=")?.lowerBound)
@@ -50,8 +50,7 @@ final class DiagnosticExporterTests: XCTestCase {
     }
 
     func test_makeHeader_emptySettings_doesNotCrash() {
-        let header = DiagnosticExporter.makeHeader(
-            appVersion: "0.1.0", commit: "x", macOSVersion: "14.0", settings: [:],
+        let header = makeHeader(appVersion: "0.1.0", commit: "x", macOSVersion: "14.0", settings: [:],
         )
         XCTAssertFalse(header.isEmpty)
     }

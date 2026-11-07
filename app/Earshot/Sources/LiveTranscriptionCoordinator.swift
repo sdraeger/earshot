@@ -115,11 +115,11 @@ final class LiveTranscriptionCoordinator {
     /// The language-driven streaming backends (German/English) bypass the
     /// engine-support requirement because their sessions are engine-independent.
     private var captionsEligible: Bool {
-        LiveCaptionsGate.captionsAvailable(
+        LiveCaptionsGate.strategy(
             liveEnabled: liveEnabled(),
             engineLanguage: engineLanguage(),
             engineSupportsLive: engineSupportsLive(),
-        )
+        ) != .none
     }
 
     /// Wire the active-engine source, then do the initial pre-warm + arm the

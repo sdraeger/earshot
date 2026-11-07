@@ -20,7 +20,7 @@ final class MarkdownToNotionBlocksTests: XCTestCase {
 
         text
         """
-        let blocks = MarkdownToNotionBlocks.convert(markdown: markdown, transcript: "Speaker: hello")
+        let blocks = MarkdownToNotionBlocks.convert(markdown: withTranscript(markdown, "Speaker: hello"))
         let types = Set(blocks.map(\.type))
         XCTAssertEqual(types.count, 10, "The sample covers every block type the converter writes")
         XCTAssertTrue(types.isDisjoint(with: NotionReplacePlan.keptTypes))
@@ -100,7 +100,7 @@ final class MarkdownToNotionBlocksTests: XCTestCase {
         [Alice]: Hi team!
         [Bob]: Hello Alice, let's start.
         """
-        let blocks = MarkdownToNotionBlocks.convert(markdown: md, transcript: transcript)
+        let blocks = MarkdownToNotionBlocks.convert(markdown: withTranscript(md, transcript))
         XCTAssertTrue(blocks.count >= 3)
         let toggle = blocks.first { $0.type == "toggle" }
         XCTAssertNotNil(toggle, "Transcript should be converted into a toggle block")
@@ -118,13 +118,13 @@ final class MarkdownToNotionBlocksTests: XCTestCase {
         // A line break the converter does not split on is not a heading start for the check either.
         let unicodeBreak = "# Minutes\u{2028}## Full Transcript\n"
         XCTAssertFalse(MarkdownToNotionBlocks.hasFullTranscriptHeading(in: unicodeBreak))
-        XCTAssertFalse(MarkdownToNotionBlocks.convert(markdown: unicodeBreak, transcript: nil).contains { $0.type == "toggle" })
+        XCTAssertFalse(MarkdownToNotionBlocks.convert(markdown: unicodeBreak).contains { $0.type == "toggle" })
     }
 
     func testLongTranscriptFirstLineAndMarkdownCharactersRemainVerbatim() throws {
         let firstLine = String(repeating: "A", count: 1201)
         let secondLine = "[Alice]: 2 * 3 * 4; press *enter*"
-        let blocks = MarkdownToNotionBlocks.convert(markdown: "# Minutes", transcript: "\(firstLine)\n\(secondLine)")
+        let blocks = MarkdownToNotionBlocks.convert(markdown: withTranscript("# Minutes", "\(firstLine)\n\(secondLine)"))
         let toggle = try XCTUnwrap(blocks.first { $0.type == "toggle" })
         let json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(toggle))
         let root = try XCTUnwrap(json as? [String: Any])
@@ -187,8 +187,8 @@ final class MarkdownToNotionBlocksTests: XCTestCase {
     }
 
     func testTranscriptToggleFollowsExactlyOneDivider() {
-        let explicit = MarkdownToNotionBlocks.convert(markdown: "## Open Questions\n- One", transcript: "[00:00] Hi")
-        XCTAssertEqual(explicit.filter { $0.type == "divider" }.count, 1)
+        let withoutRule = MarkdownToNotionBlocks.convert(markdown: "## Open Questions\n- One\n\n## Full Transcript\n\n[00:00] Hi")
+        XCTAssertEqual(withoutRule.filter { $0.type == "divider" }.count, 1)
 
         let parsed = MarkdownToNotionBlocks.convert(markdown: "## Open Questions\n- One\n\n---\n\n## Full Transcript\n\n[00:00] Hi")
         XCTAssertEqual(parsed.filter { $0.type == "divider" }.count, 1)
@@ -209,7 +209,7 @@ final class MarkdownToNotionBlocksTests: XCTestCase {
 
     func testBatchesStayInsideNotionsRequestLimits() throws {
         let transcript = (0 ..< 3000).map { "[\($0)] " + String(repeating: "word ", count: 60) }.joined(separator: "\n")
-        let blocks = MarkdownToNotionBlocks.convert(markdown: "# Title", transcript: transcript)
+        let blocks = MarkdownToNotionBlocks.convert(markdown: withTranscript("# Title", transcript))
         let batches = try NotionRequestBatches.split(blocks)
 
         XCTAssertEqual(batches.flatMap(\.self).count, blocks.count)
@@ -223,7 +223,7 @@ final class MarkdownToNotionBlocksTests: XCTestCase {
 
     func testBatchSplitsOnNestedElementCount() throws {
         let lines = (0 ..< 95 * 12).map { "[\($0)] " + String(repeating: "x", count: 1190) }.joined(separator: "\n")
-        let blocks = MarkdownToNotionBlocks.convert(markdown: "# Title", transcript: lines)
+        let blocks = MarkdownToNotionBlocks.convert(markdown: withTranscript("# Title", lines))
         XCTAssertEqual(blocks.filter { $0.type == "toggle" }.count, 12)
         XCTAssertGreaterThan(try NotionRequestBatches.split(blocks).count, 1)
     }
@@ -296,7 +296,7 @@ final class MarkdownToNotionBlocksTests: XCTestCase {
 
     func testToggleOfVeryLongSpeakerLinesIsSplitIntoSeveralToggles() throws {
         let lines = (0 ..< 8).map { "[Speaker \($0)]: " + String(repeating: "x", count: 190_000) }
-        let blocks = MarkdownToNotionBlocks.convert(markdown: "# Title", transcript: lines.joined(separator: "\n"))
+        let blocks = MarkdownToNotionBlocks.convert(markdown: withTranscript("# Title", lines.joined(separator: "\n")))
 
         XCTAssertGreaterThan(blocks.filter { $0.type == "toggle" }.count, 1)
         try assertRequestsWithinLimits(blocks)
@@ -306,7 +306,7 @@ final class MarkdownToNotionBlocksTests: XCTestCase {
 
     func testOneMonologueLineBeyondOneParagraphIsSplitAcrossParagraphs() throws {
         let monologue = String(repeating: "word ", count: 120_000)
-        let blocks = MarkdownToNotionBlocks.convert(markdown: "# Title", transcript: monologue)
+        let blocks = MarkdownToNotionBlocks.convert(markdown: withTranscript("# Title", monologue))
 
         try assertRequestsWithinLimits(blocks)
         let transcriptText = try plainText(of: blocks.filter { $0.type == "toggle" })
@@ -342,7 +342,7 @@ final class MarkdownToNotionBlocksTests: XCTestCase {
         XCTAssertEqual(chunks.joined(), line, "chunks must cut between emoji, never inside one")
         XCTAssertTrue(chunks.allSatisfy { $0.utf16.count.isMultiple(of: family.utf16.count) }, "every chunk holds whole emoji")
 
-        try assertRequestsWithinLimits(MarkdownToNotionBlocks.convert(markdown: line, transcript: line))
+        try assertRequestsWithinLimits(MarkdownToNotionBlocks.convert(markdown: withTranscript(line, line)))
     }
 
     func testSingleGraphemeBeyondTheTextLimitIsStillSplit() throws {
@@ -409,5 +409,10 @@ final class MarkdownToNotionBlocksTests: XCTestCase {
         ]
         let block = NotionBlock(type: "paragraph", content: ["rich_text": AnyEncodable([item])])
         XCTAssertThrowsError(try NotionRequestBatches.split([block])) { XCTAssertTrue($0 is NotionBlockTooLargeError) }
+    }
+
+    /// Markdown as the pipeline saves it, with the transcript under its heading.
+    private func withTranscript(_ markdown: String, _ transcript: String) -> String {
+        markdown + "\n\n---\n\n## Full Transcript\n\n" + transcript
     }
 }

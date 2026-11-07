@@ -220,7 +220,7 @@ final class LiveCaptionPipelineTests: XCTestCase {
     private func makePipeline(observer: OnEventRecorder) -> StreamingTranscriber {
         StreamingTranscriber(
             channelLabel: "test",
-            vad: FluidVAD(threshold: 0.5),
+            detector: FluidVADBoundaryDetector(vad: FluidVAD(threshold: 0.5)),
             transcribe: { samples in
                 // Non-empty so `commitFinal` reaches the `onEvent(.finalized)`
                 // emission (it skips emission on empty transcripts).

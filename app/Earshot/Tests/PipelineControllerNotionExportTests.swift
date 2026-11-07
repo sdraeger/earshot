@@ -372,7 +372,7 @@ extension PipelineQueue {
         insertJobForTesting(job)
         queueNotionExport(
             PendingNotionExport(
-                protocolMD: "# Standup", transcript: nil, speakerNames: [],
+                markdown: "# Standup", speakerNames: [],
                 configuration: NotionExportConfiguration(
                     exporter: exporter, databaseID: databaseID, skipLocalMarkdown: skipLocalMarkdown, deadline: deadline,
                 ),
@@ -390,7 +390,7 @@ extension PipelineQueue {
     func queueReExport(exporter: any NotionExporting, databaseID: String, jobID: UUID) {
         queueNotionExport(
             PendingNotionExport(
-                protocolMD: "# Standup", transcript: nil, speakerNames: ["Alice"],
+                markdown: "# Standup", speakerNames: ["Alice"],
                 configuration: NotionExportConfiguration(exporter: exporter, databaseID: databaseID),
                 savedLocally: true,
             ),

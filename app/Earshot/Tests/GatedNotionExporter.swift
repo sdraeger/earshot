@@ -36,7 +36,6 @@ actor GatedNotionExporter: NotionExporting {
         date _: Date?,
         tags _: [String],
         markdown _: String,
-        transcript _: String?,
         existingPageID: String?,
         onPageCreated: @Sendable (NotionPageResult) async -> Void,
     ) async -> NotionPageResult {

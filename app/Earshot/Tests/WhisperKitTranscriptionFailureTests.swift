@@ -106,7 +106,7 @@ final class WhisperKitTranscriptionFailureTests: XCTestCase {
         )
         let queue = PipelineQueue(
             engine: engine,
-            diarizationFactory: { MockDiarization() },
+            diarizerFactory: { _ in MockDiarization() },
             protocolGeneratorFactory: { MockProtocolGen() },
             outputDir: tmpDir,
             logDir: tmpDir,

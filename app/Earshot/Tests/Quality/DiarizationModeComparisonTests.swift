@@ -33,10 +33,10 @@ final class DiarizationModeComparisonTests: XCTestCase {
         for mode in DiarizerMode.allCases {
             let diarizer = FluidDiarizer(mode: mode)
             let coldStart = Date()
-            _ = try await diarizer.run(audioPath: audioURL, numSpeakers: nil, meetingTitle: truth.fixture)
+            _ = try await diarizer.run(audioPath: audioURL, numSpeakers: nil)
             let cold = Date().timeIntervalSince(coldStart)
             let warmStart = Date()
-            let result = try await diarizer.run(audioPath: audioURL, numSpeakers: nil, meetingTitle: truth.fixture)
+            let result = try await diarizer.run(audioPath: audioURL, numSpeakers: nil)
             let warm = Date().timeIntervalSince(warmStart)
 
             let hypothesis = result.segments.map { segment in

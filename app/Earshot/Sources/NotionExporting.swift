@@ -38,7 +38,6 @@ protocol NotionExporting: Sendable {
         date: Date?,
         tags: [String],
         markdown: String,
-        transcript: String?,
         existingPageID: String?,
         onPageCreated: @escaping @Sendable (NotionPageResult) async -> Void,
     ) async throws -> NotionPageResult

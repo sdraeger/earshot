@@ -117,7 +117,6 @@ final class FluidDiarizerQualityTests: XCTestCase {
         let result = try await diarizer.run(
             audioPath: truth.audioURL,
             numSpeakers: nil,
-            meetingTitle: name,
         )
         let elapsed = Date().timeIntervalSince(started)
 

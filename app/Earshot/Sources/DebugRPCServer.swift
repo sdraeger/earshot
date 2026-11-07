@@ -76,7 +76,6 @@
         /// `processAudioFiles` (NSOpenPanel) takes. Returns `false` if the
         /// caller's path is missing or doesn't exist on disk; the RPC layer
         /// translates that to 400.
-        private let enqueueFile: (URL) -> Bool
         /// Multi-file counterpart for paired-import testing. Returns the number
         /// of URLs that existed on disk and were forwarded to `enqueueFiles`.
         private let enqueueFiles: ([URL]) -> Int
@@ -110,7 +109,6 @@
             speakerActions: SpeakerDBActions = .noop,
             skipNaming: @escaping () -> Void = {},
             confirmBrowserConsent: @escaping (Bool) -> Bool = { _ in false },
-            enqueueFile: @escaping (URL) -> Bool = { _ in false },
             enqueueFiles: @escaping ([URL]) -> Int = { _ in 0 },
             enqueueReturningIDs: @escaping ([URL]) -> [UUID] = { _ in [] },
             jobStatus: @escaping (UUID) -> JobStatusDTO? = { _ in nil },
@@ -129,7 +127,6 @@
             self.speakerActions = speakerActions
             self.skipNaming = skipNaming
             self.confirmBrowserConsent = confirmBrowserConsent
-            self.enqueueFile = enqueueFile
             self.enqueueFiles = enqueueFiles
             self.enqueueReturningIDs = enqueueReturningIDs
             self.jobStatus = jobStatus
@@ -386,16 +383,16 @@
                 return routeConfirmBrowserConsent(body: request.body)
 
             case ("POST", "/action/enqueueFile"):
-                // Enqueues a previously-recorded audio file into the pipeline
-                // — the same code path NSOpenPanel hits via "Open from
-                // Recording". Used by `scripts/e2e-app.sh` to chain a
-                // record-only run with a re-import + transcript assertion.
-                // 400 on missing/empty path or undecodable JSON.
+                // Enqueues a previously-recorded audio file into the pipeline,
+                // through the same entry point as `/action/enqueueFiles`. Used
+                // by `scripts/e2e-app.sh` to chain a record-only run with a
+                // re-import + transcript assertion. 400 on missing/empty path,
+                // undecodable JSON or a file that does not exist.
                 guard let p = try? JSONDecoder().decode(EnqueueFilePayload.self, from: request.body),
                       !p.path.isEmpty
                 else { return HTTPResponse.badRequest() }
                 let url = URL(fileURLWithPath: p.path)
-                guard enqueueFile(url) else { return HTTPResponse.badRequest() }
+                guard enqueueFiles([url]) > 0 else { return HTTPResponse.badRequest() }
                 return HTTPResponse.ok()
 
             case ("POST", "/action/enqueueFiles"):

@@ -143,7 +143,7 @@ final class ModelServerEngine: TranscribingEngine {
 
     func transcribeSegments(audioPath: URL) async throws -> [TimestampedSegment] {
         guard modelState == .loaded, let base = URL(string: baseURL) else {
-            throw TranscriptionError.modelNotLoaded(reason: loadFailureReason)
+            throw TranscriptionError.modelNotLoaded(engine: "Model server", reason: loadFailureReason)
         }
         let boundary = UUID().uuidString
         var request = URLRequest(url: base.appendingPathComponent("audio/transcriptions"))

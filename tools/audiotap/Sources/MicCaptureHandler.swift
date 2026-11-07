@@ -28,7 +28,7 @@ private let logger = Logger(subsystem: "com.earshot.audiotap", category: "MicCap
 /// after a seal is a dropped write rather than a write to a closed file. Per-buffer
 /// level state is guarded by `LevelPublisher`. `@unchecked Sendable` reflects
 /// that this discipline isn't expressible to the compiler.
-public class MicCaptureHandler: @unchecked Sendable {
+class MicCaptureHandler: @unchecked Sendable {
     /// Builds a fresh engine session. Injectable so tests can supply one that
     /// never touches audio hardware (the CI runner has no input device) and can
     /// be made to block on demand, which is how the issue #588 wedge is
@@ -86,15 +86,15 @@ public class MicCaptureHandler: @unchecked Sendable {
     /// Called when the microphone track was abandoned, either because a restart
     /// attempt exceeded its deadline or because the retry budget ran out. The
     /// rest of the session keeps recording.
-    public var onGiveUp: (() -> Void)?
+    var onGiveUp: (() -> Void)?
 
     /// Called when the microphone went without audio for the whole budget and
     /// was released (issues #724, #706), with what the stall can say about
     /// itself. Main queue. See `+Progress`.
-    public var onStall: ((MicStallDetails) -> Void)?
+    var onStall: ((MicStallDetails) -> Void)?
     /// Called when a microphone a device change brought back after a stall
     /// has delivered again. Main queue.
-    public var onResume: (() -> Void)?
+    var onResume: (() -> Void)?
 
     var isRecording: Bool {
         arbiter.withLock { $0.isCapturing }
@@ -141,7 +141,7 @@ public class MicCaptureHandler: @unchecked Sendable {
     /// instead of an under-run (issue #379 follow-up — see `+Timeline`).
     /// `internal` for that cross-file extension; survives restarts (never reset).
     var timelineAnchor = TimelineAnchor(rate: Int(speechSampleRate))
-    public private(set) var firstFrameTime: UInt64 = 0
+    private(set) var firstFrameTime: UInt64 = 0
     /// Mach time `start()` began at.
     var captureStartTicks: UInt64 = 0
     /// Mach time the track was anchored at if it was restarted before its
@@ -169,17 +169,17 @@ public class MicCaptureHandler: @unchecked Sendable {
     /// Returns the instantaneous mic level in dBFS, decayed to -120 if no buffer
     /// arrived in the last 0.5 seconds (e.g. device muted or unplugged) — without
     /// that, a stale reading would look like live audio.
-    public var currentLevelDBFS: Double {
+    var currentLevelDBFS: Double {
         levelPublisher.currentLevelDBFS
     }
 
     /// See `ChannelSignalAges`: the level alone folds "no buffers", "buffers of
     /// zeroes" and "a real but very quiet buffer" into one number.
-    public var currentSignalAges: ChannelSignalAges {
+    var currentSignalAges: ChannelSignalAges {
         levelPublisher.currentSignalAges
     }
 
-    public convenience init(
+    convenience init(
         outputURL: URL,
         debugLogging: Bool = false,
         liveSink: LiveAudioSink? = nil,
@@ -236,7 +236,7 @@ public class MicCaptureHandler: @unchecked Sendable {
 
     /// Brings up the first engine off the main queue under a deadline (see `+FirstStart`).
     /// Watch and observers are armed only once it was adopted; a timed-out one is left alone.
-    public func start(deviceUID: String? = nil) throws {
+    func start(deviceUID: String? = nil) throws {
         guard case let .launchAttempt(generation) = arbiter.withLock({ $0.handle(.firstStartRequested) }) else {
             // A second start(); no production caller makes one.
             logger.warning("Mic: start() on a capture that was already started, ignoring")
@@ -440,7 +440,7 @@ public class MicCaptureHandler: @unchecked Sendable {
         handleDeviceChange()
     }
 
-    public func stop() {
+    func stop() {
         // Seal first, so any in-flight tap closure short-circuits before touching
         // the soon-released AVAudioFile. The arbiter also answers the question
         // that decides the rest of this method: is a restart attempt currently
@@ -570,14 +570,14 @@ private func sumOfSquaresInt16(
     return sumSq
 }
 
-public enum MicCaptureError: LocalizedError {
+enum MicCaptureError: LocalizedError {
     case noInputDevice
     case invalidHardwareFormat(sampleRate: Double, channelCount: UInt32)
     /// The first start did not return within `RestartArbiter.attemptTimeout`
     /// (issue #778). Its thread stays in the call for as long as it takes.
     case firstStartTimedOut
 
-    public var errorDescription: String? {
+    var errorDescription: String? {
         switch self {
         case .noInputDevice: "No microphone hardware available"
 

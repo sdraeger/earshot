@@ -4,7 +4,7 @@
 /// Separated from MicCaptureHandler so the issue #379 invariant — the tap
 /// MUST match the node's channel count (a hardcoded 1-channel tap raised an
 /// NSException on a multi-channel device) — is unit-testable without hardware.
-public enum TapFormatResolver {
+enum TapFormatResolver {
     /// The tap format matching the node's bus — the node's own format object
     /// as `MicEngineSession.hardwareFormat` read it (the output side, or the
     /// input side after a pin, issue #724) — or nil when the hardware reported
@@ -20,7 +20,7 @@ public enum TapFormatResolver {
     /// anything but plain stereo `AVAudioConverter`'s implicit downmix writes
     /// silence, so `MicConverterFactory` has to select a channel explicitly.
     /// Do not assume the converter folds this format to mono on its own.
-    public static func tapFormat(forHardware hwFormat: AVAudioFormat) -> AVAudioFormat? {
+    static func tapFormat(forHardware hwFormat: AVAudioFormat) -> AVAudioFormat? {
         guard hwFormat.sampleRate > 0, hwFormat.channelCount > 0 else { return nil }
         return hwFormat
     }

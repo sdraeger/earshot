@@ -65,12 +65,23 @@ class MockRecorder: RecordingProvider {
     var micSignalAges: ChannelSignalAges = .deliveringSignalNow
     var appSignalAges: ChannelSignalAges = .deliveringSignalNow
 
+    var captureStatus: CaptureStatus {
+        CaptureStatus(
+            mic: CaptureChannelStatus(levelDBFS: micLevelDBFS, ages: micSignalAges, gaveUp: micCaptureGaveUp),
+            app: CaptureChannelStatus(levelDBFS: appLevelDBFS, ages: appSignalAges, gaveUp: appCaptureGaveUp),
+            micStartTimedOut: micCaptureStartTimedOut,
+            micStall: micCaptureStall,
+            appWatchdogGaveUp: appSilentTrackWatchdogGaveUp,
+            appNoiseFloorOnly: appCarriesOnlyNoiseFloor,
+        )
+    }
+
     /// Overrides the `recordingStartDate` `stop()` reports. `nil` (default)
     /// yields `Date()` at stop time, matching a real recorder; set it to pin a
     /// specific meeting-start time (e.g. filename-anchoring tests).
     var recordingStartDate: Date?
 
-    func start(source: RecordingSource, micDeviceUID: String?, debugLogging _: Bool) {
+    func start(source: RecordingSource, micDeviceUID: String?) {
         startCalled = true
         capturedSource = source
         capturedMicDeviceUID = micDeviceUID
@@ -97,7 +108,7 @@ class MockRecorder: RecordingProvider {
 /// across into each other.
 @MainActor
 final class ThrowingRecorder: RecordingProvider {
-    func start(source _: RecordingSource, micDeviceUID _: String?, debugLogging _: Bool) throws {
+    func start(source _: RecordingSource, micDeviceUID _: String?) throws {
         throw RecorderError.noAudioData
     }
 

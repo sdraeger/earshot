@@ -77,7 +77,7 @@ final class NotionClientReplaceTests: XCTestCase {
         Alice: Hello.
         Bob: Hi.
         """
-        let expected = MarkdownToNotionBlocks.convert(markdown: protocolMarkdown, transcript: nil)
+        let expected = MarkdownToNotionBlocks.convert(markdown: protocolMarkdown)
         XCTAssertEqual(expected.last?.type, "toggle", "The fixture must end in a transcript toggle")
         XCTAssertTrue(expected.contains { $0.type == "table" })
         let page = FakeNotionPage(initial: texts("Old", count: 4))
@@ -320,7 +320,7 @@ final class NotionClientReplaceTests: XCTestCase {
     @discardableResult
     private func export(_ client: NotionClient, markdown: String) async throws -> NotionPageResult {
         try await client.exportMeeting(
-            title: "Notes", date: nil, tags: [], markdown: markdown, transcript: nil, existingPageID: pageID,
+            title: "Notes", date: nil, tags: [], markdown: markdown, existingPageID: pageID,
         )
     }
 

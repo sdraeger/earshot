@@ -26,7 +26,7 @@ import AVFoundation
 ///
 /// For a mic array channel 0 is taken as-is rather than averaging the elements,
 /// which would risk comb filtering from the inter-element delay.
-public enum MicChannelMap {
+enum MicChannelMap {
     // `AVAudioConverter.channelMap` takes `[NSNumber]`, and `nil` here means
     // "leave the converter's own downmix alone" rather than "map no channels",
     // so both of these rules are unavoidable at this boundary.
@@ -34,7 +34,7 @@ public enum MicChannelMap {
 
     /// `[0]` when `format` needs an explicit single-channel selection, `nil`
     /// when the implicit downmix is trustworthy.
-    public static func downmixMap(for format: AVAudioFormat) -> [NSNumber]? {
+    static func downmixMap(for format: AVAudioFormat) -> [NSNumber]? {
         guard format.channelCount > 1 else { return nil }
 
         guard let layout = format.channelLayout else {

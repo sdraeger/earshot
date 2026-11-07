@@ -54,7 +54,7 @@ final class EmptyTrackSurvivesTests: XCTestCase {
         )
         let queue = PipelineQueue(
             engine: engine,
-            diarizationFactory: { diarization },
+            diarizerFactory: { _ in diarization },
             protocolGeneratorFactory: { MockProtocolGen() },
             outputDir: tmpDir,
             logDir: tmpDir,

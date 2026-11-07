@@ -83,15 +83,6 @@ struct RecordingSidecar: Codable {
         self.files = Files(mix: mixFilename, app: appFilename, mic: micFilename)
     }
 
-    /// Writes the sidecar as `<basename>\(filenameSuffix)` into `directory`.
-    /// Returns the resulting URL.
-    @discardableResult
-    func write(toDirectory directory: URL, basename: String) throws -> URL {
-        let url = directory.appendingPathComponent("\(basename)\(Self.filenameSuffix)")
-        try write(to: url)
-        return url
-    }
-
     /// Writes the sidecar to `url`, owner-only.
     func write(to url: URL) throws {
         let encoder = JSONEncoder()

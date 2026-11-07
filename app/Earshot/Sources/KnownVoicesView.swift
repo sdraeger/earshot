@@ -140,10 +140,7 @@ struct KnownVoicesView: View {
                 VoiceEnrollmentView(
                     matcher: matcher,
                     diarizerFactory: diarizerFactory,
-                ) {
-                    showingEnrollment = false
-                    reload()
-                }
+                ) { finishEnrollment() }
             }
         }
     }
@@ -295,6 +292,13 @@ struct KnownVoicesView: View {
             Button("Done") { dismiss() }
                 .keyboardShortcut(.defaultAction)
         }
+    }
+
+    /// Enrollment writes the database too, so it refreshes what mirrors it.
+    func finishEnrollment() {
+        showingEnrollment = false
+        reload()
+        onMutate?()
     }
 
     private func reload() {

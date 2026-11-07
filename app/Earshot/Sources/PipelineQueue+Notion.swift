@@ -66,8 +66,8 @@ enum NotionTagFilter {
 
 /// What the export needs once the job has reached `.done`.
 struct PendingNotionExport {
-    let protocolMD: String
-    let transcript: String?
+    /// The Markdown saved locally, transcript included when the job keeps it.
+    let markdown: String
     let speakerNames: [String]
     let configuration: NotionExportConfiguration
     let savedLocally: Bool
@@ -126,7 +126,7 @@ extension PipelineQueue {
             // Cancelling this export must reach the one it waits behind as well.
             await withTaskCancellationHandler { await previous?.value } onCancel: { previous?.cancel() }
             let succeeded = await exportToNotion(
-                jobID: jobID, protocolMD: export.protocolMD, transcript: export.transcript,
+                jobID: jobID, markdown: export.markdown,
                 speakerNames: export.speakerNames, configuration: export.configuration,
                 localBackupSaved: export.savedLocally,
             )
@@ -234,7 +234,7 @@ extension PipelineQueue {
     /// Export finished Markdown independently of generation and local saving.
     /// A failed export leaves the local-save decision to the caller.
     func exportToNotion(
-        jobID: UUID, protocolMD: String, transcript: String?,
+        jobID: UUID, markdown: String,
         speakerNames: [String], configuration: NotionExportConfiguration?,
         localBackupSaved: Bool = false,
     ) async -> Bool {
@@ -249,7 +249,7 @@ extension PipelineQueue {
                 await self?.recordNotionPageExport(jobID: jobID, databaseID: databaseID, page: page)
             }
             let exporter = configuration.exporter
-            let title = ProtocolGenerator.extractTitle(from: protocolMD) ?? job.meetingTitle
+            let title = ProtocolGenerator.extractTitle(from: markdown) ?? job.meetingTitle
             let date = job.meetingStartTime
             let tags = configuration.speakerTagsEnabled ? NotionTagFilter.confirmedNames(speakerNames) : []
             let pageResult = try await NotionExportDeadline.run(limit: configuration.deadline) {
@@ -257,8 +257,7 @@ extension PipelineQueue {
                     title: title,
                     date: date,
                     tags: tags,
-                    markdown: protocolMD,
-                    transcript: transcript,
+                    markdown: markdown,
                     existingPageID: existingPageID,
                     onPageCreated: pageRecorder,
                 )
@@ -346,7 +345,7 @@ extension PipelineQueue {
             return false
         }
         let succeeded = await exportToNotion(
-            jobID: id, protocolMD: markdown, transcript: nil,
+            jobID: id, markdown: markdown,
             speakerNames: job.notionExportSpeakerNames ?? [], configuration: configuration,
         )
         if succeeded {

@@ -40,7 +40,7 @@ final class SortformerEmbeddingsE2ETests: XCTestCase {
 
         let diarizer = FluidDiarizer(mode: mode)
         let result = try await diarizer.run(
-            audioPath: truth.audioURL, numSpeakers: nil, meetingTitle: "two_speakers_de",
+            audioPath: truth.audioURL, numSpeakers: nil,
         )
 
         // (1) Phase 1's contract: embeddings must be populated so the naming

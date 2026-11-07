@@ -81,7 +81,8 @@ final class RecordingSidecarTests: XCTestCase {
 
         let basename = "20260503_083000"
         let sidecar = makeFullSidecar()
-        let url = try sidecar.write(toDirectory: dir, basename: basename)
+        let url = dir.appendingPathComponent("\(basename)\(RecordingSidecar.filenameSuffix)")
+        try sidecar.write(to: url)
 
         XCTAssertEqual(url.lastPathComponent, "\(basename)_meta.json")
         XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
@@ -90,7 +91,7 @@ final class RecordingSidecarTests: XCTestCase {
     func test_read_roundTripsTitleAndParticipants() throws {
         let dir = try makeTempDirectory(prefix: "rs")
         let basename = "20260503_083000"
-        try makeFullSidecar().write(toDirectory: dir, basename: basename)
+        try makeFullSidecar().write(to: dir.appendingPathComponent("\(basename)\(RecordingSidecar.filenameSuffix)"))
 
         let decoded = try XCTUnwrap(
             RecordingSidecar.read(fromDirectory: dir, basename: basename),
@@ -163,7 +164,8 @@ final class RecordingSidecarTests: XCTestCase {
     /// (0600), not world-readable, matching the audio it sits next to.
     func test_write_setsOwnerOnlyPermissions() throws {
         let dir = try makeTempDirectory(prefix: "rs")
-        let url = try makeFullSidecar().write(toDirectory: dir, basename: "20260503_083000")
+        let url = dir.appendingPathComponent("20260503_083000\(RecordingSidecar.filenameSuffix)")
+        try makeFullSidecar().write(to: url)
 
         let mode = try XCTUnwrap(
             FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as? Int,

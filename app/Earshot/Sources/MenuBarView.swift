@@ -24,9 +24,10 @@ struct MenuBarView: View {
     let onOpenProtocol: (JobOpenTarget) -> Void
     let onOpenProtocolsFolder: () -> Void
     let onOpenSettings: () -> Void
-    let onNameSpeakers: (() -> Void)?
+    /// Opens the naming window, on the given job or, for nil, the first one
+    /// waiting. The row offering it shows while any job waits for names.
+    let onNameSpeakers: (UUID?) -> Void
     let onProcessFiles: () -> Void
-    let onDismissJob: (UUID) -> Void
     let onQuit: () -> Void
     /// The browser whose recording-consent prompt is open, nil when none is.
     /// Mirrors the notification in the panel so a prompt hidden by Focus, screen
@@ -34,8 +35,6 @@ struct MenuBarView: View {
     var pendingConsentApp: String?
     /// Answers the open prompt: true records, false declines.
     var onAnswerPendingConsent: (Bool) -> Void = { _ in }
-    /// Opens the naming window on one job; falls back to `onNameSpeakers`.
-    var onNameSpeakersForJob: ((UUID) -> Void)?
     /// Whether Notion export is on. A job that has a page URL but was exported
     /// before the setting was turned off still falls back to it when no local
     /// file exists; `JobOpenTarget` owns that rule.
@@ -148,8 +147,8 @@ struct MenuBarView: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 7)
 
-            if let onNameSpeakers {
-                PanelRow("Name speakers…", systemImage: "person.2.fill", action: onNameSpeakers)
+            if !pipelineQueue.pendingSpeakerNamingJobs.isEmpty {
+                PanelRow("Name speakers…", systemImage: "person.2.fill") { onNameSpeakers(nil) }
                     .foregroundStyle(.tint)
                     .keyboardShortcut("n")
             }
@@ -271,7 +270,7 @@ struct MenuBarView: View {
                 }
                 if job.state == .speakerNamingPending {
                     Button("Name speakers…") {
-                        if let onNameSpeakersForJob { onNameSpeakersForJob(job.id) } else { onNameSpeakers?() }
+                        onNameSpeakers(job.id)
                     }
                     .buttonStyle(.borderedProminent)
                 }
@@ -302,7 +301,7 @@ struct MenuBarView: View {
             iconButton(
                 job.notionExportStatus == .failed ? "Discard Notion retry" : "Dismiss",
                 systemImage: "xmark",
-            ) { onDismissJob(job.id) }
+            ) { pipelineQueue.removeJob(id: job.id) }
                 .disabled(job.notionExportStatus == .inProgress)
         }
     }

@@ -127,7 +127,7 @@ final class NamingAnswerTests: XCTestCase {
         let diarizer = MockDiarization()
         diarizer.resultToReturn = Self.diarization(withEmbeddings: true)
         let queue = PipelineQueue(
-            engine: engine, diarizationFactory: { diarizer }, protocolGeneratorFactory: { MockProtocolGen() },
+            engine: engine, diarizerFactory: { _ in diarizer }, protocolGeneratorFactory: { MockProtocolGen() },
             outputDir: dir, logDir: dir, stagingDir: dir.appendingPathComponent("staging"),
             diarizeEnabled: true, inFlightRuns: InFlightRunRegistry(),
         )
@@ -188,14 +188,30 @@ final class NamingAnswerTests: XCTestCase {
         let shown = pendingJob("Shown", in: queue)
         queue.insertJobForTesting(shown)
 
-        appState.pinShownNamingJob()
+        appState.showNaming()
         let earlier = pendingJob("Earlier", in: queue)
         queue.jobs.insert(earlier, at: 0)
 
         XCTAssertEqual(
-            queue.speakerNamingData(forJobID: appState.selectedNamingJobID)?.jobID, shown.id,
+            appState.shownNamingJobID, shown.id,
             "a job reaching naming switched the open window",
         )
+    }
+
+    /// An answer moves the window on to the next waiting job, and closes it
+    /// when none is left.
+    func testAnsweringShowsTheNextJobThenFinishes() throws {
+        let queue = try PipelineQueue(logDir: makeTempDirectory(prefix: "naming_answer_outcome"))
+        let appState = try makeIsolatedAppState(initialQueue: queue)
+        let first = pendingJob("First", in: queue)
+        let second = pendingJob("Second", in: queue)
+        queue.insertJobForTesting(first)
+        queue.insertJobForTesting(second)
+        appState.showNaming(jobID: first.id)
+
+        XCTAssertEqual(appState.answerNaming(jobID: first.id, result: .skipped), .showsNext)
+        XCTAssertEqual(appState.shownNamingJobID, second.id)
+        XCTAssertEqual(appState.answerNaming(jobID: second.id, result: .skipped), .finished)
     }
 
     /// A job awaiting naming, with naming data stashed in `queue`'s session.
@@ -218,7 +234,7 @@ final class NamingAnswerTests: XCTestCase {
     func testAfterSkipTheWindowMovesOnToTheNextJob() throws {
         let dir = try makeTempDirectory(prefix: "naming_skip")
         let queue = PipelineQueue(
-            engine: MockEngine(), diarizationFactory: { MockDiarization() },
+            engine: MockEngine(), diarizerFactory: { _ in MockDiarization() },
             protocolGeneratorFactory: { MockProtocolGen() }, outputDir: dir, logDir: dir,
             stagingDir: dir.appendingPathComponent("staging"), inFlightRuns: InFlightRunRegistry(),
         )

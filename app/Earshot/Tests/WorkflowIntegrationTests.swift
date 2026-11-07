@@ -28,7 +28,6 @@ final class WorkflowIntegrationTests: XCTestCase {
         struct Export: Sendable {
             let existingPageID: String?
             let markdown: String
-            let transcript: String?
             let tags: [String]
         }
 
@@ -49,11 +48,10 @@ final class WorkflowIntegrationTests: XCTestCase {
             date _: Date?,
             tags: [String],
             markdown: String,
-            transcript: String?,
             existingPageID: String?,
             onPageCreated: @Sendable (NotionPageResult) async -> Void,
         ) async throws -> NotionPageResult {
-            exports.append(Export(existingPageID: existingPageID, markdown: markdown, transcript: transcript, tags: tags))
+            exports.append(Export(existingPageID: existingPageID, markdown: markdown, tags: tags))
             if fail { throw URLError(.notConnectedToInternet) }
             await onPageCreated(result)
             if failAfterPageCreatedCount > 0 {
@@ -79,7 +77,6 @@ final class WorkflowIntegrationTests: XCTestCase {
             date _: Date?,
             tags _: [String],
             markdown _: String,
-            transcript _: String?,
             existingPageID _: String?,
             onPageCreated _: @Sendable (NotionPageResult) async -> Void,
         ) throws -> NotionPageResult {
@@ -133,7 +130,7 @@ final class WorkflowIntegrationTests: XCTestCase {
 
         let queue = PipelineQueue(
             engine: engine,
-            diarizationFactory: { diarization },
+            diarizerFactory: { _ in diarization },
             protocolGeneratorFactory: { protocolGeneratorEnabled ? protocolGen : nil },
             outputDir: tmpDir,
             logDir: tmpDir,
@@ -143,9 +140,13 @@ final class WorkflowIntegrationTests: XCTestCase {
             echoCancellationEnabled: { echoCancellationEnabled },
             echoCancellerFactory: echoCancellerFactory,
             micLabel: "Me",
-            includeFullTranscriptInProtocol: includeFullTranscriptInProtocol,
-            saveRawTranscriptSeparately: saveRawTranscriptSeparately,
-            transcriptOutputOptionsProvider: transcriptOutputOptionsProvider,
+            transcriptOutputOptions: transcriptOutputOptionsProvider ?? {
+                TranscriptOutputOptions(
+                    includeFullTranscriptInProtocol: includeFullTranscriptInProtocol,
+                    saveRawTranscriptSeparately: saveRawTranscriptSeparately,
+                    useAITitleForFilenames: false,
+                )
+            },
             notionExportConfigurationProvider: exportConfigurationProvider,
         )
 
@@ -883,7 +884,7 @@ final class WorkflowIntegrationTests: XCTestCase {
         // Factory returns nil → no protocol generation
         let queue = PipelineQueue(
             engine: engine,
-            diarizationFactory: { MockDiarization() },
+            diarizerFactory: { _ in MockDiarization() },
             protocolGeneratorFactory: { nil },
             outputDir: tmpDir,
             logDir: tmpDir,
@@ -1241,7 +1242,6 @@ final class WorkflowIntegrationTests: XCTestCase {
         XCTAssertEqual(exports.count, 2)
         XCTAssertEqual(exports[1].existingPageID, "page-1")
         XCTAssertEqual(exports[1].markdown, savedMarkdown)
-        XCTAssertNil(exports[1].transcript, "The transcript is already embedded in the saved Markdown")
         XCTAssertEqual(harness.engine.transcribeCallCount, 1)
         XCTAssertEqual(generationCount, 1)
         XCTAssertEqual(harness.queue.jobs.first?.notionExportStatus, .completed)
@@ -1283,7 +1283,7 @@ final class WorkflowIntegrationTests: XCTestCase {
     private func sentBlocks(_ export: StubNotionExporter.Export) throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
-        return try encoder.encode(MarkdownToNotionBlocks.convert(markdown: export.markdown, transcript: export.transcript))
+        return try encoder.encode(MarkdownToNotionBlocks.convert(markdown: export.markdown))
     }
 
     private func failedNotionExportWithTranscript(
@@ -1408,7 +1408,7 @@ final class WorkflowIntegrationTests: XCTestCase {
         )
 
         let succeeded = await queue.exportToNotion(
-            jobID: job.id, protocolMD: "# Meeting", transcript: nil,
+            jobID: job.id, markdown: "# Meeting",
             speakerNames: [], configuration: configuration,
         )
 
@@ -1521,7 +1521,7 @@ final class WorkflowIntegrationTests: XCTestCase {
         let exports = await exporter.exports
         let exported = try XCTUnwrap(exports.first)
         XCTAssertEqual(exported.existingPageID, "page-1")
-        XCTAssertEqual(exported.transcript, "[00:00] Smith, John: Hello")
+        XCTAssertTrue(exported.markdown.hasSuffix("## Full Transcript\n\n[00:00] Smith, John: Hello"), exported.markdown)
         XCTAssertEqual(exported.tags, ["Smith, John"], "Use structured names supplied by speaker confirmation")
         XCTAssertNil(harness.queue.jobs.first?.protocolPath, "Explicit opt-out skips a successful local save")
         XCTAssertEqual(harness.queue.jobs.first?.state, .done)

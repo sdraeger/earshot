@@ -395,15 +395,6 @@ final class AppState {
             let confirmBrowserConsent: (Bool) -> Bool = { [weak self] granted in
                 self?.notifier.resolveBrowserConsent(granted: granted) ?? false
             }
-            // RPC counterpart to the NSOpenPanel "Open from Recording" flow.
-            // Validates the file exists (RPC layer returns 400 on `false`),
-            // then routes through the same `enqueueFiles` entry point the
-            // menu uses, so the import code path is identical.
-            let enqueueFile: (URL) -> Bool = { [weak self] url in
-                guard let self, FileManager.default.fileExists(atPath: url.path) else { return false }
-                Task { @MainActor in self.pipeline.enqueueFiles([url]) }
-                return true
-            }
             let enqueueFilesRPC: ([URL]) -> Int = { [weak self] urls in
                 self?.pipeline.enqueueExistingFiles(urls) ?? 0
             }
@@ -434,7 +425,6 @@ final class AppState {
                 speakerActions: makeSpeakerDBActions(),
                 skipNaming: skipNaming,
                 confirmBrowserConsent: confirmBrowserConsent,
-                enqueueFile: enqueueFile,
                 enqueueFiles: enqueueFilesRPC,
                 enqueueReturningIDs: enqueueReturningIDs,
                 jobStatus: jobStatus,
@@ -465,13 +455,12 @@ final class AppState {
     /// is selected) AND an actual recording is in progress AND the overlay
     /// toggle is on. Overlay visibility is UI-only; the pipeline still runs.
     var shouldShowLiveCaptions: Bool {
-        LiveCaptionsGate.overlayVisible(
-            liveEnabled: settings.liveTranscriptionEnabled,
-            engineLanguage: settings.activeEngineLanguageOrNil,
-            engineSupportsLive: settings.transcriptionEngine.supportsLiveTranscription,
-            isRecording: watching.isRecording,
-            overlayEnabled: settings.liveCaptionsOverlayEnabled,
-        )
+        settings.liveCaptionsOverlayEnabled && watching.isRecording
+            && LiveCaptionsGate.strategy(
+                liveEnabled: settings.liveTranscriptionEnabled,
+                engineLanguage: settings.activeEngineLanguageOrNil,
+                engineSupportsLive: settings.transcriptionEngine.supportsLiveTranscription,
+            ) != .none
     }
 
     var currentBadge: BadgeKind {
@@ -510,10 +499,6 @@ final class AppState {
     /// The body reads these named props instead; the chains resolve here.
     var pipelineQueue: PipelineQueue {
         pipeline.queue
-    }
-
-    var hasPendingSpeakerNamingJobs: Bool {
-        !pipeline.queue.pendingSpeakerNamingJobs.isEmpty
     }
 
     /// Whether the active loop is a manual recording (vs. auto-detect). Drives

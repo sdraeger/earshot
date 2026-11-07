@@ -75,14 +75,18 @@ final class ParakeetEngine: TranscribingEngine, StreamingTranscribingEngine {
         private var modelLoadOverride: (@MainActor () async -> Void)?
     #endif
 
-    /// The exact vocabulary revision currently being prepared or already
-    /// handled. Unlike a path-only marker it changes when a user edits a file.
-    private var vocabularyPreparationState: ParakeetVocabularyPreparationState?
-    private var vocabularyRefreshGate = ParakeetVocabularyRefreshGate()
+    /// The exact vocabulary revision being prepared or already handled, ready
+    /// or not. Unlike a path it changes when a user edits the file. A revision
+    /// that failed stays handled: retrying it for every recording window only
+    /// adds repeated I/O and log noise, and an edit makes it a new revision.
+    private var handledVocabulary: ParakeetVocabularyConfiguration?
+    /// Bumped when Settings change, so a preparation that resumes after a
+    /// model download does not adopt a booster for a selection now gone.
+    private var vocabularyGeneration = 0
 
     private func invalidateVocabularyConfiguration() {
-        _ = vocabularyRefreshGate.invalidate()
-        vocabularyPreparationState = nil
+        vocabularyGeneration &+= 1
+        handledVocabulary = nil
         // Do not rescore a new recording with terms from the file that was just
         // replaced. `ensureVocabularyConfiguration()` prepares the new booster
         // before the next decode begins.
@@ -133,7 +137,7 @@ final class ParakeetEngine: TranscribingEngine, StreamingTranscribingEngine {
         try await modelLoad.runUnlessCancelled { [self] in await performLoad() }
         guard asrManager != nil else {
             logger.error("Parakeet: model load FAILED, state=\(String(describing: self.modelState), privacy: .public)")
-            throw TranscriptionError.modelNotLoaded()
+            throw TranscriptionError.modelNotLoaded(engine: "Parakeet")
         }
         logger.info("Parakeet: model loaded successfully")
     }
@@ -178,7 +182,7 @@ final class ParakeetEngine: TranscribingEngine, StreamingTranscribingEngine {
                 return try await fileTranscriptionOverride(audioPath)
             }
         #endif
-        guard let manager = asrManager else { throw TranscriptionError.modelNotLoaded() }
+        guard let manager = asrManager else { throw TranscriptionError.modelNotLoaded(engine: "Parakeet") }
         var decoderState = await TdtDecoderState.make(decoderLayers: manager.decoderLayerCount)
         return try await manager.transcribe(
             audioPath, decoderState: &decoderState, language: fluidLanguageHint,
@@ -191,7 +195,7 @@ final class ParakeetEngine: TranscribingEngine, StreamingTranscribingEngine {
                 return try await sampleTranscriptionOverride(samples)
             }
         #endif
-        guard let manager = asrManager else { throw TranscriptionError.modelNotLoaded() }
+        guard let manager = asrManager else { throw TranscriptionError.modelNotLoaded(engine: "Parakeet") }
         var decoderState = await TdtDecoderState.make(decoderLayers: manager.decoderLayerCount)
         return try await manager.transcribe(
             samples, decoderState: &decoderState, language: fluidLanguageHint,
@@ -270,12 +274,8 @@ final class ParakeetEngine: TranscribingEngine, StreamingTranscribingEngine {
     /// and avoids an unstructured background task racing the decode.
     func ensureVocabularyConfiguration() async {
         let configuration = vocabularyConfiguration(for: customVocabularyPath, bookmark: customVocabularyBookmark)
-        guard vocabularyPreparationState?.configuration != configuration else { return }
-        await configureVocabulary(
-            configuration,
-            attempt: vocabularyRefreshGate.current,
-            requiresCurrentSelection: true,
-        )
+        guard handledVocabulary != configuration else { return }
+        await configureVocabulary(configuration, generation: vocabularyGeneration)
     }
 
     private func vocabularyConfiguration(for path: String, bookmark: Data?) -> ParakeetVocabularyConfiguration {
@@ -288,109 +288,59 @@ final class ParakeetEngine: TranscribingEngine, StreamingTranscribingEngine {
         return ParakeetVocabularyConfiguration(path: path, bookmark: bookmark, revision: revision)
     }
 
-    private func configureVocabulary(
-        _ configuration: ParakeetVocabularyConfiguration,
-        attempt: Int,
-        requiresCurrentSelection: Bool,
-    ) async {
-        guard canAdoptVocabulary(
-            configuration, attempt: attempt, requiresCurrentSelection: requiresCurrentSelection,
-        ) else { return }
+    private func configureVocabulary(_ configuration: ParakeetVocabularyConfiguration, generation: Int) async {
+        guard canAdopt(configuration, generation: generation) else { return }
         // A new revision must never rescore with the prior revision while CTC
-        // models are written or loaded. Mark it in-flight so concurrent decodes
+        // models are written or loaded. Mark it handled so concurrent decodes
         // do not duplicate the same preparation work.
         vocabularyBooster = nil
-        vocabularyPreparationState = .preparing(configuration)
+        handledVocabulary = configuration
 
-        guard !configuration.path.isEmpty else {
-            adoptNoVocabulary(configuration, attempt: attempt, requiresCurrentSelection: requiresCurrentSelection)
-            return
-        }
-
+        guard !configuration.path.isEmpty else { return }
         guard let terms = vocabularyTerms(for: configuration), !terms.isEmpty else {
-            adoptNoVocabulary(configuration, attempt: attempt, requiresCurrentSelection: requiresCurrentSelection)
             logger.warning("Parakeet: vocabulary file is unavailable or contains no usable terms")
             return
         }
 
-        if await prepareVocabularyUsingOverrideIfPresent(
-            terms,
-            configuration: configuration,
-            attempt: attempt,
-            requiresCurrentSelection: requiresCurrentSelection,
-        ) { return }
-
-        // FluidAudio loads from a path. Give it the bounded, deduplicated list
-        // shared with WhisperKit rather than the original raw file, so both
-        // engines honour the validation limits users see in Settings.
         do {
-            let preparedVocabularyURL = FileManager.default.temporaryDirectory
-                .appendingPathComponent("parakeet-vocabulary-\(UUID().uuidString).txt")
-            defer { try? FileManager.default.removeItem(at: preparedVocabularyURL) }
-            try terms.joined(separator: "\n").write(
-                to: preparedVocabularyURL,
-                atomically: true,
-                encoding: .utf8,
-            )
-            let (vocab, ctcModels) = try await CustomVocabularyContext.loadWithCtcTokens(
-                from: preparedVocabularyURL.path,
-                ctcVariant: .ctc110m,
-            )
-            guard canAdoptVocabulary(
-                configuration, attempt: attempt, requiresCurrentSelection: requiresCurrentSelection,
-            ) else { return }
-
-            let spotter = CtcKeywordSpotter(models: ctcModels, blankId: ctcModels.vocabulary.count)
-            let rescorer = try await VocabularyRescorer.create(
-                spotter: spotter,
-                vocabulary: vocab,
-                config: .default,
-                ctcModelDirectory: CtcModels.defaultCacheDirectory(for: ctcModels.variant),
-            )
-            guard canAdoptVocabulary(
-                configuration, attempt: attempt, requiresCurrentSelection: requiresCurrentSelection,
-            ) else { return }
-            vocabularyBooster = VocabularyBooster(context: vocab, spotter: spotter, rescorer: rescorer)
-            vocabularyPreparationState = .ready(configuration)
-            logger.info("Parakeet: custom vocabulary loaded: \(vocab.terms.count) terms")
+            let booster = try await prepareBooster(terms)
+            guard canAdopt(configuration, generation: generation) else { return }
+            vocabularyBooster = booster
+            if let booster { logger.info("Parakeet: custom vocabulary loaded: \(booster.context.terms.count) terms") }
         } catch {
-            adoptVocabularyFailure(
-                configuration,
-                attempt: attempt,
-                requiresCurrentSelection: requiresCurrentSelection,
-                error: error,
-            )
+            guard canAdopt(configuration, generation: generation) else { return }
+            logger.warning("Parakeet: vocabulary preparation failed for \(configuration.path): \(error.localizedDescription, privacy: .public)")
         }
     }
 
-    private func prepareVocabularyUsingOverrideIfPresent(
-        _ terms: [String],
-        configuration: ParakeetVocabularyConfiguration,
-        attempt: Int,
-        requiresCurrentSelection: Bool,
-    ) async -> Bool {
+    /// The CTC booster for `terms`. Nil under a test override, which prepares
+    /// nothing real.
+    private func prepareBooster(_ terms: [String]) async throws -> VocabularyBooster? {
         #if DEBUG
-            guard let vocabularyPreparationOverride else { return false }
-            do {
+            if let vocabularyPreparationOverride {
                 try await vocabularyPreparationOverride(terms)
-            } catch {
-                adoptVocabularyFailure(
-                    configuration,
-                    attempt: attempt,
-                    requiresCurrentSelection: requiresCurrentSelection,
-                    error: error,
-                )
-                return true
+                return nil
             }
-            guard canAdoptVocabulary(
-                configuration, attempt: attempt, requiresCurrentSelection: requiresCurrentSelection,
-            ) else { return true }
-            vocabularyBooster = nil
-            vocabularyPreparationState = .ready(configuration)
-            return true
-        #else
-            false
         #endif
+        // FluidAudio loads from a path. Give it the bounded, deduplicated list
+        // shared with WhisperKit rather than the original raw file, so both
+        // engines honour the validation limits users see in Settings.
+        let preparedVocabularyURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("parakeet-vocabulary-\(UUID().uuidString).txt")
+        defer { try? FileManager.default.removeItem(at: preparedVocabularyURL) }
+        try terms.joined(separator: "\n").write(to: preparedVocabularyURL, atomically: true, encoding: .utf8)
+        let (vocab, ctcModels) = try await CustomVocabularyContext.loadWithCtcTokens(
+            from: preparedVocabularyURL.path,
+            ctcVariant: .ctc110m,
+        )
+        let spotter = CtcKeywordSpotter(models: ctcModels, blankId: ctcModels.vocabulary.count)
+        let rescorer = try await VocabularyRescorer.create(
+            spotter: spotter,
+            vocabulary: vocab,
+            config: .default,
+            ctcModelDirectory: CtcModels.defaultCacheDirectory(for: ctcModels.variant),
+        )
+        return VocabularyBooster(context: vocab, spotter: spotter, rescorer: rescorer)
     }
 
     // swiftlint:disable:next discouraged_optional_collection
@@ -400,46 +350,17 @@ final class ParakeetEngine: TranscribingEngine, StreamingTranscribingEngine {
         ) else { return nil }
         // swiftlint:disable:next discouraged_optional_collection
         return VocabularyFileAccess.withAccess(to: vocabularyURL) { url -> [String]? in
-            guard let revision = WhisperVocabularyPrompt.fileRevision(at: url.path) else { return nil }
-            return WhisperVocabularyPrompt.terms(fromFileAt: url.path, revision: revision)
+            guard let revision = WhisperVocabularyPrompt.fileRevision(at: url.path),
+                  case let .terms(terms) = WhisperVocabularyPrompt.read(fileAt: url.path, revision: revision)
+            else { return nil }
+            return terms
         }
     }
 
-    private func adoptNoVocabulary(
-        _ configuration: ParakeetVocabularyConfiguration,
-        attempt: Int,
-        requiresCurrentSelection: Bool,
-    ) {
-        guard canAdoptVocabulary(
-            configuration, attempt: attempt, requiresCurrentSelection: requiresCurrentSelection,
-        ) else { return }
-        vocabularyBooster = nil
-        vocabularyPreparationState = .unavailable(configuration)
-    }
-
-    private func adoptVocabularyFailure(
-        _ configuration: ParakeetVocabularyConfiguration,
-        attempt: Int,
-        requiresCurrentSelection: Bool,
-        error: any Error,
-    ) {
-        guard canAdoptVocabulary(
-            configuration, attempt: attempt, requiresCurrentSelection: requiresCurrentSelection,
-        ) else { return }
-        vocabularyBooster = nil
-        vocabularyPreparationState = .failed(configuration)
-        logger.warning("Parakeet: vocabulary preparation failed for \(configuration.path): \(error.localizedDescription, privacy: .public)")
-    }
-
-    private func canAdoptVocabulary(
-        _ configuration: ParakeetVocabularyConfiguration,
-        attempt: Int,
-        requiresCurrentSelection: Bool,
-    ) -> Bool {
-        guard requiresCurrentSelection else { return true }
-        return vocabularyRefreshGate.isCurrent(attempt)
-            && configuration == vocabularyConfiguration(
-                for: customVocabularyPath, bookmark: customVocabularyBookmark,
-            )
+    /// Whether a preparation started under `generation` for `configuration`
+    /// may still take effect: nothing changed the selection meanwhile.
+    private func canAdopt(_ configuration: ParakeetVocabularyConfiguration, generation: Int) -> Bool {
+        generation == vocabularyGeneration
+            && configuration == vocabularyConfiguration(for: customVocabularyPath, bookmark: customVocabularyBookmark)
     }
 }

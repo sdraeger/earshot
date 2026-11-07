@@ -249,34 +249,7 @@ final class WatchingController {
                 syncEngines?()
                 pipeline.rebuild()
 
-                let detector = makeDetector()
-
-                let loop = WatchLoop(
-                    detector: detector,
-                    recorderFactory: makeRecorderFactory(),
-                    pipelineQueue: pipeline.queue,
-                    pollInterval: settings.pollInterval,
-                    endGracePeriod: settings.endGrace,
-                    noMic: { [settings] in settings.noMic },
-                    micDeviceUID: { [settings] in settings.micDeviceUIDOrNil },
-                    verboseDiagnostics: { [settings] in settings.verboseDiagnostics },
-                    recordOnly: { [settings] in settings.recordOnly },
-                    // Decided per write, not per poll: the loop calls this once
-                    // when a record-only recording is persisted, so a folder that
-                    // cannot be reached is reported there (see the resolver).
-                    recordOnlyDestination: { [pipeline] in
-                        .production(parent: pipeline.outputDirectory.resolve())
-                    },
-                    notifier: notifier,
-                    denyListStore: ConsentDenyListStore(settings: settings),
-                )
-
-                attachStateChangeHandler(to: loop, notifyOnRecording: true)
-
-                if let health = permissions.health {
-                    loop.permissionChecker = { health }
-                }
-
+                let loop = makeWatchLoop(detection: (makeDetector(), ConsentDenyListStore(settings: settings)))
                 watchLoop = loop
                 loop.start()
             }
@@ -474,33 +447,8 @@ final class WatchingController {
         // toggleWatching so the "Apps to Watch" filter still applies, and
         // pass `denyListStore:` so a "Never for this app" is honoured here
         // too.
-        let loop = WatchLoop(
-            recorderFactory: makeRecorderFactory(),
-            pipelineQueue: pipeline.queue,
-            pollInterval: settings.pollInterval,
-            noMic: { [settings] in settings.noMic },
-            micDeviceUID: { [settings] in settings.micDeviceUIDOrNil },
-            verboseDiagnostics: { [settings] in settings.verboseDiagnostics },
-            recordOnly: { [settings] in settings.recordOnly },
-            // Same seam as the auto-watch loop above: per write, through the
-            // shared resolver.
-            recordOnlyDestination: { [pipeline] in
-                .production(parent: pipeline.outputDirectory.resolve())
-            },
-            notifier: notifier,
-        )
+        let loop = makeWatchLoop(detection: nil)
         watchLoop = loop
-
-        // Wire channel-health monitoring + error notification on state
-        // transitions — same hook the auto-detect path installs, so the
-        // red-tint indicator and asymmetric-silence notification work
-        // for manual recordings too.
-        attachStateChangeHandler(to: loop, notifyOnRecording: false)
-
-        // Use cached health check result instead of live probe
-        if let health = permissions.health {
-            loop.permissionChecker = { health }
-        }
 
         do {
             switch request {
@@ -560,6 +508,41 @@ final class WatchingController {
     /// so the red-tint indicator + asymmetric-silence notification fire in both.
     /// `notifyOnRecording` only fires "Recording started" notifications for the
     /// auto-detect path; manual recording emits its own start notification.
+    /// A loop wired to settings, the pipeline and the notifier, with the
+    /// channel-health hook installed and the cached permission health in
+    /// place of a live probe. `detection` is the auto-watch path's detector
+    /// and consent deny list; a manual recording passes nil and gets the
+    /// loop's inert defaults, since it never detects and so never prompts.
+    private func makeWatchLoop(
+        detection: (detector: any MeetingDetecting, denyList: any ConsentDenyListStoring)?,
+    ) -> WatchLoop {
+        let loop = WatchLoop(
+            detector: detection?.detector ?? WatchLoop.defaultDetector(),
+            recorderFactory: makeRecorderFactory(),
+            pipelineQueue: pipeline.queue,
+            pollInterval: settings.pollInterval,
+            endGracePeriod: settings.endGrace,
+            noMic: { [settings] in settings.noMic },
+            micDeviceUID: { [settings] in settings.micDeviceUIDOrNil },
+            recordOnly: { [settings] in settings.recordOnly },
+            // Decided per write, not per poll: the loop calls this once when a
+            // record-only recording is persisted, so a folder that cannot be
+            // reached is reported there (see the resolver).
+            recordOnlyDestination: { [pipeline] in
+                .production(parent: pipeline.outputDirectory.resolve())
+            },
+            notifier: notifier,
+            denyListStore: detection?.denyList ?? InMemoryConsentDenyListStore(),
+        )
+        // A recording a detector found posts its own notice; a manual one was
+        // started by the user, who needs none.
+        attachStateChangeHandler(to: loop, notifyOnRecording: detection != nil)
+        if let health = permissions.health {
+            loop.permissionChecker = { health }
+        }
+        return loop
+    }
+
     private func attachStateChangeHandler(to loop: WatchLoop, notifyOnRecording: Bool) {
         loop.onStateChange = { [weak self, weak loop, notifier] oldState, newState in
             // Leaving `.recording` (natural meeting end, manual stop, or

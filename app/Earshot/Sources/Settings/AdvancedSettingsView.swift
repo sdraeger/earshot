@@ -1,7 +1,5 @@
 import AppKit
-import ApplicationServices
 import AudioTapLib
-import AVFoundation
 import os.log
 import SwiftUI
 
@@ -19,10 +17,10 @@ private enum PrivacyPane: String {
 
 struct AdvancedSettingsView: View {
     @Bindable var settings: AppSettings
-
-    @State private var micPermission: AVAuthorizationStatus = .notDetermined
-    @State private var screenRecordingOK = false
-    @State private var accessibilityOK = false
+    /// The app's own permission health check, so a row shows a grant macOS
+    /// reports but that does not work, as the menu bar does. Nil before the
+    /// app wires one, which shows every row as still being checked.
+    var permissions: PermissionsController?
     @State private var lastExportFile: String?
     @State private var lastExportError: String?
     /// True while a `DiagnosticExporter.export` call is running off-main.
@@ -93,7 +91,7 @@ struct AdvancedSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .onAppear { refreshPermissions() }
+        .task { await permissions?.check(minimumInterval: 3) }
     }
 
     private var permissionsSection: some View {
@@ -101,8 +99,9 @@ struct AdvancedSettingsView: View {
         Section {
             PermissionRow(
                 label: "Screen Recording",
-                detail: Self.screenRecordingDetail,
-                granted: screenRecordingOK,
+                detail: Self.detail(health?.screenRecording, whenHealthy: Self.screenRecordingDetail),
+                granted: health?.screenRecording == .healthy,
+                warning: Self.isPending(health?.screenRecording),
                 help: "\(SystemSettingsPaths.screenRecording) → enable Earshot",
                 settingsURL: PrivacyPane.screenCapture.url,
             ) {
@@ -113,19 +112,17 @@ struct AdvancedSettingsView: View {
             }
             PermissionRow(
                 label: "Microphone",
-                detail: micPermission == .authorized ? "Granted"
-                    : micPermission == .notDetermined ? "Will prompt on first recording"
-                    : "Denied — click to open Settings",
-                granted: micPermission == .authorized,
-                warning: micPermission == .notDetermined,
+                detail: Self.detail(health?.microphone, whenHealthy: "Granted"),
+                granted: health?.microphone == .healthy,
+                warning: Self.isPending(health?.microphone),
                 help: "System Settings → Privacy & Security → Microphone → enable Earshot",
                 settingsURL: PrivacyPane.microphone.url,
             ) {
-                // Undecided: macOS asks in place. Denied: only the pane can change it.
-                if micPermission == .notDetermined {
+                // Undecided: macOS asks in place. Otherwise only the pane can change it.
+                if health?.microphone == .notDetermined {
                     Task {
                         _ = await Permissions.ensureMicrophoneAccess()
-                        refreshPermissions()
+                        await permissions?.check()
                     }
                 } else {
                     Self.open(.microphone)
@@ -133,8 +130,8 @@ struct AdvancedSettingsView: View {
             }
             PermissionRow(
                 label: "Accessibility",
-                detail: "Optional — enables mute detection and meeting naming",
-                granted: accessibilityOK,
+                detail: Self.detail(health?.accessibility, whenHealthy: "Granted", optional: true),
+                granted: health?.accessibility == .healthy,
                 optional: true,
                 help: "System Settings → Privacy & Security → Accessibility → enable Earshot",
                 settingsURL: PrivacyPane.accessibility.url,
@@ -144,7 +141,7 @@ struct AdvancedSettingsView: View {
             }
 
             Button("Refresh") {
-                refreshPermissions()
+                Task { await permissions?.check() }
             }
             .font(.callout)
         } header: {
@@ -162,10 +159,23 @@ struct AdvancedSettingsView: View {
         if let url = URL(string: pane.url) { NSWorkspace.shared.open(url) }
     }
 
-    private func refreshPermissions() {
-        micPermission = AVCaptureDevice.authorizationStatus(for: .audio)
-        screenRecordingOK = Permissions.checkScreenRecording()
-        accessibilityOK = AXIsProcessTrusted()
+    private var health: HealthCheckResult? {
+        permissions?.health
+    }
+
+    /// Not yet read, or not yet asked: neither is a failure.
+    private static func isPending(_ status: PermissionStatus?) -> Bool {
+        status == nil || status == .notDetermined
+    }
+
+    static func detail(_ status: PermissionStatus?, whenHealthy healthy: String, optional: Bool = false) -> String {
+        switch status {
+        case nil: "Checking…"
+        case .healthy: healthy
+        case .notDetermined: "Not asked yet"
+        case .denied: optional ? "Optional — enables mute detection and meeting naming" : "Not allowed"
+        case .broken: "Allowed, but not working: switch it off and on in System Settings"
+        }
     }
 
     private func exportDiagnostics() {
@@ -173,19 +183,7 @@ struct AdvancedSettingsView: View {
         let stamp = Int(Date().timeIntervalSince1970)
         let outURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("Earshot-diagnostics-\(stamp).log")
-        let info = DiagnosticExporter.HeaderInfo(
-            appVersion: Bundle.main.appVersion,
-            commit: Bundle.main.gitCommitHash,
-            macOSVersion: ProcessInfo.processInfo.operatingSystemVersionString,
-            settings: [
-                "verboseDiagnostics": "\(settings.verboseDiagnostics)",
-                "diarize": "\(settings.diarize)",
-                "vadEnabled": "\(settings.vadEnabled)",
-                "transcriptionEngine": settings.transcriptionEngine.rawValue,
-                "protocolProvider": settings.protocolProvider.rawValue,
-                "recordOnly": "\(settings.recordOnly)",
-            ],
-        )
+        let info = DiagnosticExporter.headerInfo(settings: settings)
 
         isExportingDiagnostics = true
         // The persistent-log file source can be 50-200 MB and reads via

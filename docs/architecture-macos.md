@@ -127,6 +127,9 @@ State writes to `AppPaths.dataDir`; IPC + queue snapshots to `ipcDir`.
 | `LiveCaptionsOverlay.swift` | SwiftUI caption-bar content (recent finals + per-channel hypotheses) hosted in `LiveCaptionsWindow` |
 | `LiveCaptionsWindowController.swift` | Borderless click-through NSPanel hosting the caption overlay (⌥-drag to reposition; origin persisted) |
 | `RecordingButtonPanel.swift` | Floating pill at the right screen edge while recording: voice-activity bars from the louder channel's dBFS, vertical drag (height persisted), click menu to stop; `sharingType = .none` keeps it out of screen shares |
+| `AppState+Naming.swift` | Which job the naming window shows (`shownNamingJobID`, `showNaming`) and where an answer leads (`answerNaming` → refused / shows next / finished) |
+| `SpeakerDBEditing.swift` | One value carrying what Settings needs to edit the speaker database (matcher, enrollment diarizer, naming/busy flags, refresh after an edit); `AppState.speakerDBEditing` builds it |
+| `DetectionConfirmation.swift` | Shared confirmation rule of both meeting detectors: seen in N consecutive polls, cooldown after a meeting ends |
 | `Theme.swift` | Earshot colors (paper, card, hairline, green accent) with dark-mode values |
 | `LiveCaptionsSize.swift` | Caption-bar size presets (Small/Medium/Large): font size paired with the fixed panel dimensions that fit it; `AppSettings.liveCaptionsSize` |
 | `ProcessingStatsView.swift` | Read-only average per-stage processing durations from `stage_timing.jsonl` (Settings → Advanced) |
@@ -139,7 +142,6 @@ State writes to `AppPaths.dataDir`; IPC + queue snapshots to `ipcDir`.
 | `WatchLoop+ManualRecording.swift` | The poll loop that decides when a manually started recording ends, split out of `WatchLoop` |
 | `WatchLoopEndPolicy.swift` | Pure decision logic for `waitForMeetingEnd` (grace-period / max-duration) |
 | `WatchLoopState.swift` | Value-type snapshot of `WatchLoop`'s observable fields (for tests and RPC) |
-| `ManualRecordingMonitorPolicy.swift` | Pure decision logic for manual recording stop conditions (process-died vs max-duration) |
 | `MeetingDetecting.swift` | `MeetingDetecting` protocol + `DetectedMeeting` model |
 | `MeetingTitleMatcher.swift` | Compiled idle/meeting title regex semantics for one `AppMeetingPattern` |
 | `PowerAssertionDetector.swift` | IOKit power assertion–based meeting detection (sandbox-safe); carries the Chrome WebRTC pattern for browser meetings (issue #503) |
@@ -206,7 +208,7 @@ State writes to `AppPaths.dataDir`; IPC + queue snapshots to `ipcDir`.
 | `LiveTranscriptionController+Nemotron.swift` | Nemotron streaming-pipeline construction, split out for size; injectable factory for testing the build + model-load-failure fallback |
 | `LiveTranscriptionCoordinator.swift` | `@Observable` coordinator: builds + arms `LiveTranscriptionController`, feeds `LiveCaptionsState` |
 | `LiveCaptionPipeline.swift` | Per-channel live captioning strategy protocol (English EOU streaming \| Nemotron streaming \| WhisperKit/Parakeet re-transcribe) |
-| `LiveCaptionsGate.swift` | Pure decision logic for live captions routing: master toggle + explicit engine language (`en` → English EOU streaming, other → Nemotron streaming, auto-detect → re-transcribe or none) — shared by `AppState`, coordinator, and controller. Overlay visibility is a separate UI AND (`overlayVisible`); it is not a strategy input |
+| `LiveCaptionsGate.swift` | Pure decision logic for live captions routing: master toggle + explicit engine language (`en` → English EOU streaming, other → Nemotron streaming, auto-detect → re-transcribe or none) — shared by `AppState`, coordinator, and controller. Overlay visibility (`AppState.shouldShowLiveCaptions`) ANDs a non-`none` strategy with recording and the overlay setting; it is not a strategy input |
 | `EouStreamingCaptionSession.swift` | English low-latency streaming caption session via FluidAudio Parakeet EOU, backed by `UtteranceRingBuffer` |
 | `NemotronStreamingCaptionSession.swift` | Multilingual (non-English) low-latency streaming caption session via FluidAudio Nemotron |
 | `NemotronAsrManager.swift` | Production seam wrapping FluidAudio's Nemotron model + Silero VAD for `NemotronStreamingCaptionSession` |
@@ -736,7 +738,7 @@ AppSettings (UserDefaults)
 |-----------|----------------|
 | PowerAssertionDetector | `assertionProvider` + `windowListProvider` closures |
 | MicInputDetector | `processProvider` + `windowListProvider` closures |
-| DiarizationProvider | `diarizationFactory` closure in PipelineQueue |
+| DiarizationProvider | `diarizerFactory` closure in PipelineQueue (nil mode = current setting) |
 | ProtocolGenerating | `protocolGenerator` protocol in PipelineQueue |
 | RecordingProvider | `recorderFactory` closure in WatchLoop |
 | ProtocolGenerator | `claudeBin` parameter |

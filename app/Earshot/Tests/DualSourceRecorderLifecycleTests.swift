@@ -26,16 +26,7 @@ final class DualSourceRecorderLifecycleTests: XCTestCase {
         var micTrack: URL?
         /// The raw app temp `stop()` reports; nil for the mic-only tests.
         var appTrack: URL?
-        var appLevelDBFS: Double = -120
-        var micLevelDBFS: Double = -120
-        var appCaptureGaveUp = false
-        var micCaptureGaveUp = false
-        var micCaptureStartTimedOut = false
-        var appSilentTrackWatchdogGaveUp = false
-        var appCarriesOnlyNoiseFloor = false
-        var micCaptureStall = MicCaptureStall()
-        var appSignalAges: ChannelSignalAges = .unknown
-        var micSignalAges: ChannelSignalAges = .unknown
+        var status = CaptureStatus.idle
         /// The configuration the recorder handed the factory, so a test can
         /// assert on the choices and write to the URLs it picked.
         var lastConfiguration: AudioCaptureConfiguration?
@@ -238,61 +229,25 @@ final class DualSourceRecorderLifecycleTests: XCTestCase {
     // MARK: - Channel reporting
 
     /// The levels, the give-up flags and the signal ages all come from the live
-    /// session. A level cannot say a channel was abandoned: one that fell
-    /// silent may come back, one that gave up will not.
+    /// session; between recordings there is none, and the answer is silence
+    /// with both channels never opened, since a spurious give-up would tell the
+    /// user a capture died that never ran.
     func testTheRecorderReportsTheLiveSessionsChannelState() throws {
         let dir = try makeTempDirectory(prefix: "lifecycle_levels")
         let (recorder, session) = makeRecorder(dir: dir)
-        // Each channel gets a different value from its sibling, so a forwarder
-        // wired to the wrong one — or hardcoded to the no-session default —
-        // fails rather than coinciding with the right answer.
-        session.appLevelDBFS = -12
-        session.micLevelDBFS = -30
-        session.appCaptureGaveUp = true
-        session.micCaptureGaveUp = false
-        // Differs from `micCaptureGaveUp` on purpose, so a forwarder reading
-        // the give-up under this name fails.
-        session.micCaptureStartTimedOut = true
-        session.appSilentTrackWatchdogGaveUp = true
-        session.appCarriesOnlyNoiseFloor = true
-        session.appSignalAges = ChannelSignalAges(secondsSinceLastBuffer: 1, secondsSinceLastEnergy: 2)
-        session.micSignalAges = ChannelSignalAges(secondsSinceLastBuffer: 3, secondsSinceLastEnergy: 4)
+        session.status = CaptureStatus(
+            mic: CaptureChannelStatus(levelDBFS: -30, ages: ChannelSignalAges(secondsSinceLastBuffer: 3, secondsSinceLastEnergy: 4)),
+            app: CaptureChannelStatus(levelDBFS: -12, ages: ChannelSignalAges(secondsSinceLastBuffer: 1, secondsSinceLastEnergy: 2), gaveUp: true),
+            micStartTimedOut: true,
+            appWatchdogGaveUp: true,
+            appNoiseFloorOnly: true,
+        )
 
-        // Between recordings there is no session to ask, and silence plus "has
-        // not given up" is the only safe answer: a spurious give-up would tell
-        // the user a capture died that never ran.
-        XCTAssertEqual(recorder.appLevelDBFS, -120, accuracy: 0.001)
-        XCTAssertEqual(recorder.micLevelDBFS, -120, accuracy: 0.001)
-        XCTAssertFalse(recorder.appCaptureGaveUp)
-        XCTAssertFalse(recorder.micCaptureGaveUp)
-        XCTAssertFalse(recorder.micCaptureStartTimedOut)
-        XCTAssertFalse(recorder.appSilentTrackWatchdogGaveUp)
-        XCTAssertFalse(recorder.appCarriesOnlyNoiseFloor)
-        // Never opened, not "opened and long silent": the fault monitor reads
-        // the two apart, so the no-session answer has to be the absent one.
-        XCTAssertEqual(recorder.appSignalAges, .unknown)
-        XCTAssertEqual(recorder.micSignalAges, .unknown)
+        XCTAssertEqual(recorder.captureStatus, .idle)
 
         try recorder.start(source: .micOnly)
 
-        XCTAssertEqual(recorder.appLevelDBFS, -12, accuracy: 0.001)
-        XCTAssertEqual(recorder.micLevelDBFS, -30, accuracy: 0.001)
-        XCTAssertTrue(recorder.appCaptureGaveUp)
-        XCTAssertFalse(recorder.micCaptureGaveUp)
-        XCTAssertTrue(recorder.micCaptureStartTimedOut)
-        XCTAssertTrue(recorder.appSilentTrackWatchdogGaveUp)
-        // Its own flag, not the give-up one read under another name.
-        session.appCaptureGaveUp = false
-        XCTAssertTrue(recorder.appSilentTrackWatchdogGaveUp)
-        session.appCaptureGaveUp = true
-        XCTAssertTrue(recorder.appCarriesOnlyNoiseFloor)
-        // Its own flag too: every other app flag above is also true.
-        session.appCarriesOnlyNoiseFloor = false
-        XCTAssertFalse(recorder.appCarriesOnlyNoiseFloor)
-        XCTAssertEqual(recorder.appSignalAges.secondsSinceLastBuffer, 1)
-        XCTAssertEqual(recorder.appSignalAges.secondsSinceLastEnergy, 2)
-        XCTAssertEqual(recorder.micSignalAges.secondsSinceLastBuffer, 3)
-        XCTAssertEqual(recorder.micSignalAges.secondsSinceLastEnergy, 4)
+        XCTAssertEqual(recorder.captureStatus, session.status)
     }
 
     // MARK: - Silent-track watchdog option (issue #672)

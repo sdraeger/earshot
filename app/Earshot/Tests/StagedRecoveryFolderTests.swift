@@ -26,7 +26,7 @@ final class StagedRecoveryFolderTests: XCTestCase {
 
         let queue = try PipelineQueue(
             engine: MockEngine(),
-            diarizationFactory: { MockDiarization() },
+            diarizerFactory: { _ in MockDiarization() },
             protocolGeneratorFactory: { nil },
             outputDir: output,
             logDir: makeTempDirectory(prefix: "StagedRecoveryLog"),

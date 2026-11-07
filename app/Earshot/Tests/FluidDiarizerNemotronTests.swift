@@ -109,7 +109,7 @@ final class FluidDiarizerNemotronTests: XCTestCase {
             .appendingPathComponent("nemotron-missing-\(UUID().uuidString).wav")
 
         do {
-            _ = try await diarizer.run(audioPath: missing, numSpeakers: 3, meetingTitle: "Test")
+            _ = try await diarizer.run(audioPath: missing, numSpeakers: 3)
             XCTFail("Expected an unreadable file to throw")
         } catch {
             XCTAssertFalse(error is StubNemotronStream.Reached, "The run must stop at the audio, before streaming")
@@ -162,7 +162,7 @@ final class FluidDiarizerNemotronTests: XCTestCase {
         }
         let diarizer = FluidDiarizer(mode: .nemotron, makeNemotronDiarizer: load)
 
-        _ = try? await diarizer.run(audioPath: audio, numSpeakers: nil, meetingTitle: "compute-units")
+        _ = try? await diarizer.run(audioPath: audio, numSpeakers: nil)
 
         XCTAssertEqual(requested.withLock { $0 }, [.cpuAndNeuralEngine])
     }
@@ -182,7 +182,7 @@ final class FluidDiarizerNemotronTests: XCTestCase {
 
         let task = Task {
             withUnsafeCurrentTask { $0?.cancel() }
-            return try await diarizer.run(audioPath: audio, numSpeakers: nil, meetingTitle: "cancelled")
+            return try await diarizer.run(audioPath: audio, numSpeakers: nil)
         }
         do {
             _ = try await task.value
@@ -222,7 +222,7 @@ final class FluidDiarizerNemotronTests: XCTestCase {
         let diarizer = FluidDiarizer(mode: .nemotron, makeNemotronDiarizer: load)
 
         do {
-            _ = try await diarizer.run(audioPath: audio, numSpeakers: nil, meetingTitle: "cancelled mid-stream")
+            _ = try await diarizer.run(audioPath: audio, numSpeakers: nil)
             XCTFail("A run cancelled mid-stream must throw")
         } catch {
             XCTAssertTrue(error is CancellationError, "Expected cancellation, got \(error)")
@@ -284,7 +284,7 @@ final class FluidDiarizerNemotronTests: XCTestCase {
 
     private static func runExpectingStreamEnd(_ diarizer: FluidDiarizer, audio: URL) async {
         do {
-            _ = try await diarizer.run(audioPath: audio, numSpeakers: nil, meetingTitle: "Test")
+            _ = try await diarizer.run(audioPath: audio, numSpeakers: nil)
             XCTFail("The stub ends every run at the end of the stream")
         } catch {
             XCTAssertTrue(error is StubNemotronStream.Reached, "Expected the stream end, got \(error)")

@@ -16,7 +16,7 @@ private let logger = Logger(subsystem: "com.earshot.audiotap", category: "AppAud
 /// atomic. `@unchecked Sendable` reflects that this serialization is manual
 /// rather than expressible to the compiler.
 @available(macOS 14.2, *)
-public class AppAudioCapture: @unchecked Sendable {
+class AppAudioCapture: @unchecked Sendable {
     /// `internal` (not `private`) so the cross-file `+PIDTranslation`
     /// extension can read it; it's not otherwise touched from outside.
     let pids: [pid_t]
@@ -89,13 +89,13 @@ public class AppAudioCapture: @unchecked Sendable {
     /// Returns the instantaneous app-audio level in dBFS, decayed to -120 if
     /// no buffer arrived in the last 0.5 seconds (e.g. tap died, device
     /// unplugged) — without that, a stale reading would look like live audio.
-    public var currentLevelDBFS: Double {
+    var currentLevelDBFS: Double {
         levelPublisher.currentLevelDBFS
     }
 
     /// See `ChannelSignalAges`: the level alone folds "no buffers", "buffers of
     /// zeroes" and "a real but very quiet buffer" into one number.
-    public var currentSignalAges: ChannelSignalAges {
+    var currentSignalAges: ChannelSignalAges {
         levelPublisher.currentSignalAges
     }
 
@@ -107,19 +107,19 @@ public class AppAudioCapture: @unchecked Sendable {
     )
 
     /// mach_absolute_time() of first audio callback.
-    public private(set) var appFirstFrameTime: UInt64 = 0
+    private(set) var appFirstFrameTime: UInt64 = 0
     /// Actual sample rate of the aggregate device (may differ from requested).
     /// Touched by the IOProc (`writeQueue`) and the main thread (start/restart
     /// logs, restart event), so it is `OSAllocatedUnfairLock`-backed for atomic
     /// cross-thread access; `private(set)` keeps writes internal.
     private let actualSampleRateLock = OSAllocatedUnfairLock(initialState: 0)
-    public private(set) var actualSampleRate: Int {
+    private(set) var actualSampleRate: Int {
         get { actualSampleRateLock.withLock { $0 } }
         set { actualSampleRateLock.withLock { $0 = newValue } }
     }
 
     /// Actual channel count detected from first IOProc callback.
-    public private(set) var actualChannels: Int = 0
+    private(set) var actualChannels: Int = 0
     // `outputSampleRate` / `outputChannels` (the format actually written to the
     // fd, 16 kHz mono after the in-IOProc resample) live in `+Resampling`.
 
@@ -146,13 +146,13 @@ public class AppAudioCapture: @unchecked Sendable {
 
     /// Called when app-audio capture was abandoned, either because a restart
     /// attempt exceeded its deadline or because the retry budget ran out.
-    public var onGiveUp: (() -> Void)?
+    var onGiveUp: (() -> Void)?
 
     /// Called once, on the main queue, when the opt-in silent-track watchdog
     /// stopped rebuilding because its rebuilds did not restore signal (issue
     /// #672). Unlike `onGiveUp` the channel is still capturing; it is
     /// capturing zeros.
-    public var onSilentTrackWatchdogGaveUp: (() -> Void)?
+    var onSilentTrackWatchdogGaveUp: (() -> Void)?
     /// Whether the watchdog was armed, stored so the 5 s tick can skip it
     /// without a lock or a clock read when it is off.
     let silentTrackWatchdog: Bool
@@ -186,7 +186,7 @@ public class AppAudioCapture: @unchecked Sendable {
     ///   - liveSink: Optional callback receiving a copy of each captured buffer.
     ///     Called on the audio IOProc thread — must not block. Nil = no-op,
     ///     existing batch path unchanged.
-    public convenience init(
+    convenience init(
         pids: [pid_t],
         outputFileDescriptor: Int32,
         sampleRate: Int = 48000,
@@ -292,7 +292,7 @@ public class AppAudioCapture: @unchecked Sendable {
         return rate
     }
 
-    public func start() throws {
+    func start() throws {
         // Only the test seam returns nothing: production startCapture either
         // hands back a session or throws.
         if let built = try performAttempt() { install(built) }
@@ -560,7 +560,7 @@ public class AppAudioCapture: @unchecked Sendable {
         noteTapRemovedForWatchdog()
     }
 
-    public func stop() {
+    func stop() {
         // Before the summary, so a check still in flight cannot move a counter
         // or write a line after it.
         silentTrackDiagnostics.stopWatchdog()

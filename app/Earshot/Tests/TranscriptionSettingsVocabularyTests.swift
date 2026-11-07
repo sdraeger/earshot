@@ -174,10 +174,6 @@ final class TranscriptionSettingsVocabularyTests: XCTestCase {
     }
 
     private func makeView(settings: AppSettings) -> TranscriptionSettingsView {
-        TranscriptionSettingsView(
-            settings: settings,
-            whisperKitEngine: WhisperKitEngine(),
-            parakeetEngine: ParakeetEngine(),
-        )
+        TranscriptionSettingsView(settings: settings, engines: .forTesting(settings: settings))
     }
 }

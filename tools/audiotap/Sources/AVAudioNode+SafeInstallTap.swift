@@ -4,10 +4,10 @@ import CExceptionCatcher
 /// Error thrown when installing an audio tap fails because AVFoundation raised
 /// an NSException (issue #379) — e.g. a tap format whose channel count or
 /// sample rate doesn't match the node's bus after a device change.
-public enum AudioTapInstallError: LocalizedError {
+enum AudioTapInstallError: LocalizedError {
     case installFailed(String)
 
-    public var errorDescription: String? {
+    var errorDescription: String? {
         switch self {
         case let .installFailed(reason): "Failed to install audio tap: \(reason)"
         }

@@ -11,27 +11,19 @@ private let logger = Logger(subsystem: AppPaths.logSubsystem, category: "WatchLo
 /// on purpose, and moving them here would mean widening those to internal for a
 /// line count. The monitor reads nothing but injected dependencies.
 extension WatchLoop {
+    /// Polls until the recorded app exits or the recording runs past
+    /// `maxDuration`, then stops it. An exit wins a tie, so a process that
+    /// dies right at the cap reads as a clean exit. No PID means a
+    /// microphone-only recording: nothing can exit, so only the cap stops it.
     func monitorManualRecording(pid: pid_t?) async {
         let startTime = nowProvider()
         while !Task.isCancelled {
-            // No PID means a microphone-only recording, which has no process
-            // that could exit; the duration cap below is its only stop signal.
-            let target: ManualRecordingTarget = pid.map { pidAliveCheck($0) ? .alive : .exited } ?? .untargeted
-            let decision = ManualRecordingMonitorPolicy.step(
-                target: target,
-                elapsed: nowProvider().timeIntervalSince(startTime),
-                maxDuration: maxDuration,
-            )
-            switch decision {
-            case .continuePolling:
-                break
-
-            case .stopPidExited:
-                logger.info("Monitored app (PID \(pid ?? 0)) exited — stopping manual recording")
+            if let pid, !pidAliveCheck(pid) {
+                logger.info("Monitored app (PID \(pid)) exited — stopping manual recording")
                 stopManualRecording()
                 return
-
-            case .stopMaxDurationExceeded:
+            }
+            if nowProvider().timeIntervalSince(startTime) > maxDuration {
                 logger.info("Max recording duration reached — stopping manual recording")
                 stopManualRecording()
                 return

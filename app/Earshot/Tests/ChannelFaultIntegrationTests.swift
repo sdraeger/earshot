@@ -27,7 +27,7 @@ final class ChannelFaultIntegrationTests: XCTestCase {
     /// A recorder double that implements none of the optional reporting, i.e.
     /// takes every `RecordingProvider` default.
     private final class BareRecorder: RecordingProvider {
-        func start(source _: RecordingSource, micDeviceUID _: String?, debugLogging _: Bool) {}
+        func start(source _: RecordingSource, micDeviceUID _: String?) {}
         func stop() -> RecordingResult {
             RecordingResult(
                 mixPath: URL(fileURLWithPath: "/tmp/bare_mix.wav"),

@@ -6,12 +6,12 @@ private let logger = Logger(subsystem: "com.earshot.audiotap", category: "AudioC
 /// Errors raised by `AudioCaptureSession` itself, before either track's
 /// hardware is touched. Deliberately not `@available`-gated so a caller can
 /// match on it without the OS check the session class carries.
-public enum AudioCaptureSessionError: LocalizedError, Equatable {
+enum AudioCaptureSessionError: LocalizedError, Equatable {
     /// Neither an app-audio nor a mic output URL was supplied, so the session
     /// would run and record nothing.
     case noTracksRequested
 
-    public var errorDescription: String? {
+    var errorDescription: String? {
         switch self {
         case .noTracksRequested:
             "Capture session needs at least one of an app-audio or a microphone output"
@@ -42,21 +42,21 @@ public class AudioCaptureSession {
     /// useful than "this channel is quiet". In the first case a wedged attempt
     /// also keeps a thread and a good share of a core until the process
     /// restarts. Read from the polling path that already watches channel levels.
-    public private(set) var appCaptureGaveUp = false
-    public private(set) var micCaptureGaveUp = false
+    private(set) var appCaptureGaveUp = false
+    private(set) var micCaptureGaveUp = false
     /// Set with `micCaptureGaveUp` when the microphone's first start did not
     /// return within its deadline and the recording went on without it
     /// (issue #778). Tells that give-up apart from a restart's: nothing was
     /// restarted. Says the call missed its deadline, not that it is still
     /// out: a later return does not clear it.
-    public private(set) var micCaptureStartTimedOut = false
+    private(set) var micCaptureStartTimedOut = false
 
     /// Set when the opt-in silent-track watchdog stopped rebuilding the app tap
     /// because its rebuilds did not restore signal (issue #672). Not terminal,
     /// unlike `appCaptureGaveUp`: the channel still captures, it captures
     /// zeros. Read from the same polling path. Never cleared: whether it is
     /// still news is decided by the fault monitor that reads it, not here.
-    public private(set) var appSilentTrackWatchdogGaveUp = false
+    private(set) var appSilentTrackWatchdogGaveUp = false
 
     /// Whether the microphone is released for lack of audio, and how often it
     /// was: it went without a buffer for the whole budget across restarts and
@@ -64,7 +64,7 @@ public class AudioCaptureSession {
     /// again once a device change brought the microphone back and it
     /// delivered, not merely when its engine came up again, and it ends when
     /// a revival gives up.
-    public private(set) var micCaptureStall = MicCaptureStall()
+    private(set) var micCaptureStall = MicCaptureStall()
     private var appFileHandle: FileHandle?
 
     /// Whether the microphone's output path was free when this start reached it.
@@ -371,13 +371,13 @@ public class AudioCaptureSession {
 
     /// Instantaneous app-audio level in dBFS, decayed to -120 when no buffer has
     /// arrived in the last 0.5 s. Drives the menu-bar asymmetric-silence indicator.
-    public var appLevelDBFS: Double {
+    var appLevelDBFS: Double {
         appCapture?.currentLevelDBFS ?? -120
     }
 
     /// Instantaneous mic level in dBFS, decayed to -120 when no buffer has arrived
     /// in the last 0.5 s. Drives the menu-bar asymmetric-silence indicator.
-    public var micLevelDBFS: Double {
+    var micLevelDBFS: Double {
         micCapture?.currentLevelDBFS ?? -120
     }
 
@@ -385,19 +385,31 @@ public class AudioCaptureSession {
     /// delivered one carrying signal. `.unknown` when the channel was never
     /// opened, which the level cannot express (it reports -120 for that, for a
     /// muted device and for a dead tap alike).
-    public var appSignalAges: ChannelSignalAges {
+    var appSignalAges: ChannelSignalAges {
         appCapture?.currentSignalAges ?? .unknown
     }
 
     /// The app tap's noise-floor verdict (issue #699), false when the channel
     /// was never opened. See `AppNoiseFloorSensor`.
-    public var appCarriesOnlyNoiseFloor: Bool {
+    var appCarriesOnlyNoiseFloor: Bool {
         appCapture?.carriesOnlyNoiseFloor ?? false
     }
 
     /// The microphone counterpart of `appSignalAges`.
-    public var micSignalAges: ChannelSignalAges {
+    var micSignalAges: ChannelSignalAges {
         micCapture?.currentSignalAges ?? .unknown
+    }
+
+    /// Every channel's level, ages and failure flags, read together.
+    public var status: CaptureStatus {
+        CaptureStatus(
+            mic: CaptureChannelStatus(levelDBFS: micLevelDBFS, ages: micSignalAges, gaveUp: micCaptureGaveUp),
+            app: CaptureChannelStatus(levelDBFS: appLevelDBFS, ages: appSignalAges, gaveUp: appCaptureGaveUp),
+            micStartTimedOut: micCaptureStartTimedOut,
+            micStall: micCaptureStall,
+            appWatchdogGaveUp: appSilentTrackWatchdogGaveUp,
+            appNoiseFloorOnly: appCarriesOnlyNoiseFloor,
+        )
     }
 
     /// Stop all capture and return the result.

@@ -40,10 +40,10 @@ final class SettingsViewTests: XCTestCase { // swiftlint:disable:this type_body_
         settings: AppSettings? = nil,
         updateChecker: UpdateChecker? = nil,
     ) -> SettingsView {
-        SettingsView(
-            settings: settings ?? makeSettings(),
-            whisperKitEngine: WhisperKitEngine(),
-            parakeetEngine: ParakeetEngine(),
+        let settings = settings ?? makeSettings()
+        return SettingsView(
+            settings: settings,
+            engines: .forTesting(settings: settings),
             updateChecker: updateChecker,
             recognitionStatsLog: RecognitionStatsLog(),
             stageTimingLog: StageTimingLog(),
@@ -61,11 +61,8 @@ final class SettingsViewTests: XCTestCase { // swiftlint:disable:this type_body_
     }
 
     private func makeTranscription(settings: AppSettings? = nil) -> TranscriptionSettingsView {
-        TranscriptionSettingsView(
-            settings: settings ?? makeSettings(),
-            whisperKitEngine: WhisperKitEngine(),
-            parakeetEngine: ParakeetEngine(),
-        )
+        let settings = settings ?? makeSettings()
+        return TranscriptionSettingsView(settings: settings, engines: .forTesting(settings: settings))
     }
 
     private func makeSpeakers(
@@ -76,10 +73,7 @@ final class SettingsViewTests: XCTestCase { // swiftlint:disable:this type_body_
             settings: settings ?? makeSettings(),
             recognitionStatsLog: RecognitionStatsLog(),
             stageTimingLog: StageTimingLog(),
-            enrollmentDiarizerFactory: nil,
-            namingDialogActive: false,
-            pipelineBusy: false,
-            matcherFactory: matcherFactory,
+            editing: SpeakerDBEditing(makeMatcher: matcherFactory),
         )
     }
 

@@ -100,7 +100,7 @@ final class ResamplingIntegrationTests: XCTestCase { // swiftlint:disable:this b
 
         let queue = PipelineQueue(
             engine: engine,
-            diarizationFactory: { MockDiarization() },
+            diarizerFactory: { _ in MockDiarization() },
             protocolGeneratorFactory: { protocolGen },
             outputDir: tmpDir,
             logDir: tmpDir,
@@ -143,7 +143,7 @@ final class ResamplingIntegrationTests: XCTestCase { // swiftlint:disable:this b
 
         let queue = PipelineQueue(
             engine: engine,
-            diarizationFactory: { MockDiarization() },
+            diarizerFactory: { _ in MockDiarization() },
             protocolGeneratorFactory: { protocolGen },
             outputDir: tmpDir,
             logDir: tmpDir,
@@ -188,7 +188,7 @@ final class ResamplingIntegrationTests: XCTestCase { // swiftlint:disable:this b
 
         let queue = PipelineQueue(
             engine: engine,
-            diarizationFactory: { MockDiarization() },
+            diarizerFactory: { _ in MockDiarization() },
             protocolGeneratorFactory: { protocolGen },
             outputDir: tmpDir,
             logDir: tmpDir,

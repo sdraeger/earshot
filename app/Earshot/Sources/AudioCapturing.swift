@@ -18,24 +18,11 @@ import Foundation
 protocol AudioCapturing: AnyObject {
     func start() throws
     func stop() -> AudioCaptureResult
-    var appLevelDBFS: Double { get }
-    var micLevelDBFS: Double { get }
-    var appCaptureGaveUp: Bool { get }
-    var micCaptureGaveUp: Bool { get }
-    var micCaptureStartTimedOut: Bool { get }
-    var appSilentTrackWatchdogGaveUp: Bool { get }
-    var appCarriesOnlyNoiseFloor: Bool { get }
-    var micCaptureStall: MicCaptureStall { get }
-
-    /// How long each channel has gone without a buffer, and without one
-    /// carrying signal. See `ChannelSignalAges` for why the levels above
-    /// cannot answer that.
-    /// Required rather than defaulted: the sibling `RecordingProvider` defaults
-    /// the same property to a healthy channel, and two defaults pointing
+    /// Required rather than defaulted: `RecordingProvider` defaults its
+    /// `captureStatus` to a channel delivering now, and two defaults pointing
     /// opposite ways would hand a double "dead" or "delivering" purely by which
     /// protocol it sits behind.
-    var appSignalAges: ChannelSignalAges { get }
-    var micSignalAges: ChannelSignalAges { get }
+    var status: CaptureStatus { get }
 }
 
 @available(macOS 14.2, *)

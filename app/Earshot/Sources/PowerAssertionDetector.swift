@@ -189,10 +189,7 @@ class PowerAssertionDetector: MeetingDetecting {
     }
 
     private let patterns: [AssertionPattern]
-    private let confirmationCount: Int
-    private var consecutiveHits: [String: Int] = [:]
-    private var cooldownUntil: [String: Date] = [:]
-    private let cooldownDuration: TimeInterval = 5
+    private var confirmation: DetectionConfirmation
     /// Diagnostic dedup: (process|name|type) keys already logged as unmatched,
     /// so a persistently-running unmatched meeting app logs once per session.
     private var loggedMissKeys: Set<String> = []
@@ -231,7 +228,7 @@ class PowerAssertionDetector: MeetingDetecting {
         confirmationCount: Int = 2,
     ) {
         self.patterns = patterns
-        self.confirmationCount = confirmationCount
+        confirmation = DetectionConfirmation(threshold: confirmationCount)
         matchers = patterns.reduce(into: [:]) { dict, pattern in
             // `.perProcess` patterns build their matcher per hit from the
             // concrete process, so there is nothing to precompile and nothing
@@ -288,28 +285,21 @@ class PowerAssertionDetector: MeetingDetecting {
                         continue
                     }
 
-                    // Skip apps in cooldown
-                    if let until = cooldownUntil[key], Date() < until {
-                        continue
-                    }
+                    guard !confirmation.isCoolingDown(key) else { continue }
 
                     hitsThisRound.insert(key)
                     firstMatch[key] = (pid, processName, pattern)
-                    consecutiveHits[key, default: 0] += 1
                 }
             }
         }
 
         logUnmatchedWatchedAssertions(assertions, matched: matchedThisRound)
 
-        // Reset counters for identities with no hit this round. Before the
-        // pick, not after: returning a meeting used to skip this, and the
-        // parked browser call is returned on every poll, so a stale single
-        // hit survived for minutes and the next hit confirmed in one poll
-        // instead of `confirmationCount` consecutive ones.
-        for key in consecutiveHits.keys where !hitsThisRound.contains(key) {
-            consecutiveHits[key] = 0
-        }
+        // Ended before the pick: returning a meeting used to skip zeroing
+        // the identities with no hit, and the parked browser call is returned
+        // on every poll, so a stale single hit survived for minutes and the
+        // next hit confirmed in one poll instead of consecutive ones.
+        let confirmedKeys = confirmation.endRound(seen: hitsThisRound)
 
         // Check confirmation threshold. One meeting per poll, and not in
         // dictionary order: a browser call whose consent prompt is parked
@@ -318,7 +308,7 @@ class PowerAssertionDetector: MeetingDetecting {
         // `firstMatch` entries are this round's hits, so they are the
         // candidates.
         let confirmed = firstMatch.compactMap { key, match -> Candidate? in
-            guard consecutiveHits[key, default: 0] >= confirmationCount else { return nil }
+            guard confirmedKeys.contains(key) else { return nil }
             let identity = Self.meetingIdentity(pattern: match.pattern, processName: match.processName)
             return Candidate(key: key, match: match, identity: identity)
         }
@@ -434,10 +424,7 @@ class PowerAssertionDetector: MeetingDetecting {
     }
 
     func reset(appName: String? = nil) {
-        consecutiveHits.removeAll()
-        if let appName {
-            cooldownUntil[appName] = Date().addingTimeInterval(cooldownDuration)
-        }
+        confirmation.reset(coolingDown: appName)
     }
 
     // MARK: - Window Title Lookup

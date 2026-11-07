@@ -114,7 +114,7 @@ final class RemoveJobSidecarFolderTests: XCTestCase {
 
         let queue = PipelineQueue(
             engine: MockEngine(),
-            diarizationFactory: { MockDiarization() },
+            diarizerFactory: { _ in MockDiarization() },
             protocolGeneratorFactory: { nil },
             outputDir: current,
             logDir: logDir,

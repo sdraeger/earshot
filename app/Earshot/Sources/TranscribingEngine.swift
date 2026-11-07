@@ -54,3 +54,21 @@ extension TranscribingEngine {
 protocol StreamingTranscribingEngine: TranscribingEngine {
     func transcribeSamples(_ samples: [Float]) async throws -> String
 }
+
+/// Errors every engine throws. The engine is named in the message, so the
+/// job error says which model is missing.
+enum TranscriptionError: LocalizedError {
+    /// `reason` is the engine's `loadFailureReason` when the load that was just
+    /// attempted failed, so the job error says why; nil where nothing is known.
+    case modelNotLoaded(engine: String, reason: String? = nil)
+    /// WhisperKit failed on a file. Kept whole rather than as its message, so
+    /// `TranscriptionFailureScope` can still tell a bad file from a bad model.
+    case transcriptionFailed(underlying: any Error)
+
+    var errorDescription: String? {
+        switch self {
+        case let .modelNotLoaded(engine, reason): "\(engine) model not loaded" + (reason.map { ": \($0)" } ?? "")
+        case let .transcriptionFailed(underlying): "WhisperKit transcription failed: \(underlying.localizedDescription)"
+        }
+    }
+}

@@ -132,12 +132,8 @@ final class TranscriptionSettingsLegacyModelsTests: XCTestCase {
     }
 
     private func makeView(_ state: LegacyWhisperModelsState?, settings: AppSettings? = nil) -> TranscriptionSettingsView {
-        TranscriptionSettingsView(
-            settings: settings ?? AppSettings(defaults: defaults),
-            whisperKitEngine: WhisperKitEngine(),
-            parakeetEngine: ParakeetEngine(),
-            legacyModels: state,
-        )
+        let settings = settings ?? AppSettings(defaults: defaults)
+        return TranscriptionSettingsView(settings: settings, engines: .forTesting(settings: settings, legacyModels: state))
     }
 
     private func trashButton(in view: TranscriptionSettingsView) throws -> InspectableView<ViewType.Button> {

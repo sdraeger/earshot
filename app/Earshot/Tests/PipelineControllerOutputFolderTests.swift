@@ -210,7 +210,7 @@ final class PipelineControllerOutputFolderTests: XCTestCase {
         let recorder = Recorder()
         let injected = PipelineQueue(
             engine: MockEngine(),
-            diarizationFactory: { MockDiarization() },
+            diarizerFactory: { _ in MockDiarization() },
             protocolGeneratorFactory: { MockProtocolGen() },
             outputDir: first,
             logDir: tmpDir.appendingPathComponent("log", isDirectory: true),

@@ -111,7 +111,6 @@ final class FluidDiarizer: DiarizationProvider, @unchecked Sendable {
     func run(
         audioPath: URL,
         numSpeakers: Int?,
-        meetingTitle _: String,
     ) async throws -> Earshot.DiarizationResult {
         switch mode {
         case .offline:

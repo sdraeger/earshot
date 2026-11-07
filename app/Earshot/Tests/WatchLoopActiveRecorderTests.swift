@@ -16,7 +16,7 @@ private final class CapturingRecorder: RecordingProvider {
     // equality assertion instead of passing.
     var capturedSource: RecordingSource?
 
-    func start(source: RecordingSource, micDeviceUID _: String?, debugLogging _: Bool) {
+    func start(source: RecordingSource, micDeviceUID _: String?) {
         startCalled = true
         capturedSource = source
     }

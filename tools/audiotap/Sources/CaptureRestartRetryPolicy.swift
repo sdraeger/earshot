@@ -1,7 +1,7 @@
 import Foundation
 
 /// Action to take after a capture restart attempt failed.
-public enum CaptureRestartRetryAction: Equatable {
+enum CaptureRestartRetryAction: Equatable {
     /// Retry the restart after the given backoff delay (seconds).
     case retry(afterSeconds: Double)
     /// Stop retrying — the failure budget is exhausted.
@@ -18,12 +18,12 @@ public enum CaptureRestartRetryAction: Equatable {
 /// went away and is coming back, and a device that needs three seconds to
 /// re-enumerate should not cost one channel its track while the other rides it
 /// out. Two schedules would drift apart at the first tuning change.
-public enum CaptureRestartRetryPolicy {
+enum CaptureRestartRetryPolicy {
     /// Maximum number of retries before giving up.
-    public static let maxAttempts = 5
+    static let maxAttempts = 5
 
     /// First-retry backoff; doubles each subsequent attempt up to `maxBackoff`.
-    public static let baseBackoff = 0.3
+    static let baseBackoff = 0.3
     static let maxBackoff = 2.0
 
     /// Decide whether to retry after a failed restart.
@@ -32,7 +32,7 @@ public enum CaptureRestartRetryPolicy {
     ///   failure, 1 after one retry, …).
     /// - Returns: `.retry` with an exponentially-backed-off delay while within
     ///   budget, otherwise `.giveUp`.
-    public static func decide(attemptsSoFar: Int) -> CaptureRestartRetryAction {
+    static func decide(attemptsSoFar: Int) -> CaptureRestartRetryAction {
         guard attemptsSoFar < maxAttempts else { return .giveUp }
         let delay = min(baseBackoff * pow(2.0, Double(attemptsSoFar)), maxBackoff)
         return .retry(afterSeconds: delay)

@@ -31,7 +31,7 @@ final class GatedDiarization: DiarizationProvider, @unchecked Sendable {
         lock.withLock { armed = true }
     }
 
-    func run(audioPath _: URL, numSpeakers _: Int?, meetingTitle _: String) async throws -> DiarizationResult {
+    func run(audioPath _: URL, numSpeakers _: Int?) async throws -> DiarizationResult {
         let shouldPark = lock.withLock { () -> Bool in
             defer { armed = false }
             return armed

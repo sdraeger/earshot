@@ -60,52 +60,14 @@ final class LiveCaptionsGateTests: XCTestCase {
         )
     }
 
-    // MARK: - captionsAvailable
-
-    func testStreamingBackendsAvailableEvenWhenEngineUnsupported() {
-        XCTAssertTrue(LiveCaptionsGate.captionsAvailable(
-            liveEnabled: true, engineLanguage: "de", engineSupportsLive: false,
-        ))
-        XCTAssertTrue(LiveCaptionsGate.captionsAvailable(
-            liveEnabled: true, engineLanguage: "en", engineSupportsLive: false,
-        ))
-    }
-
-    func testReTranscribeAvailabilityRequiresEngineSupport() {
-        XCTAssertTrue(LiveCaptionsGate.captionsAvailable(
-            liveEnabled: true, engineLanguage: nil, engineSupportsLive: true,
-        ))
-        XCTAssertFalse(LiveCaptionsGate.captionsAvailable(
-            liveEnabled: true, engineLanguage: nil, engineSupportsLive: false,
-        ))
-    }
-
-    func testCaptionsUnavailableWhenLiveDisabled() {
-        XCTAssertFalse(LiveCaptionsGate.captionsAvailable(
-            liveEnabled: false, engineLanguage: "de", engineSupportsLive: true,
-        ))
-    }
-
-    // MARK: - overlayVisible
-
-    func testOverlayVisibleWhenCaptionsAvailableRecordingAndOverlayOn() {
-        XCTAssertTrue(LiveCaptionsGate.overlayVisible(
-            liveEnabled: true, engineLanguage: "en", engineSupportsLive: true,
-            isRecording: true, overlayEnabled: true,
-        ))
-    }
-
-    func testOverlayHiddenWhenOverlayDisabledEvenIfCaptionsAvailableAndRecording() {
-        XCTAssertFalse(LiveCaptionsGate.overlayVisible(
-            liveEnabled: true, engineLanguage: "en", engineSupportsLive: true,
-            isRecording: true, overlayEnabled: false,
-        ))
-    }
-
-    func testOverlayHiddenWhenNotRecording() {
-        XCTAssertFalse(LiveCaptionsGate.overlayVisible(
-            liveEnabled: true, engineLanguage: "en", engineSupportsLive: true,
-            isRecording: false, overlayEnabled: true,
-        ))
+    func testStreamingBackendsNeedNoEngineSupport() {
+        XCTAssertEqual(
+            LiveCaptionsGate.strategy(liveEnabled: true, engineLanguage: "de", engineSupportsLive: false),
+            .nemotronStreaming,
+        )
+        XCTAssertEqual(
+            LiveCaptionsGate.strategy(liveEnabled: true, engineLanguage: "en", engineSupportsLive: false),
+            .englishStreaming,
+        )
     }
 }

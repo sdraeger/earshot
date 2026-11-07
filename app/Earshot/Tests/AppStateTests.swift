@@ -57,7 +57,7 @@ final class AppStateTests: XCTestCase { // swiftlint:disable:this type_body_leng
         // `enqueueFiles` call.
         let state = makeAppState(notifier: notifier, queue: PipelineQueue(
             engine: MockEngine(),
-            diarizationFactory: { MockDiarization() },
+            diarizerFactory: { _ in MockDiarization() },
             protocolGeneratorFactory: { MockProtocolGen() },
             outputDir: testLogDir,
             logDir: testLogDir,
@@ -623,7 +623,7 @@ final class AppStateTests: XCTestCase { // swiftlint:disable:this type_body_leng
             mixFilename: "\(basename)_mix.wav",
             appFilename: "\(basename)_app.wav",
             micFilename: "\(basename)_mic.wav",
-        ).write(toDirectory: tmpDir, basename: basename)
+        ).write(to: tmpDir.appendingPathComponent("\(basename)\(RecordingSidecar.filenameSuffix)"))
 
         state.pipeline.enqueueFiles([
             tmpDir.appendingPathComponent("\(basename)_app.wav"),
@@ -701,7 +701,7 @@ final class AppStateTests: XCTestCase { // swiftlint:disable:this type_body_leng
     func testMakeQueueHasDiarizationFactory() throws {
         let (state, _) = makeState()
         let queue = try XCTUnwrap(state.pipeline.makeQueue())
-        XCTAssertNotNil(queue.diarizationFactory)
+        XCTAssertNotNil(queue.diarizerFactory)
     }
 
     func testMakeQueueHasProtocolGeneratorFactory() throws {

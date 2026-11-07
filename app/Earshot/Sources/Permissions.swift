@@ -15,15 +15,6 @@ enum Permissions {
     static let axPromptKey: String =
         kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
 
-    /// Check if Screen Recording permission is granted.
-    static func checkScreenRecording() -> Bool {
-        let granted = PermissionHealthCheck.checkScreenRecordingLive() == .healthy
-        if !granted {
-            logger.warning("permission_denied resource=screen_recording — required for meeting detection")
-        }
-        return granted
-    }
-
     /// Take a one-shot flag: true when this caller is the first to claim it.
     /// Shared by the prompt guards below, which would otherwise each hand-roll
     /// the same test-and-set in a slightly different shape.

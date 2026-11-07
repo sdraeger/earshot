@@ -56,8 +56,6 @@ final class AppMeetingPatternTests: XCTestCase {
     func testSimulatorPattern() {
         let sim = AppMeetingPattern.simulator
         XCTAssertEqual(sim.appName, "MeetingSimulator")
-        XCTAssertEqual(sim.minWindowWidth, 100)
-        XCTAssertEqual(sim.minWindowHeight, 100)
     }
 
     // MARK: - Teams Pattern
@@ -68,11 +66,6 @@ final class AppMeetingPatternTests: XCTestCase {
 
     func testTeamsHasIdlePatterns() {
         XCTAssertFalse(AppMeetingPattern.teams.idlePatterns.isEmpty)
-    }
-
-    func testDefaultMinWindowDimensions() {
-        XCTAssertEqual(AppMeetingPattern.teams.minWindowWidth, 200)
-        XCTAssertEqual(AppMeetingPattern.teams.minWindowHeight, 200)
     }
 
     // MARK: - Zoom Pattern

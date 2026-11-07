@@ -397,8 +397,7 @@
         func makeSpeakerDBActions(
             speakerMatcherFactory: (() -> SpeakerMatcher)? = nil,
         ) -> SpeakerDBActions {
-            let speakerMatcherFactory = speakerMatcherFactory
-                ?? SpeakerMatcher.factory(dbPath: pipeline.speakersDB, notifier: notifier)
+            let speakerMatcherFactory = speakerMatcherFactory ?? speakerDBEditing.makeMatcher
             let refreshingIfChanged: @MainActor (SpeakerActionOutcome) -> SpeakerActionOutcome = { [weak self] outcome in
                 if outcome.changedDB { self?.pipeline.queue.refreshKnownSpeakerNames() }
                 return outcome

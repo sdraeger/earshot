@@ -55,7 +55,7 @@ final class WatchLoopE2ETests: XCTestCase { // swiftlint:disable:this balanced_x
     ) -> PipelineQueue {
         PipelineQueue(
             engine: engine ?? WhisperKitEngine(),
-            diarizationFactory: { diarization },
+            diarizerFactory: { _ in diarization },
             protocolGeneratorFactory: { protocolGen },
             outputDir: tmpDir,
             logDir: tmpDir,
@@ -371,7 +371,7 @@ final class WatchLoopE2ETests: XCTestCase { // swiftlint:disable:this balanced_x
         // swiftlint:disable trailing_closure
         let queue = PipelineQueue(
             engine: engine,
-            diarizationFactory: { FluidDiarizer() },
+            diarizerFactory: { _ in FluidDiarizer() },
             protocolGeneratorFactory: { mockProtocol },
             outputDir: tmpDir,
             logDir: tmpDir,

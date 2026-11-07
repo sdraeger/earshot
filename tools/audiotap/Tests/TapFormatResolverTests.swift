@@ -1,4 +1,4 @@
-import AudioTapLib
+@testable import AudioTapLib
 @preconcurrency import AVFoundation
 import XCTest
 

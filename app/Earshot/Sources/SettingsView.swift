@@ -3,34 +3,20 @@ import UserNotifications
 
 struct SettingsView: View {
     @Bindable var settings: AppSettings
-    var whisperKitEngine: WhisperKitEngine
-    var parakeetEngine: ParakeetEngine
-    var modelServerEngine: ModelServerEngine = .init()
+    let engines: EngineController
     var updateChecker: UpdateChecker?
 
-    /// Notification visibility from `PermissionsController`, forwarded to the
-    /// General tab so it can warn when browser-meeting consent cannot reach the
-    /// user. Nil until the first permission check completes.
-    var notificationVisibility: NotificationVisibility?
+    /// The permission health check: its notification visibility lets the
+    /// General tab warn when browser-meeting consent cannot reach the user, and
+    /// its permission verdicts fill the Advanced tab's rows.
+    var permissions: PermissionsController?
     /// Required: the same actor instance the pipeline writes to, so the Stats
     /// tab and the pipeline don't race two writers on `recognition_log.jsonl`.
     var recognitionStatsLog: RecognitionStatsLog
     /// Same actor instance the pipeline writes to, so the Processing Stats tab
     /// and the pipeline don't race two writers on `stage_timing.jsonl`.
     var stageTimingLog: StageTimingLog
-    /// Factory for the voice-enrollment diarizer. nil → enroll button hidden.
-    var enrollmentDiarizerFactory: (() -> any DiarizationProvider)?
-    /// True when a meeting is currently waiting on a naming dialog. We gate
-    /// the enroll button to avoid two `SpeakerNamingView` instances.
-    var namingDialogActive: Bool = false
-    /// True when the pipeline is processing a job — soft hint only.
-    var pipelineBusy: Bool = false
-    var onSpeakerMutate: (() -> Void)?
-    /// Builds the matcher Known Voices and enrollment edit through.
-    var speakerMatcherFactory: () -> SpeakerMatcher = { SpeakerMatcher() }
-    /// The old-models row's state, built once by `EngineController`. Nil leaves the row
-    /// out, which is what tests and the App Store build get.
-    var legacyWhisperModels: LegacyWhisperModelsState?
+    var speakerEditing = SpeakerDBEditing()
 
     @State private var selection: SettingsTab = .general
     private static let maxColumn: CGFloat = 680
@@ -90,7 +76,7 @@ struct SettingsView: View {
         case .general:
             GeneralSettingsView(
                 settings: settings,
-                notificationVisibility: notificationVisibility,
+                notificationVisibility: permissions?.notificationVisibility,
             )
 
         case .audio:
@@ -99,10 +85,7 @@ struct SettingsView: View {
         case .transcription:
             TranscriptionSettingsView(
                 settings: settings,
-                whisperKitEngine: whisperKitEngine,
-                parakeetEngine: parakeetEngine,
-                modelServerEngine: modelServerEngine,
-                legacyModels: legacyWhisperModels,
+                engines: engines,
             )
 
         case .speakers:
@@ -110,18 +93,14 @@ struct SettingsView: View {
                 settings: settings,
                 recognitionStatsLog: recognitionStatsLog,
                 stageTimingLog: stageTimingLog,
-                enrollmentDiarizerFactory: enrollmentDiarizerFactory,
-                namingDialogActive: namingDialogActive,
-                pipelineBusy: pipelineBusy,
-                onSpeakerMutate: onSpeakerMutate,
-                matcherFactory: speakerMatcherFactory,
+                editing: speakerEditing,
             )
 
         case .output:
             OutputSettingsView(settings: settings)
 
         case .advanced:
-            AdvancedSettingsView(settings: settings)
+            AdvancedSettingsView(settings: settings, permissions: permissions)
 
         case .about:
             AboutSettingsView(settings: settings, updateChecker: updateChecker)

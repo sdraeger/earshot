@@ -8,13 +8,6 @@ import XCTest
 /// the actor would happily push 48 kHz stereo into a 16 kHz mono VAD
 /// and the engine would receive scrambled samples.
 ///
-/// All three scenarios live in a single test method on purpose — under
-/// `swift test --parallel` each XCTest method spins up its own worker
-/// process, and the empty-buffer scenario does load FluidVAD lazily.
-/// Folding keeps these as one worker so they don't pile parallel-load
-/// pressure on the neighbouring `LiveTranscriptionE2ETests` on the
-/// 3-core macos-26 runner. See
-/// `feedback_coreml_e5rt_cache_race_under_parallel_xctest`.
 final class StreamingTranscriberDropTests: XCTestCase {
     func testDropContract() async {
         let observer = OnEventObserver()
@@ -38,10 +31,7 @@ final class StreamingTranscriberDropTests: XCTestCase {
 
         // (3) Right shape, zero samples — must not advance into the VAD
         // event loop nor emit anything. Mainly a smoke test that we
-        // don't divide-by-zero. Note: this path *does* lazily initialise
-        // FluidVAD inside drainChunks() because the shape guard passes,
-        // which is why all three checks live in one method (one xctest
-        // worker per method → one VAD load instead of three).
+        // don't divide-by-zero.
         let empty = LiveAudioBuffer(
             samples: [], channelCount: 1, sampleRate: 16000, hostTime: 0,
         )
@@ -49,6 +39,28 @@ final class StreamingTranscriberDropTests: XCTestCase {
         XCTAssertEqual(observer.partials.count, 0)
         XCTAssertEqual(observer.finals.count, 0)
         XCTAssertEqual(observer.transcribeCalls, 0)
+    }
+
+    /// A detector that fails on every chunk still lets the chunks through,
+    /// so speech it cannot bound is dropped rather than piling up; once it
+    /// works again the next utterance is transcribed.
+    func testAFailingDetectorDoesNotStallTheStream() async {
+        let observer = OnEventObserver()
+        let transcriber = StreamingTranscriber(
+            channelLabel: "test",
+            detector: FailingThenScriptedDetector(failures: 3, script: [.speechStart, nil, nil, nil, .speechEnd]),
+            transcribe: { samples in
+                observer.recordTranscribeCall(sampleCount: samples.count)
+                return "words"
+            },
+            onEvent: { event in observer.record(event) },
+        )
+        let chunk = LiveAudioBuffer(
+            samples: [Float](repeating: 0.1, count: 4096), channelCount: 1, sampleRate: 16000, hostTime: 0,
+        )
+        for _ in 0 ..< 8 { await transcriber.ingest(chunk) }
+
+        XCTAssertEqual(observer.finals.count, 1)
     }
 
     // MARK: - Helpers
@@ -65,7 +77,7 @@ final class StreamingTranscriberDropTests: XCTestCase {
     private func makeTranscriber(observer: OnEventObserver) -> StreamingTranscriber {
         StreamingTranscriber(
             channelLabel: "test",
-            vad: FluidVAD(threshold: 0.5),
+            detector: ScriptedBoundaryDetector(script: []),
             transcribe: { samples in
                 observer.recordTranscribeCall(sampleCount: samples.count)
                 return ""
@@ -111,4 +123,27 @@ private final class OnEventObserver: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         _transcribeCalls += 1
     }
+}
+
+/// Throws for its first `failures` chunks, then plays `script`.
+private actor FailingThenScriptedDetector: UtteranceBoundaryDetecting {
+    private var failures: Int
+    private var script: [FluidVAD.StreamEvent.Kind?]
+
+    init(failures: Int, script: [FluidVAD.StreamEvent.Kind?]) {
+        self.failures = failures
+        self.script = script
+    }
+
+    // swiftlint:disable:next async_without_await
+    func boundary(in _: [Float]) async throws -> FluidVAD.StreamEvent.Kind? {
+        if failures > 0 {
+            failures -= 1
+            throw CancellationError()
+        }
+        return script.isEmpty ? nil : script.removeFirst()
+    }
+
+    // swiftlint:disable:next async_without_await
+    func reset() async {}
 }

@@ -69,7 +69,7 @@ final class NamingSessionMockDelegate: SpeakerNamingSessionDelegate {
     func runDualTrackDiarization(
         diarizeProcess _: any DiarizationProvider,
         tracks: (app: URL, mic: URL, micDelay: TimeInterval, viability: DualTrackViability?),
-        speakerCount _: Int?, title _: String, jobID _: UUID,
+        speakerCount _: Int?, jobID _: UUID,
     ) throws -> DiarizationRun {
         dualTrackAppPaths.append(tracks.app)
         throw DiarizationError.notAvailable
@@ -95,9 +95,8 @@ enum NamingSessionFixture {
         protocolGenerator: (() -> (any ProtocolGenerating)?)? = nil,
     ) -> SpeakerNamingSession {
         SpeakerNamingSession(
-            namingStore: SpeakerNamingStore(outputDir: nil),
             speakerMatcherFactory: PipelineQueue.throwawayMatcherFactory(),
-            diarizationFactory: diarizer.map { diarizer in { diarizer } },
+            diarizerFactory: diarizer.map { diarizer in { _ in diarizer } },
             protocolGeneratorFactory: protocolGenerator,
             outputDir: outputDir,
         )

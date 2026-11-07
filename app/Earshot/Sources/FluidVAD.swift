@@ -4,14 +4,6 @@ import os.log
 
 private let logger = Logger(subsystem: AppPaths.logSubsystem, category: "FluidVAD")
 
-// MARK: - VADConfig
-
-/// Configuration for Voice Activity Detection.
-/// Used by PipelineQueue: `nil` means disabled, non-nil means enabled.
-struct VADConfig {
-    let threshold: Float
-}
-
 // MARK: - SpeechRegion
 
 /// A contiguous region of detected speech.

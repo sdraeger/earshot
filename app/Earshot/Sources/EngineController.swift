@@ -57,7 +57,7 @@ final class EngineController {
     /// reason for the row; worse, a sandboxed `trashItem` moves container items
     /// into the container's private Trash, so nothing would be freed and
     /// Finder's Trash would never show them.
-    private static func makeLegacyWhisperModels(settings: AppSettings) -> LegacyWhisperModelsState? {
+    static func makeLegacyWhisperModels(settings: AppSettings) -> LegacyWhisperModelsState? {
         #if APPSTORE
             nil
         #else
@@ -65,12 +65,18 @@ final class EngineController {
         #endif
     }
 
-    init(settings: AppSettings, warmupQueue: ModelWarmupQueue = ModelWarmupQueue()) {
+    /// `legacyWhisperModels` builds the old-models row's state; tests pass one
+    /// returning nil, so a view never binds to the real `Documents` and Trash.
+    init(
+        settings: AppSettings,
+        warmupQueue: ModelWarmupQueue = ModelWarmupQueue(),
+        legacyWhisperModels: @MainActor (AppSettings) -> LegacyWhisperModelsState? = EngineController.makeLegacyWhisperModels,
+    ) {
         self.settings = settings
         self.warmupQueue = warmupQueue
         self.whisperKit = Self.makeWhisperKit()
         self.parakeetEngine = Self.makeParakeet()
-        self.legacyWhisperModels = Self.makeLegacyWhisperModels(settings: settings)
+        self.legacyWhisperModels = legacyWhisperModels(settings)
 
         // Bring engines in line with the current settings up front so the first
         // transcription doesn't run against stale defaults, then start observing

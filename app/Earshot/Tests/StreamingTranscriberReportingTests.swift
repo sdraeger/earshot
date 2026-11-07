@@ -7,6 +7,6 @@ import XCTest
 final class StreamingTranscriberReportingTests: XCTestCase {
     func testACancelledTranscriptionIsNotReportedAsAFailure() {
         XCTAssertFalse(StreamingTranscriber.isReportable(CancellationError()), "a stop was reported as a failure")
-        XCTAssertTrue(StreamingTranscriber.isReportable(TranscriptionError.modelNotLoaded()))
+        XCTAssertTrue(StreamingTranscriber.isReportable(TranscriptionError.modelNotLoaded(engine: "WhisperKit")))
     }
 }

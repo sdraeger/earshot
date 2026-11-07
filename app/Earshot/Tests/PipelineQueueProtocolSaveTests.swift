@@ -31,7 +31,7 @@ final class PipelineQueueProtocolSaveTests: XCTestCase {
         let protocolGen = MockProtocolGen()
         let queue = PipelineQueue(
             engine: MockEngine(),
-            diarizationFactory: { MockDiarization() },
+            diarizerFactory: { _ in MockDiarization() },
             protocolGeneratorFactory: { protocolGen },
             outputDir: root,
             logDir: tmpDir,

@@ -24,12 +24,8 @@ final class TranscriptionSettingsCustomModelTests: XCTestCase {
         try await super.tearDown()
     }
 
-    private func makeView(settings: AppSettings, whisperKitEngine: WhisperKitEngine = WhisperKitEngine()) -> TranscriptionSettingsView {
-        TranscriptionSettingsView(
-            settings: settings,
-            whisperKitEngine: whisperKitEngine,
-            parakeetEngine: ParakeetEngine(),
-        )
+    private func makeView(settings: AppSettings, engines: EngineController? = nil) -> TranscriptionSettingsView {
+        TranscriptionSettingsView(settings: settings, engines: engines ?? .forTesting(settings: settings))
     }
 
     private func modelPicker(in view: TranscriptionSettingsView) throws -> InspectableView<ViewType.Picker> {
@@ -187,23 +183,26 @@ final class TranscriptionSettingsCustomModelTests: XCTestCase {
     /// Clicking "Load Model" need not take focus from the field being edited, and
     /// the button reads the selection from the settings. Without handing over the
     /// pending edit first it loaded the model the field no longer showed.
-    func testLoadModelHandsOverAnEditTheFieldHasNotCommitted() throws {
+    func testLoadModelHandsOverAnEditTheFieldHasNotCommitted() async throws {
         let settings = AppSettings(defaults: defaults)
+        settings.transcriptionEngine = .whisperKit
         settings.whisperKitCustomModelEnabled = true
         settings.whisperKitCustomRepo = "spert/flix-swissgerman-whisperkit"
         settings.whisperKitCustomVariant = "flix-swissgerman-large-v3_8bit"
-        let engine = WhisperKitEngine()
+        let engines = EngineController.forTesting(settings: settings)
+        let engine = engines.whisperKit
         // The load the button starts must not reach the Hub.
         engine.installModelSourceForTesting(WhisperKitModelSource(
             locateLocal: { _ in nil },
             download: { _, _ in throw URLError(.notConnectedToInternet) },
             makePipe: { _, _ in throw WhisperKitModelError.folderNotLoadable },
         ))
-        let view = makeView(settings: settings, whisperKitEngine: engine)
+        let view = makeView(settings: settings, engines: engines)
         try showCustomFields(in: view)
 
         try textField(A11yID.whisperKitCustomRepoField, in: view).setInput("spert/other-whisperkit")
         try view.inspect().find(button: "Load model").tap()
+        await waitFor(engine.modelOrigin == .hub(repoID: "spert/other-whisperkit"), timeout: .seconds(2))
 
         XCTAssertEqual(settings.whisperKitCustomRepo, "spert/other-whisperkit")
         XCTAssertEqual(settings.whisperKitCustomVariant, "flix-swissgerman-large-v3_8bit", "An unedited field is left alone")
@@ -231,7 +230,8 @@ final class TranscriptionSettingsCustomModelTests: XCTestCase {
     func testTheStatusLineShowsWhyTheLastLoadFailed() async throws {
         let settings = AppSettings(defaults: defaults)
         settings.whisperKitCustomModelEnabled = true
-        let engine = WhisperKitEngine()
+        let engines = EngineController.forTesting(settings: settings)
+        let engine = engines.whisperKit
         engine.applyModelVariant("finetune", origin: .localFolder(path: "/picked/finetune", bookmark: nil))
         engine.installModelSourceForTesting(WhisperKitModelSource(
             locateLocal: { _ in nil },
@@ -241,7 +241,7 @@ final class TranscriptionSettingsCustomModelTests: XCTestCase {
         await engine.loadModel()
         XCTAssertEqual(engine.modelState, .unloaded, "Precondition: the load failed")
 
-        let view = makeView(settings: settings, whisperKitEngine: engine)
+        let view = makeView(settings: settings, engines: engines)
 
         XCTAssertNoThrow(try view.inspect().find(text: "Model folder is missing tokenizer.json."))
     }

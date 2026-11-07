@@ -10,7 +10,7 @@ import Foundation
 /// re-detects the same meeting every few seconds; the policy is asked *before*
 /// prompting so a decline suppresses re-prompts for `cooldown` seconds instead
 /// of spamming. Value type with an injected `now` so it is deterministically
-/// testable (pattern: `WatchLoopEndPolicy`, `ManualRecordingMonitorPolicy`).
+/// testable (pattern: `WatchLoopEndPolicy`).
 struct BrowserConsentPolicy {
     /// How long an explicit "no" suppresses the next question. Long, because
     /// the user answered: asking again while they are still in the same call

@@ -289,19 +289,21 @@ final class ChannelHealthController {
         recorder: any RecordingProvider,
         now: Date,
     ) -> ChannelHealthEvent? {
-        let mic = recorder.micLevelDBFS
-        let app = recorder.appLevelDBFS
+        // Read once, so every decision below sees the same moment.
+        let status = recorder.captureStatus
+        let mic = status.mic.levelDBFS
+        let app = status.app.levelDBFS
 
-        micAges = recorder.micSignalAges
-        appAges = recorder.appSignalAges
+        micAges = status.mic.ages
+        appAges = status.app.ages
         if firstTickAt == nil {
             firstTickAt = now
             log.notice(Self.firstTickLogLine(micAges: micAges, appAges: appAges))
         }
         micLevelDBFS = mic
         appLevelDBFS = app
-        micStallCount = recorder.micCaptureStall.count
-        appNoiseFloorOnly = recorder.appCarriesOnlyNoiseFloor
+        micStallCount = status.micStall.count
+        appNoiseFloorOnly = status.appNoiseFloorOnly
         // The monitor's own threshold, not a copy of its default: the init
         // allows a different one, and a second constant could then disagree
         // with the episode the tint is drawn from.
@@ -311,7 +313,7 @@ final class ChannelHealthController {
 
         // Before the monitors, because a terminal capture failure does not
         // depend on either monitor having something to say about it.
-        notifyChannelFaults(recorder: recorder, now: now)
+        notifyChannelFaults(status: status, now: now)
 
         let event = channelHealthMonitor.update(micDBFS: mic, appDBFS: app, now: now)
         switch event {
@@ -376,16 +378,16 @@ final class ChannelHealthController {
     /// a channel that gave up first never set a fault at all, so `/state`
     /// reported no fault for the most severe failure there is, and one that
     /// gave up second was announced twice.
-    private func notifyChannelFaults(recorder: any RecordingProvider, now: Date) {
+    private func notifyChannelFaults(status: CaptureStatus, now: Date) {
         let elapsed = now.timeIntervalSince(firstTickAt ?? now)
         for channel in [AudioChannel.mic, .app] {
             guard channel == .mic ? channels.mic : channels.app else { continue }
-            let ages = channel == .mic ? micAges : appAges
+            let ages = status[channel].ages
             // A device change brought it back, so `/state` stops reporting a
             // stall that is over. The monitor re-arms itself on the same edge.
-            if channel == .mic, !recorder.micCaptureStall.isActive, micFault == .stalled { micFault = nil }
+            if channel == .mic, !status.micStall.isActive, micFault == .stalled { micFault = nil }
             guard let fault = updateFaultMonitor(
-                for: channel, ages: ages, recorder: recorder, elapsedSinceStart: elapsed, now: now,
+                for: channel, status: status, elapsedSinceStart: elapsed, now: now,
             ) else { continue }
             switch channel {
             case .mic: micFault = fault
@@ -396,8 +398,8 @@ final class ChannelHealthController {
             let alert = Self.captureAlert(
                 channel: channel, fault: fault,
                 everCarriedSignal: ages.secondsSinceLastEnergy != nil,
-                stall: recorder.micCaptureStall.details,
-                startTimedOut: channel == .mic && recorder.micCaptureStartTimedOut,
+                stall: status.micStall.details,
+                startTimedOut: channel == .mic && status.micStartTimedOut,
             )
             // Whether it was then posted is logged by the notifier, which decides that.
             log.notice(Self.faultLogLine(channel: channel, fault: fault, ages: ages, elapsed: elapsed, window: faultWindow))
@@ -407,14 +409,14 @@ final class ChannelHealthController {
 
     private func updateFaultMonitor(
         for channel: AudioChannel,
-        ages: ChannelSignalAges,
-        recorder: any RecordingProvider,
+        status: CaptureStatus,
         elapsedSinceStart: TimeInterval,
         now: Date,
     ) -> ChannelFault? {
-        let gaveUp = channel == .mic ? recorder.micCaptureGaveUp : recorder.appCaptureGaveUp
+        let ages = status[channel].ages
+        let gaveUp = status[channel].gaveUp
         // Only the app channel has a silent-track watchdog.
-        let rebuildsExhausted = channel == .app && recorder.appSilentTrackWatchdogGaveUp
+        let rebuildsExhausted = channel == .app && status.appWatchdogGaveUp
         let otherChannel: AudioChannel = channel == .mic ? .app : .mic
         // The window the monitors were built with, not the live setting: a
         // change mid-recording would otherwise judge the fault against one
@@ -429,15 +431,14 @@ final class ChannelHealthController {
                 corroborated: corroborated, rebuildsExhausted: rebuildsExhausted,
                 // Only the microphone stalls: the app tap's watchdog rebuilds
                 // it but never releases it.
-                stall: recorder.micCaptureStall,
+                stall: status.micStall,
             )
 
         case .app: appFaultMonitor.update(
                 ages: ages, gaveUp: gaveUp, elapsedSinceStart: elapsedSinceStart,
                 corroborated: corroborated, rebuildsExhausted: rebuildsExhausted,
                 // Only the app tap has the noise-floor sensor (issue #699).
-                // Read once per tick, so `/state` and the fault agree.
-                noiseFloor: appNoiseFloorOnly,
+                noiseFloor: status.appNoiseFloorOnly,
             )
         }
     }

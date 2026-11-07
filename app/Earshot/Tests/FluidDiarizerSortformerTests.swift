@@ -46,7 +46,6 @@ final class FluidDiarizerSortformerTests: XCTestCase {
                 _ = try await diarizer.run(
                     audioPath: URL(fileURLWithPath: "/nonexistent/never-read.wav"),
                     numSpeakers: nil,
-                    meetingTitle: "compute-units",
                 )
                 XCTFail("The stub diarizer has no model, so run must throw")
             } catch {

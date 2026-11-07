@@ -31,10 +31,6 @@
 
         private func startServer(
             snapshot: RPCStateSnapshot = .empty,
-            // NB: keep after `enqueueFile` — Swift's forward-scan binds an
-            // unlabeled trailing closure to the FIRST function-type param, and
-            // the enqueueFile tests rely on that being enqueueFile.
-            enqueueFile: @escaping (URL) -> Bool = { _ in false },
             confirmBrowserConsent: @escaping (Bool) -> Bool = { _ in false },
             enqueueFiles: @escaping ([URL]) -> Int = { _ in 0 },
             enqueueReturningIDs: @escaping ([URL]) -> [UUID] = { _ in [] },
@@ -53,7 +49,6 @@
                 token: Self.testToken,
                 snapshot: { snapshot },
                 confirmBrowserConsent: confirmBrowserConsent,
-                enqueueFile: enqueueFile,
                 enqueueFiles: enqueueFiles,
                 enqueueReturningIDs: enqueueReturningIDs,
                 jobStatus: jobStatus,
@@ -318,8 +313,8 @@
         }
 
         func testEnqueueFileNonexistentPathReturns400() async throws {
-            // Closure returns false → RPC layer translates to 400.
-            let base = try await startServer { _ in false }
+            // Nothing enqueued → RPC layer translates to 400.
+            let base = try await startServer()
             var req = request("POST", base.appendingPathComponent("action/enqueueFile"), headers: authHeader)
             req.httpBody = Data(#"{"path":"/tmp/definitely-does-not-exist-\#(UUID().uuidString).wav"}"#.utf8)
             let (_, response) = try await URLSession.shared.upload(for: req, from: XCTUnwrap(req.httpBody))
@@ -342,10 +337,11 @@
                 }
             }
             let box = InvocationBox()
-            let base = try await startServer { url in
-                Task { await box.record(url.path) }
-                return true
+            let enqueue: ([URL]) -> Int = { urls in
+                Task { await box.record(urls[0].path) }
+                return urls.count
             }
+            let base = try await startServer(enqueueFiles: enqueue)
 
             var req = request("POST", base.appendingPathComponent("action/enqueueFile"), headers: authHeader)
             req.httpBody = Data(#"{"path":"\#(tmp.path)"}"#.utf8)
@@ -401,8 +397,6 @@
                 }
             }
             let box = CountBox()
-            // Explicit param to disambiguate from `enqueueFile: (URL) -> Bool`
-            // (trailing-closure would bind to the wrong overload).
             let multi: ([URL]) -> Int = { urls in
                 Task { await box.record(urls.count) }
                 return urls.count
@@ -1105,9 +1099,8 @@
                 watching: true, state: "recording", badge: "recording",
                 manualRecording: false, pendingConsentApp: nil, permissionsHealthy: true,
             )
-            // Typed local, not a trailing closure: with only one argument
-            // SwiftLint suggests trailing syntax, which would bind to
-            // `enqueueFile` (the first function-type parameter) instead.
+            // Typed local, not a trailing closure: one would bind to the
+            // first function-type parameter instead.
             let status: () -> WatchStatusDTO = { dto }
             let base = try await startServer(watchStatus: status)
 

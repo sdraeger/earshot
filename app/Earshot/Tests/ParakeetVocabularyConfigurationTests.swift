@@ -16,13 +16,4 @@ final class ParakeetVocabularyConfigurationTests: XCTestCase {
 
         XCTAssertNotEqual(first, edited)
     }
-
-    func testRefreshGenerationRejectsAnOlderConfigurationAttempt() {
-        var gate = ParakeetVocabularyRefreshGate()
-        let firstAttempt = gate.invalidate()
-        let currentAttempt = gate.invalidate()
-
-        XCTAssertFalse(gate.isCurrent(firstAttempt))
-        XCTAssertTrue(gate.isCurrent(currentAttempt))
-    }
 }

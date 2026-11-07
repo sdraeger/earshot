@@ -108,11 +108,6 @@ enum StageTimingStats {
         return StageAggregate(count: count, avgWallClockSeconds: avgWall, avgRTF: avgRTF)
     }
 
-    /// Group events by stage (blending all engines/modes).
-    static func aggregate(events: [StageTimingEvent]) -> [StageKind: StageAggregate] {
-        Dictionary(grouping: events, by: \.stage).mapValues(aggregateGroup)
-    }
-
     /// Group events by full (stage, engine, diarizer-mode) configuration, so the
     /// Settings view can show comparable per-config numbers.
     static func aggregateByConfig(events: [StageTimingEvent]) -> [StageConfig: StageAggregate] {

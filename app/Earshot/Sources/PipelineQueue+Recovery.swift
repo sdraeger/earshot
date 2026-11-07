@@ -525,12 +525,11 @@ extension PipelineQueue {
     /// detached task — startup callers don't block the UI on a potentially
     /// slow filesystem (e.g. iCloud-backed recordings dir). Mutations to
     /// `jobs` and the snapshot still happen on the main actor.
-    func recoverOrphanedRecordings(
-        recordingsDir: URL = AppPaths.recordingsDir,
-        maxAge: TimeInterval = 86400,
-    ) async {
+    /// Scans this queue's own `stagingDir`, the folder its recordings land in.
+    func recoverOrphanedRecordings(maxAge: TimeInterval = 86400) async {
+        let recordingsDir = stagingDir
         // One-time migration: seed processed list with existing recordings
-        // Only for the default recordings directory (not test overrides)
+        // Only for the real recordings directory (not test overrides)
         if recordingsDir == AppPaths.recordingsDir {
             await processedLedger.migrate(recordingsDir: recordingsDir)
         }

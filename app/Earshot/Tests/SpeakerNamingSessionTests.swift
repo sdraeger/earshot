@@ -372,7 +372,7 @@ final class SpeakerNamingSessionTests: XCTestCase {
         func runDualTrackDiarization(
             diarizeProcess _: any DiarizationProvider,
             tracks _: (app: URL, mic: URL, micDelay: TimeInterval, viability: DualTrackViability?),
-            speakerCount _: Int?, title _: String, jobID _: UUID,
+            speakerCount _: Int?, jobID _: UUID,
         ) throws -> DiarizationRun {
             throw DiarizationError.notAvailable
         }
@@ -483,7 +483,6 @@ final class SpeakerNamingSessionTests: XCTestCase {
         // session's own store gets `current` too, so a cleanup that ignores the
         // job has a real folder to miss rather than no folder at all.
         let session = SpeakerNamingSession(
-            namingStore: SpeakerNamingStore(outputDir: current),
             speakerMatcherFactory: PipelineQueue.throwawayMatcherFactory(),
             outputDir: current,
         )
@@ -517,7 +516,6 @@ final class SpeakerNamingSessionTests: XCTestCase {
         let sidecars = try SidecarFixture.write(slug: "meeting", in: recordings)
 
         let session = SpeakerNamingSession(
-            namingStore: SpeakerNamingStore(outputDir: current),
             speakerMatcherFactory: PipelineQueue.throwawayMatcherFactory(),
             outputDir: current,
         )

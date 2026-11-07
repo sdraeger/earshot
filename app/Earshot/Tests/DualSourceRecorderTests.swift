@@ -15,8 +15,7 @@ final class DualSourceRecorderTests: XCTestCase {
 
     func testLevelsDefaultToSilenceWithoutSession() {
         let recorder = DualSourceRecorder()
-        XCTAssertEqual(recorder.appLevelDBFS, -120, accuracy: 0.001)
-        XCTAssertEqual(recorder.micLevelDBFS, -120, accuracy: 0.001)
+        XCTAssertEqual(recorder.captureStatus, .idle)
     }
 
     // MARK: - Cleanup Temp Files
@@ -346,7 +345,7 @@ final class DualSourceRecorderTests: XCTestCase {
                 recordingsDir: dir,
                 timestamp: "20260311_100000",
                 recordingStartDate: Date(timeIntervalSince1970: 1000),
-                format: CaptureFormat(requestedChannels: 2, requestedRate: 48000, targetRate: 16000),
+                format: CaptureFormat(requestedChannels: 2, requestedRate: 48000),
             ),
         ) { error in
             guard case RecorderError.noAudioData = error else {
@@ -369,7 +368,7 @@ final class DualSourceRecorderTests: XCTestCase {
                 actualSampleRate: 48000, actualChannels: 2, micDelay: 0,
             ),
             recordingsDir: dir, timestamp: "20260311_120000", recordingStartDate: Date(timeIntervalSince1970: 1000),
-            format: CaptureFormat(requestedChannels: 2, requestedRate: 48000, targetRate: 16000),
+            format: CaptureFormat(requestedChannels: 2, requestedRate: 48000),
         )
 
         XCTAssertNotNil(result.appPath, "app track should be saved")
@@ -393,7 +392,7 @@ final class DualSourceRecorderTests: XCTestCase {
                 actualSampleRate: 48000, actualChannels: 2, micDelay: 0,
             ),
             recordingsDir: dir, timestamp: "20260311_130000", recordingStartDate: Date(timeIntervalSince1970: 1000),
-            format: CaptureFormat(requestedChannels: 2, requestedRate: 48000, targetRate: 16000),
+            format: CaptureFormat(requestedChannels: 2, requestedRate: 48000),
         )
 
         XCTAssertNil(result.appPath, "no app track")
@@ -416,7 +415,7 @@ final class DualSourceRecorderTests: XCTestCase {
                 actualSampleRate: 48000, actualChannels: 2, micDelay: 0,
             ),
             recordingsDir: dir, timestamp: "20260311_140000", recordingStartDate: Date(timeIntervalSince1970: 1000),
-            format: CaptureFormat(requestedChannels: 2, requestedRate: 48000, targetRate: 16000),
+            format: CaptureFormat(requestedChannels: 2, requestedRate: 48000),
         )
 
         XCTAssertNil(result.appPath, "no app track")
@@ -439,7 +438,7 @@ final class DualSourceRecorderTests: XCTestCase {
                 actualSampleRate: 48000, actualChannels: 2, micDelay: 0.1,
             ),
             recordingsDir: dir, timestamp: "20260311_140000", recordingStartDate: Date(timeIntervalSince1970: 1000),
-            format: CaptureFormat(requestedChannels: 2, requestedRate: 48000, targetRate: 16000),
+            format: CaptureFormat(requestedChannels: 2, requestedRate: 48000),
         )
 
         XCTAssertNotNil(result.appPath)
@@ -468,7 +467,7 @@ final class DualSourceRecorderTests: XCTestCase {
                 actualSampleRate: 48000, actualChannels: 1, micDelay: 0,
             ),
             recordingsDir: dir, timestamp: "20260311_150000", recordingStartDate: Date(timeIntervalSince1970: 1000),
-            format: CaptureFormat(requestedChannels: 2, requestedRate: 48000, targetRate: 16000),
+            format: CaptureFormat(requestedChannels: 2, requestedRate: 48000),
         )
 
         XCTAssertNotNil(result.appPath, "mono capture should still produce an app track")
@@ -489,7 +488,7 @@ final class DualSourceRecorderTests: XCTestCase {
             ),
             // Requested 44.1 kHz but the device delivered 48 kHz.
             recordingsDir: dir, timestamp: "20260311_160000", recordingStartDate: Date(timeIntervalSince1970: 1000),
-            format: CaptureFormat(requestedChannels: 2, requestedRate: 44100, targetRate: 16000),
+            format: CaptureFormat(requestedChannels: 2, requestedRate: 44100),
         )
 
         XCTAssertNotNil(result.appPath, "rate mismatch should still produce an app track")
@@ -516,7 +515,7 @@ final class DualSourceRecorderTests: XCTestCase {
                 actualSampleRate: 16000, actualChannels: 1, micDelay: 0,
             ),
             recordingsDir: dir, timestamp: "20260311_180000", recordingStartDate: Date(timeIntervalSince1970: 1000),
-            format: CaptureFormat(requestedChannels: 1, requestedRate: 16000, targetRate: 16000),
+            format: CaptureFormat(requestedChannels: 1, requestedRate: 16000),
         )
 
         let appPath = try XCTUnwrap(result.appPath)

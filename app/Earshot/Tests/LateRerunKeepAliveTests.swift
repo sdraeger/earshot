@@ -14,9 +14,8 @@ final class LateRerunKeepAliveTests: XCTestCase {
         try Data([0]).write(to: recordings.appendingPathComponent("\(slug)\(SpeakerNamingStore.mixSuffix)"))
 
         let session = SpeakerNamingSession(
-            namingStore: SpeakerNamingStore(outputDir: nil),
             speakerMatcherFactory: PipelineQueue.throwawayMatcherFactory(),
-            diarizationFactory: { MockDiarization() },
+            diarizerFactory: { _ in MockDiarization() },
             outputDir: dir,
         )
         let states = StateLog()
@@ -85,7 +84,7 @@ private final class RecordingDelegate: SpeakerNamingSessionDelegate {
     func runDualTrackDiarization(
         diarizeProcess _: any DiarizationProvider,
         tracks _: (app: URL, mic: URL, micDelay: TimeInterval, viability: DualTrackViability?),
-        speakerCount _: Int?, title _: String, jobID _: UUID,
+        speakerCount _: Int?, jobID _: UUID,
     ) throws -> DiarizationRun {
         throw DiarizationError.notAvailable
     }

@@ -167,8 +167,7 @@ final class PipelineQueueSecurityScopeTests: XCTestCase {
         }()
         return PipelineQueue(
             engine: engine,
-            diarizationFactory: { diarization ?? MockDiarization() },
-            diarizationFactoryWithMode: { _ in diarization ?? MockDiarization() },
+            diarizerFactory: { _ in diarization ?? MockDiarization() },
             protocolGeneratorFactory: { protocolGen },
             outputDir: recorder.root,
             logDir: tmpDir,

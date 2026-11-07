@@ -86,7 +86,7 @@ final class CancelledJobWritesNothingTests: XCTestCase {
         engine.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "Hello")]
         let diarizer = MockDiarization()
         let queue = PipelineQueue(
-            engine: engine, diarizationFactory: { diarizer }, protocolGeneratorFactory: { MockProtocolGen() },
+            engine: engine, diarizerFactory: { _ in diarizer }, protocolGeneratorFactory: { MockProtocolGen() },
             outputDir: tmpDir, logDir: tmpDir, stagingDir: stagingDir, diarizeEnabled: true,
             inFlightRuns: InFlightRunRegistry(),
         )
@@ -160,7 +160,7 @@ final class CancelledJobWritesNothingTests: XCTestCase {
         try Data([0]).write(to: tmpDir.appendingPathComponent("recordings"))
         let queue = try await cancelStagedJobMidDiarization()
 
-        await queue.recoverOrphanedRecordings(recordingsDir: stagingDir)
+        await queue.recoverOrphanedRecordings()
 
         XCTAssertEqual(queue.jobs.map(\.meetingTitle), [], "the cancelled meeting was queued again")
         await queue.lastRecordingRelocation?.value
@@ -178,7 +178,7 @@ final class CancelledJobWritesNothingTests: XCTestCase {
         )
 
         let nextLaunch = PipelineQueue(logDir: tmpDir, stagingDir: stagingDir)
-        await nextLaunch.recoverOrphanedRecordings(recordingsDir: stagingDir)
+        await nextLaunch.recoverOrphanedRecordings()
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: stagingDir.appendingPathComponent(staged).path))
         XCTAssertEqual(nextLaunch.jobs.map(\.meetingTitle), [], "the cancelled meeting was queued again")
@@ -267,7 +267,7 @@ final class CancelledJobWritesNothingTests: XCTestCase {
         let engine = ParkedEngine()
         engine.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "Hello")]
         let queue = PipelineQueue(
-            engine: engine, diarizationFactory: { MockDiarization() }, protocolGeneratorFactory: { MockProtocolGen() },
+            engine: engine, diarizerFactory: { _ in MockDiarization() }, protocolGeneratorFactory: { MockProtocolGen() },
             outputDir: tmpDir, logDir: tmpDir, stagingDir: stagingDir, inFlightRuns: InFlightRunRegistry(),
         )
         let running = try makeStagedJob()
@@ -350,7 +350,7 @@ final class CancelledJobWritesNothingTests: XCTestCase {
 
         let generator = ParkingProtocolGen()
         let queue = PipelineQueue(
-            engine: MockEngine(), diarizationFactory: { MockDiarization() }, protocolGeneratorFactory: { generator },
+            engine: MockEngine(), diarizerFactory: { _ in MockDiarization() }, protocolGeneratorFactory: { generator },
             outputDir: newRoot, logDir: tmpDir, stagingDir: stagingDir, inFlightRuns: InFlightRunRegistry(),
         )
         var job = try makeJob()
@@ -419,8 +419,7 @@ final class CancelledJobWritesNothingTests: XCTestCase {
         engine.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "Hello")]
         return PipelineQueue(
             engine: engine,
-            diarizationFactory: { diarizer },
-            diarizationFactoryWithMode: nil,
+            diarizerFactory: { _ in diarizer },
             protocolGeneratorFactory: { generator },
             outputDir: tmpDir,
             logDir: tmpDir,

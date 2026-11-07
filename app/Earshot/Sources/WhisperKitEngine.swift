@@ -87,7 +87,7 @@ final class WhisperKitEngine: TranscribingEngine, StreamingTranscribingEngine {
     /// app wiring; production always resolves this to `pipe`.
     private var decodingClientOverride: (any WhisperDecodingClient)?
     /// Test-only loader override used to count content reads on cache hits.
-    private var vocabularyTermsLoaderOverride: ((String, WhisperVocabularyPrompt.FileRevision) -> WhisperVocabularyPrompt.VocabularyTermsLoadResult)?
+    private var vocabularyTermsLoaderOverride: ((String, WhisperVocabularyPrompt.FileRevision) -> WhisperVocabularyPrompt.Read)?
     let modelLoad = SingleFlight<LoadAttempt>()
     /// The model-resolution boundary, per origin. Tests replace it wholesale; nothing
     /// needs to tell an override from the default, so this is a value rather than an
@@ -275,7 +275,7 @@ final class WhisperKitEngine: TranscribingEngine, StreamingTranscribingEngine {
         try await loadModel(untilCancelled: true)
         guard pipe != nil else {
             logger.error("WhisperKit: model load FAILED, state=\(String(describing: self.modelState), privacy: .public)")
-            throw TranscriptionError.modelNotLoaded(reason: loadFailureReason)
+            throw TranscriptionError.modelNotLoaded(engine: "WhisperKit", reason: loadFailureReason)
         }
         logger.info("WhisperKit: model loaded successfully")
     }
@@ -305,7 +305,7 @@ final class WhisperKitEngine: TranscribingEngine, StreamingTranscribingEngine {
     /// Installs a vocabulary-content loader for focused cache tests. Metadata
     /// revision checks remain in the engine, so tests cannot bypass them.
     func installVocabularyTermsLoaderForTesting(
-        _ loader: @escaping (String, WhisperVocabularyPrompt.FileRevision) -> WhisperVocabularyPrompt.VocabularyTermsLoadResult,
+        _ loader: @escaping (String, WhisperVocabularyPrompt.FileRevision) -> WhisperVocabularyPrompt.Read,
     ) {
         vocabularyTermsLoaderOverride = loader
     }
@@ -320,7 +320,7 @@ final class WhisperKitEngine: TranscribingEngine, StreamingTranscribingEngine {
     func transcribeSegments(audioPath: URL) async throws -> [TimestampedSegment] {
         try await ensureModel()
         guard let decodingClient else {
-            throw TranscriptionError.modelNotLoaded()
+            throw TranscriptionError.modelNotLoaded(engine: "WhisperKit")
         }
 
         // Snapshot all settings-derived decoding options before the asynchronous
@@ -342,7 +342,7 @@ final class WhisperKitEngine: TranscribingEngine, StreamingTranscribingEngine {
     /// Same hallucination filter as `transcribeSegments`.
     func transcribeSamples(_ samples: [Float]) async throws -> String {
         try await ensureModel()
-        guard let decodingClient else { throw TranscriptionError.modelNotLoaded() }
+        guard let decodingClient else { throw TranscriptionError.modelNotLoaded(engine: "WhisperKit") }
         // The explicit experimental prompt choice applies to both saved and
         // live WhisperKit transcription while retaining an immutable snapshot.
         let options = Self.decodingOptions(
@@ -416,12 +416,12 @@ final class WhisperKitEngine: TranscribingEngine, StreamingTranscribingEngine {
             return nil
         }
 
-        let loadResult: WhisperVocabularyPrompt.VocabularyTermsLoadResult = if let vocabularyTermsLoaderOverride {
+        let loadResult: WhisperVocabularyPrompt.Read = if let vocabularyTermsLoaderOverride {
             vocabularyTermsLoaderOverride(vocabularyPath, revision)
         } else {
-            WhisperVocabularyPrompt.loadTerms(fromFileAt: vocabularyPath, revision: revision)
+            WhisperVocabularyPrompt.read(fileAt: vocabularyPath, revision: revision)
         }
-        guard case let .loaded(terms) = loadResult,
+        guard case let .terms(terms) = loadResult,
               let tokenizer = decodingClient.tokenizer
         else {
             vocabularyPromptCache.storeNoPrompt(for: key)
@@ -440,25 +440,6 @@ final class WhisperKitEngine: TranscribingEngine, StreamingTranscribingEngine {
     /// Remove Whisper special tokens like <|startoftranscript|>, <|en|>, <|0.00|>, etc.
     static func stripWhisperTokens(_ text: String) -> String {
         text.replacingOccurrences(of: #"<\|[^|]*\|>"#, with: "", options: .regularExpression)
-    }
-}
-
-enum TranscriptionError: LocalizedError {
-    /// `reason` is the engine's `loadFailureReason` when the load that was just
-    /// attempted failed, so the job error says why; nil where nothing is known.
-    /// The message keeps its prefix either way, which is what consumers match on.
-    case modelNotLoaded(reason: String? = nil)
-    case streamingNotSupported
-    /// WhisperKit failed on a file. Kept whole rather than as its message, so
-    /// `TranscriptionFailureScope` can still tell a bad file from a bad model.
-    case transcriptionFailed(underlying: any Error)
-
-    var errorDescription: String? {
-        switch self {
-        case let .modelNotLoaded(reason): "WhisperKit model not loaded" + (reason.map { ": \($0)" } ?? "")
-        case .streamingNotSupported: "This engine does not support sample-based live transcription"
-        case let .transcriptionFailed(underlying): "WhisperKit transcription failed: \(underlying.localizedDescription)"
-        }
     }
 }
 

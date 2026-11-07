@@ -115,10 +115,7 @@ class MicInputDetector: MeetingDetecting {
     }
 
     private let patterns: [MicPattern]
-    private let confirmationCount: Int
-    private var consecutiveHits: [String: Int] = [:]
-    private var cooldownUntil: [String: Date] = [:]
-    private let cooldownDuration: TimeInterval = 5
+    private var confirmation: DetectionConfirmation
     /// Bundle IDs already logged as running-input-but-unmatched, so a live
     /// call on an unlisted bundle names itself once per session in the log.
     private var loggedMissBundles: Set<String> = []
@@ -146,7 +143,7 @@ class MicInputDetector: MeetingDetecting {
         confirmationCount: Int = 2,
     ) {
         self.patterns = patterns
-        self.confirmationCount = confirmationCount
+        confirmation = DetectionConfirmation(threshold: confirmationCount)
         matchers = patterns.reduce(into: [:]) { dict, pattern in
             dict[pattern.meetingPattern.appName] = MeetingTitleMatcher(pattern: pattern.meetingPattern)
         }
@@ -169,31 +166,20 @@ class MicInputDetector: MeetingDetecting {
                 continue
             }
             let appName = pattern.meetingPattern.appName
-            if let until = cooldownUntil[appName], Date() < until { continue }
-            guard !hitsThisRound.contains(appName) else { continue }
+            guard !confirmation.isCoolingDown(appName), !hitsThisRound.contains(appName) else { continue }
             hitsThisRound.insert(appName)
             firstMatch[appName] = tapRootPID(for: process, pattern: pattern)
-            consecutiveHits[appName, default: 0] += 1
         }
 
-        for (appName, hits) in consecutiveHits {
-            if hits >= confirmationCount, let pid = firstMatch[appName],
-               let meetingPattern = patterns.first(where: { $0.meetingPattern.appName == appName })?.meetingPattern {
-                let title = matchers[appName]?.selectWindowTitle(from: windowListProvider())
-                    ?? PowerAssertionDetector.placeholderTitle(appName: appName)
-                return DetectedMeeting(
-                    pattern: meetingPattern,
-                    windowTitle: title,
-                    ownerName: appName,
-                    windowPID: pid,
-                )
-            }
+        let confirmed = confirmation.endRound(seen: hitsThisRound)
+        // In pattern order, so the pick does not depend on dictionary order.
+        for meetingPattern in patterns.map(\.meetingPattern) {
+            let appName = meetingPattern.appName
+            guard confirmed.contains(appName), let pid = firstMatch[appName] else { continue }
+            let title = matchers[appName]?.selectWindowTitle(from: windowListProvider())
+                ?? PowerAssertionDetector.placeholderTitle(appName: appName)
+            return DetectedMeeting(pattern: meetingPattern, windowTitle: title, ownerName: appName, windowPID: pid)
         }
-
-        for appName in consecutiveHits.keys where !hitsThisRound.contains(appName) {
-            consecutiveHits[appName] = 0
-        }
-
         return nil
     }
 
@@ -214,10 +200,7 @@ class MicInputDetector: MeetingDetecting {
     }
 
     func reset(appName: String? = nil) {
-        consecutiveHits.removeAll()
-        if let appName {
-            cooldownUntil[appName] = Date().addingTimeInterval(cooldownDuration)
-        }
+        confirmation.reset(coolingDown: appName)
     }
 
     // MARK: - Diagnostics

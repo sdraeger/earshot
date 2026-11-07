@@ -1,13 +1,9 @@
-import CoreGraphics
-
 /// Pattern definition for detecting active meetings via window titles.
 struct AppMeetingPattern: Equatable {
     let appName: String
     let ownerNames: [String]
     let meetingPatterns: [String]
     let idlePatterns: [String]
-    let minWindowWidth: CGFloat
-    let minWindowHeight: CGFloat
     /// When true, a detected meeting for this app must be confirmed by the user
     /// before recording starts, instead of auto-recording. Browser meetings set
     /// this (issue #503): the WebRTC power assertion that detects them fires for
@@ -20,16 +16,12 @@ struct AppMeetingPattern: Equatable {
         ownerNames: [String],
         meetingPatterns: [String],
         idlePatterns: [String] = [],
-        minWindowWidth: CGFloat = 200,
-        minWindowHeight: CGFloat = 200,
         requiresRecordingConsent: Bool = false,
     ) {
         self.appName = appName
         self.ownerNames = ownerNames
         self.meetingPatterns = meetingPatterns
         self.idlePatterns = idlePatterns
-        self.minWindowWidth = minWindowWidth
-        self.minWindowHeight = minWindowHeight
         self.requiresRecordingConsent = requiresRecordingConsent
     }
 }
@@ -94,8 +86,6 @@ extension AppMeetingPattern {
         meetingPatterns: [
             #"Simulator Meeting"#,
         ],
-        minWindowWidth: 100,
-        minWindowHeight: 100,
     )
 
     /// Browser-based meetings (Google Meet, Whereby, web Zoom/Teams/Webex) run

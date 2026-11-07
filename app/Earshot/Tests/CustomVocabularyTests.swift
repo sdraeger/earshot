@@ -113,6 +113,22 @@ final class CustomVocabularyTests: XCTestCase {
         )
     }
 
+    /// A bookmark that no longer resolves leaves the file unreadable, as the
+    /// engines see it: the display path has no sandbox grant, so Settings must
+    /// not call the file ready through it.
+    func testAnUnresolvableBookmarkDoesNotFallBackToThePath() throws {
+        let file = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vocabulary-dead-bookmark-\(UUID().uuidString).txt")
+        try "Northstar\n".write(to: file, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: file) }
+
+        settings.updateCustomVocabularySelection(path: file.path, bookmark: Data("not a bookmark".utf8))
+        settings.refreshCustomVocabularyValidation()
+
+        XCTAssertNil(settings.customVocabularyFile)
+        XCTAssertEqual(settings.customVocabularyValidation, .unavailable)
+    }
+
     /// What macOS reports as stale: the file a bookmark was made for has moved.
     /// The launch repair stores the file's current path and a current bookmark.
     func testAStaleVocabularyBookmarkIsRepaired() throws {

@@ -31,7 +31,7 @@ final class BuildRecordingFailureModeTests: XCTestCase {
                 actualSampleRate: 48000, actualChannels: 2, micDelay: 0,
             ),
             recordingsDir: dir, timestamp: "20260311_160000", recordingStartDate: Date(timeIntervalSince1970: 1000),
-            format: CaptureFormat(requestedChannels: 2, requestedRate: 48000, targetRate: 16000),
+            format: CaptureFormat(requestedChannels: 2, requestedRate: 48000),
         )
 
         XCTAssertNotNil(result.appPath, "the app track is what there was to rescue")
@@ -58,7 +58,7 @@ final class BuildRecordingFailureModeTests: XCTestCase {
                 ),
                 recordingsDir: notADirectory, timestamp: "20260311_160000",
                 recordingStartDate: Date(timeIntervalSince1970: 1000),
-                format: CaptureFormat(requestedChannels: 2, requestedRate: 48000, targetRate: 16000),
+                format: CaptureFormat(requestedChannels: 2, requestedRate: 48000),
             ),
         )
 

@@ -35,7 +35,7 @@ final class DualTrackTranscriptionTests: XCTestCase {
             WhisperError.decodingLogitsFailed("x"),
             WhisperError.segmentingFailed("x"),
             WhisperError.audioProcessingFailed("AudioEncoder input must be MLMultiArray"),
-            TranscriptionError.modelNotLoaded(reason: "download failed"),
+            TranscriptionError.modelNotLoaded(engine: "WhisperKit", reason: "download failed"),
             ASRError.modelLoadFailed,
             ASRError.modelCompilationFailed,
             ASRError.notInitialized,

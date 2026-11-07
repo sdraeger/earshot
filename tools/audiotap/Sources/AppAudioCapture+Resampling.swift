@@ -9,7 +9,7 @@ import Foundation
 /// stays under the 600-line lint cap — same pattern as
 /// `AppAudioCapture+LiveSink.swift`.
 @available(macOS 14.2, *)
-public extension AppAudioCapture {
+extension AppAudioCapture {
     /// Format of the data actually written to the output fd: 16 kHz mono when
     /// the resampler is active (the normal case), else the raw device input
     /// (`actualSampleRate`/`actualChannels`) as a fallback. Read by

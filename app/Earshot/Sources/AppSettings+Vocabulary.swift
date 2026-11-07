@@ -66,27 +66,24 @@ extension AppSettings {
         }
         customVocabularyValidation = VocabularyFileAccess.withAccess(to: url) { url in
             guard let revision = WhisperVocabularyPrompt.fileRevision(at: url.path) else { return .unavailable }
-            guard revision.fileSize <= UInt64(WhisperVocabularyPrompt.maximumFileBytes) else { return .tooLarge }
-            guard let contents = try? String(contentsOf: url, encoding: .utf8) else { return .unavailable }
-            let terms = WhisperVocabularyPrompt.terms(from: contents)
-            guard !terms.isEmpty else { return .empty }
-            guard terms.count <= WhisperVocabularyPrompt.maximumTermCount else { return .tooManyTerms }
-            guard terms.allSatisfy({ $0.utf8.count <= WhisperVocabularyPrompt.maximumTermBytes }) else {
-                return .termTooLong
+            switch WhisperVocabularyPrompt.read(fileAt: url.path, revision: revision) {
+            case let .terms(terms): return terms.isEmpty ? .empty : .ready(termCount: terms.count)
+            case let .rejected(reason): return reason
             }
-            return .ready(termCount: terms.count)
         }
     }
 
+    /// Like `VocabularyFileAccess.resolve`, a bookmark that does not resolve
+    /// never falls back to the display path, which has no sandbox grant:
+    /// Settings would call a file ready that the engines cannot read.
     private func resolveCustomVocabularyFile(isStale: inout Bool) -> URL? {
-        if let bookmark = customVocabularyBookmark,
-           let url = try? URL(
-               resolvingBookmarkData: bookmark,
-               options: .withSecurityScope,
-               relativeTo: nil,
-               bookmarkDataIsStale: &isStale,
-           ) {
-            return url
+        if let bookmark = customVocabularyBookmark {
+            return try? URL(
+                resolvingBookmarkData: bookmark,
+                options: .withSecurityScope,
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale,
+            )
         }
         guard !customVocabularyPath.isEmpty else { return nil }
         return URL(fileURLWithPath: customVocabularyPath)

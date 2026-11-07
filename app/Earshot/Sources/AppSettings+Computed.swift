@@ -4,6 +4,15 @@ import Foundation
 /// `AppSettings.swift` purely to keep that file under the `file_length` limit;
 /// there is no behavioural difference from declaring these inline.
 extension AppSettings {
+    /// What the next job stamps as its output policy (`PipelineQueue`).
+    var transcriptOutputOptions: TranscriptOutputOptions {
+        TranscriptOutputOptions(
+            includeFullTranscriptInProtocol: includeFullTranscriptInProtocol,
+            saveRawTranscriptSeparately: saveRawTranscriptSeparately,
+            useAITitleForFilenames: useAITitleForFilenames,
+        )
+    }
+
     /// WhisperKit language as an optional value. Empty string means the engine
     /// should auto-detect the language.
     var whisperLanguageOrNil: String? {

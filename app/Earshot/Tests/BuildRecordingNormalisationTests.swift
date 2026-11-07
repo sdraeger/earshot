@@ -6,7 +6,7 @@ import XCTest
 /// disk, that the mixer and the result are told the delay is gone, and that the
 /// rate cross-check still sees the measured value.
 final class BuildRecordingNormalisationTests: XCTestCase {
-    private let format = CaptureFormat(requestedChannels: 2, requestedRate: 48000, targetRate: 16000)
+    private let format = CaptureFormat(requestedChannels: 2, requestedRate: 48000)
 
     func testANegativeDelayPadsTheAppTrackOnDiskAndReportsZero() throws {
         let dir = try makeTempDirectory(prefix: "norm_pad")

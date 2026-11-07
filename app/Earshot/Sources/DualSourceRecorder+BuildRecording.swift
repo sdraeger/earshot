@@ -98,7 +98,7 @@ extension DualSourceRecorder {
         // reference duration and would re-warp a healthy 16 kHz track). The
         // cross-check still guards the fallback/legacy path where the temp is
         // raw device-rate audio.
-        let actualRate = captureResult.actualSampleRate == format.targetRate
+        let actualRate = captureResult.actualSampleRate == AudioConstants.targetSampleRate
             ? captureResult.actualSampleRate
             : crossCheckAppRate(
                 deviceRate: captureResult.actualSampleRate,
@@ -146,7 +146,7 @@ extension DualSourceRecorder {
         // the app track is padded here and the reported delay becomes zero, so
         // both files and every timeline derived from them share one origin.
         let normalisation = MicDelayNormalisation.decide(
-            rawDelay: micDelay, micLoaded: micPath != nil, sampleRate: format.targetRate,
+            rawDelay: micDelay, micLoaded: micPath != nil, sampleRate: AudioConstants.targetSampleRate,
         )
         if micDelay != 0 {
             // Both numbers, because normalisation makes the reported one zero
@@ -185,7 +185,7 @@ extension DualSourceRecorder {
             appSamples = AudioTapLib.downmixToMono(floats, channels: actualChannels)
 
             // Resample to 16kHz and save app track
-            appSamples16k = AudioMixer.resample(appSamples, from: actualRate, to: format.targetRate)
+            appSamples16k = AudioMixer.resample(appSamples, from: actualRate, to: AudioConstants.targetSampleRate)
             if normalisation.padFrames > 0 {
                 // Released first: on the production path the temp is already
                 // 16 kHz mono, so `floats`, `appSamples` and `appSamples16k`
@@ -196,9 +196,9 @@ extension DualSourceRecorder {
                 appSamples16k = [Float](repeating: 0, count: normalisation.padFrames) + appSamples16k
             }
             let appFile = recDir.appendingPathComponent("\(ts)\(RecordingFileSuffix.app)")
-            try AudioMixer.saveWAV(samples: appSamples16k, sampleRate: format.targetRate, url: appFile)
+            try AudioMixer.saveWAV(samples: appSamples16k, sampleRate: AudioConstants.targetSampleRate, url: appFile)
             appPath = appFile
-            logger.info("App audio saved: \(appFile.lastPathComponent) (\(actualRate)→\(format.targetRate) Hz)")
+            logger.info("App audio saved: \(appFile.lastPathComponent) (\(actualRate)→\(AudioConstants.targetSampleRate) Hz)")
         } else if let tempURL, FileManager.default.fileExists(atPath: tempURL.path) {
             // Clean up empty temp file left by failed app audio capture
             try? FileManager.default.removeItem(at: tempURL)
@@ -214,7 +214,7 @@ extension DualSourceRecorder {
 
         // ── Mix via AudioMixer ──
         // Both app and mic are already at 16kHz at this point.
-        let mixRate = format.targetRate
+        let mixRate = AudioConstants.targetSampleRate
         let mixPath = recDir.appendingPathComponent("\(ts)\(RecordingFileSuffix.mix)")
 
         guard (appPath != nil && micPath != nil) || !appSamples16k.isEmpty || !micSamples.isEmpty else {

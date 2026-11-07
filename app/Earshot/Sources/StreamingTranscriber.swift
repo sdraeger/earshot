@@ -7,7 +7,8 @@ private let logger = Logger(subsystem: AppPaths.logSubsystem, category: "Streami
 /// Live transcription for a single audio channel (mic or app).
 ///
 /// Ingests 16 kHz mono Float32 buffers (matches `MicCaptureHandler`
-/// post-resample output), feeds them through `FluidVAD` in streaming mode,
+/// post-resample output), feeds them through an utterance boundary detector
+/// (`FluidVADBoundaryDetector` in production),
 /// and calls `engine.transcribeSamples` once per ~800 ms while speaking
 /// (partial) and once per detected speech end / 5 s force-flush (final).
 ///
@@ -39,8 +40,9 @@ actor StreamingTranscriber: LiveCaptionPipeline {
 
     private let transcribe: TranscribeFunction
     private let channelLabel: String
-    private let vad: FluidVAD
-    private var vadState: FluidVAD.StreamState?
+    private let detector: any UtteranceBoundaryDetecting
+    /// One warning per stream: a failing detector fails on every chunk.
+    private var reportedDetectorError = false
     private var inputAccumulator: [Float] = []
     private var speechSamples: [Float] = []
     private var isSpeaking = false
@@ -70,12 +72,12 @@ actor StreamingTranscriber: LiveCaptionPipeline {
 
     init(
         channelLabel: String,
-        vad: FluidVAD,
+        detector: any UtteranceBoundaryDetecting,
         transcribe: @escaping TranscribeFunction,
         onEvent: @escaping EventSink,
     ) {
         self.channelLabel = channelLabel
-        self.vad = vad
+        self.detector = detector
         self.transcribe = transcribe
         self.onEvent = onEvent
     }
@@ -107,36 +109,31 @@ actor StreamingTranscriber: LiveCaptionPipeline {
         isSpeaking = false
     }
 
+    /// Every whole chunk is consumed, whatever the detector does with it: a
+    /// detector that cannot start (the VAD model failed to load) reads as "no
+    /// boundary", rather than leaving the input to pile up for the recording.
     private func drainChunks() async {
-        if vadState == nil {
-            do {
-                vadState = try await vad.makeStreamState()
-            } catch {
-                logger.error(
-                    "[\(self.channelLabel, privacy: .public)] vad init failed: \(error.localizedDescription, privacy: .public)",
-                )
-                return
-            }
-        }
-
         while inputAccumulator.count >= Self.chunkSize {
             let chunk = Array(inputAccumulator.prefix(Self.chunkSize))
             inputAccumulator.removeFirst(Self.chunkSize)
-            guard let state = vadState else { return }
+            let boundary: FluidVAD.StreamEvent.Kind?
             do {
-                let result = try await vad.processStreamingChunk(chunk, state: state)
-                vadState = result.state
-                await handleEvent(result.event, chunk: chunk)
+                boundary = try await detector.boundary(in: chunk)
             } catch {
-                logger.warning(
-                    "[\(self.channelLabel, privacy: .public)] vad chunk error: \(error.localizedDescription, privacy: .public)",
-                )
+                if !reportedDetectorError {
+                    reportedDetectorError = true
+                    logger.warning(
+                        "[\(self.channelLabel, privacy: .public)] vad error: \(error.localizedDescription, privacy: .public)",
+                    )
+                }
+                boundary = nil
             }
+            await handleEvent(boundary, chunk: chunk)
         }
     }
 
-    private func handleEvent(_ event: FluidVAD.StreamEvent?, chunk: [Float]) async {
-        switch event?.kind {
+    private func handleEvent(_ boundary: FluidVAD.StreamEvent.Kind?, chunk: [Float]) async {
+        switch boundary {
         case .speechStart:
             isSpeaking = true
             speechSamples.append(contentsOf: chunk)

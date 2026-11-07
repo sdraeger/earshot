@@ -111,15 +111,15 @@ final class SpeakerMatcherRealRecordingBacktest: XCTestCase {
         group: PairedRecordingResolver.Group, with diarizer: FluidDiarizer,
     ) async throws -> DiarizationResult {
         if let app = group.app, let mic = group.mic {
-            let appResult = try await diarizer.run(audioPath: app, numSpeakers: nil, meetingTitle: "")
-            let micResult = try await diarizer.run(audioPath: mic, numSpeakers: nil, meetingTitle: "")
+            let appResult = try await diarizer.run(audioPath: app, numSpeakers: nil)
+            let micResult = try await diarizer.run(audioPath: mic, numSpeakers: nil)
             return DiarizationProcess.mergeDualTrackDiarization(
                 appDiarization: appResult, micDiarization: micResult,
             )
         }
         // `PairedRecordingResolver.paired` guarantees app+mic or a mix.
         guard let mix = group.mix else { throw DiarizationError.notAvailable }
-        return try await diarizer.run(audioPath: mix, numSpeakers: nil, meetingTitle: "")
+        return try await diarizer.run(audioPath: mix, numSpeakers: nil)
     }
 
     func testCompareMatchersOnLocalRecordings() async throws {

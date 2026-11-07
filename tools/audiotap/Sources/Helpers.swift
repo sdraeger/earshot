@@ -114,7 +114,7 @@ func getDefaultOutputDeviceUID() -> String? {
 }
 
 /// Read a CFString-valued audio property. Returns nil if the property is unavailable.
-public func readCFStringAudioProperty(
+func readCFStringAudioProperty(
     _ id: AudioObjectID,
     _ selector: AudioObjectPropertySelector,
     scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal,
@@ -137,13 +137,13 @@ public func getProcessBundleID(_ processObjectID: AudioObjectID) -> String? {
 }
 
 /// Human-readable name of the default output device (e.g. "AirPods Pro", "MacBook Pro Speakers").
-public func getDefaultOutputDeviceName() -> String? {
+func getDefaultOutputDeviceName() -> String? {
     resolveDefaultDevice(selector: kAudioHardwarePropertyDefaultOutputDevice)
         .flatMap { readCFStringAudioProperty($0, kAudioObjectPropertyName) }
 }
 
 /// Process executable name (e.g. "MSTeams") for a PID. Returns "?" on lookup failure.
-public func getExecutableName(pid: pid_t) -> String {
+func getExecutableName(pid: pid_t) -> String {
     var name = [CChar](repeating: 0, count: 1024)
     let result = proc_name(pid, &name, UInt32(name.count))
     guard result > 0 else { return "?" }

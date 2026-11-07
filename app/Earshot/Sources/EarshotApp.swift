@@ -173,18 +173,11 @@ struct EarshotApp: App {
             onOpenSettings: {
                 bringWindowToFront(id: "settings")
             },
-            onNameSpeakers: appState.hasPendingSpeakerNamingJobs ? {
-                showNamingWindow()
-            } : nil,
+            onNameSpeakers: showNamingWindow,
             onProcessFiles: processAudioFiles,
-            onDismissJob: { id in appState.pipelineQueue.removeJob(id: id) },
             onQuit: quit,
             pendingConsentApp: appState.pendingConsentApp,
             onAnswerPendingConsent: appState.answerPendingConsent,
-            onNameSpeakersForJob: { id in
-                appState.selectedNamingJobID = id
-                showNamingWindow()
-            },
             notionExportEnabled: appState.settings.notionExportEnabled,
         )
     }
@@ -305,29 +298,12 @@ struct EarshotApp: App {
         Window("Settings", id: "settings") {
             SettingsView(
                 settings: appState.settings,
-                whisperKitEngine: appState.engines.whisperKit,
-                parakeetEngine: appState.engines.parakeetEngine,
-                modelServerEngine: appState.engines.modelServer,
+                engines: appState.engines,
                 updateChecker: appState.updateChecker,
-                notificationVisibility: appState.permissions.notificationVisibility,
-                // Share the pipeline's actor instance so both writers serialise on
-                // the same `recognition_log.jsonl` file. Fallback only fires in the
-                // test-only PipelineQueue init that intentionally leaves it nil.
-                recognitionStatsLog: appState.pipeline.queue.recognitionStatsLog ?? RecognitionStatsLog(),
-                // Same actor instance the pipeline writes to, so both writers
-                // serialise on stage_timing.jsonl. Fallback fires only in the
-                // test-only PipelineQueue init that leaves it nil.
-                stageTimingLog: appState.pipeline.queue.stageTimingLog ?? StageTimingLog(),
-                enrollmentDiarizerFactory: { FluidDiarizer(mode: appState.settings.diarizerMode) },
-                namingDialogActive: appState.pipeline.queue.pendingSpeakerNaming != nil,
-                pipelineBusy: appState.pipeline.queue.isProcessing,
-                onSpeakerMutate: appState.pipeline.queue.refreshKnownSpeakerNames,
-                // The pipeline's file and the app's notifier, so Known Voices
-                // and enrollment edit the same DB and report through one channel.
-                speakerMatcherFactory: SpeakerMatcher.factory(
-                    dbPath: appState.pipeline.speakersDB, notifier: appState.notifier,
-                ),
-                legacyWhisperModels: appState.engines.legacyWhisperModels,
+                permissions: appState.permissions,
+                recognitionStatsLog: appState.pipeline.recognitionStatsLog,
+                stageTimingLog: appState.pipeline.stageTimingLog,
+                speakerEditing: appState.speakerDBEditing,
             )
         }
         .windowResizability(.contentSize)
@@ -357,16 +333,14 @@ struct EarshotApp: App {
 
     /// Open the naming window on a pinned job, from the menu and from
     /// `.showSpeakerNaming` alike.
-    private func showNamingWindow() {
-        appState.pinShownNamingJob()
+    private func showNamingWindow(jobID: UUID? = nil) {
+        appState.showNaming(jobID: jobID)
         bringWindowToFront(id: "speaker-naming")
     }
 
     private var speakerNamingContent: some View {
         Group {
-            if let data = appState.pipeline.queue.speakerNamingData(
-                forJobID: appState.selectedNamingJobID,
-            ) {
+            if let data = appState.pipeline.queue.speakerNamingData(forJobID: appState.shownNamingJobID) {
                 VStack(spacing: 0) {
                     speakerNamingPicker
                     speakerNamingForm(data: data)
@@ -378,11 +352,8 @@ struct EarshotApp: App {
         }
         // Whatever opened the window or changed what it shows (a restored
         // window, an RPC answer for the shown job), the selection follows.
-        .onChange(
-            of: appState.pipeline.queue.namingJobID(preferring: appState.selectedNamingJobID),
-            initial: true,
-        ) { _, _ in
-            appState.pinShownNamingJob()
+        .onChange(of: appState.shownNamingJobID, initial: true) { _, _ in
+            appState.showNaming()
         }
     }
 
@@ -391,10 +362,8 @@ struct EarshotApp: App {
             NamingJobPicker(
                 jobs: appState.pipeline.queue.pendingSpeakerNamingJobs,
                 selection: Binding(
-                    get: {
-                        appState.pipeline.queue.namingJobID(preferring: appState.selectedNamingJobID)
-                    },
-                    set: { appState.selectedNamingJobID = $0 },
+                    get: { appState.shownNamingJobID },
+                    set: { appState.shownNamingJobID = $0 },
                 ),
             )
             .padding(.horizontal)
@@ -417,15 +386,15 @@ struct EarshotApp: App {
             // and SwiftLint disagree on trailing syntax for the last of two.
             // swiftlint:disable:next trailing_closure
             onAnswer: { result in
-                if let refusal = appState.pipeline.queue.completeSpeakerNaming(jobID: data.jobID, result: result) {
-                    return refusal.message
+                switch appState.answerNaming(jobID: data.jobID, result: result) {
+                case let .refused(message): return message
+
+                case .showsNext: return nil
+
+                case .finished:
+                    closeWindow(id: "speaker-naming")
+                    return nil
                 }
-                // The next job awaiting naming, pinned; none left closes the
-                // window.
-                appState.selectedNamingJobID = nil
-                appState.pinShownNamingJob()
-                if appState.selectedNamingJobID == nil { closeWindow(id: "speaker-naming") }
-                return nil
             },
         )
     }

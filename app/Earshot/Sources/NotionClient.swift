@@ -237,7 +237,6 @@ actor NotionClient: NotionExporting {
         date: Date?,
         tags: [String],
         markdown: String,
-        transcript: String?,
         existingPageID: String? = nil,
         onPageCreated: @escaping @Sendable (NotionPageResult) async -> Void = { _ in },
     ) async throws -> NotionPageResult {
@@ -248,7 +247,7 @@ actor NotionClient: NotionExporting {
         let database = try await fetchDatabase(id: databaseID)
         let schema = database.schema
         let properties = pageProperties(title: title, date: date, tags: tags, schema: schema)
-        let blocks = MarkdownToNotionBlocks.convert(markdown: markdown, transcript: transcript)
+        let blocks = MarkdownToNotionBlocks.convert(markdown: markdown)
         let omitted = omittedProperties(date: date, tags: tags, schema: schema)
 
         if let existingPageID,

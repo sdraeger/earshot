@@ -45,9 +45,9 @@ final class WatchingControllerChannelFaultTests: XCTestCase {
     private final class StampingRecorder: MockRecorder {
         private(set) var startedAt: Date?
 
-        override func start(source: RecordingSource, micDeviceUID: String?, debugLogging: Bool) {
+        override func start(source: RecordingSource, micDeviceUID: String?) {
             startedAt = Date()
-            super.start(source: source, micDeviceUID: micDeviceUID, debugLogging: debugLogging)
+            super.start(source: source, micDeviceUID: micDeviceUID)
         }
     }
 

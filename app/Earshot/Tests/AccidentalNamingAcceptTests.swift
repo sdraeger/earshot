@@ -76,7 +76,7 @@ final class AccidentalNamingAcceptTests: XCTestCase {
         func runDualTrackDiarization(
             diarizeProcess _: any DiarizationProvider,
             tracks _: (app: URL, mic: URL, micDelay: TimeInterval, viability: DualTrackViability?),
-            speakerCount _: Int?, title _: String, jobID _: UUID,
+            speakerCount _: Int?, jobID _: UUID,
         ) throws -> DiarizationRun {
             throw DiarizationError.notAvailable
         }
@@ -97,7 +97,6 @@ final class AccidentalNamingAcceptTests: XCTestCase {
         withProtocolGenerator: Bool = true,
     ) -> SpeakerNamingSession {
         SpeakerNamingSession(
-            namingStore: SpeakerNamingStore(outputDir: nil),
             speakerMatcherFactory: PipelineQueue.throwawayMatcherFactory(),
             protocolGeneratorFactory: withProtocolGenerator ? { MockProtocolGen() } : nil,
             outputDir: outputDir,
@@ -354,8 +353,8 @@ final class AccidentalNamingAcceptTests: XCTestCase {
         _ = session.resolveSpeakerNames(
             diarization: diarization,
             job: (jobID: job.id, title: "Standup", slug: "standup_abcd1234", participants: []),
-            diarizeProcess: MockDiarization(),
-            isDualSource: false, outputDir: tmp,
+            diarizerMode: .offline,
+            isDualSource: false,
         )
 
         // No dialog is parked for a headless job.

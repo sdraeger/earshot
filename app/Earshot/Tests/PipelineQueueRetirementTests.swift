@@ -49,6 +49,13 @@ final class PipelineQueueRetirementTests: XCTestCase {
         return (controller, replaced)
     }
 
+    /// The staging folder `IsolatedQueueEnvironment` gives the controller's queues.
+    private func isolatedStagingDir() throws -> URL {
+        let staging = tmpDir.appendingPathComponent("staging", isDirectory: true)
+        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+        return staging
+    }
+
     private func makeFailedJob(title: String) -> PipelineJob {
         var job = PipelineJob(
             meetingTitle: title, appName: "Microsoft Teams",
@@ -82,13 +89,13 @@ final class PipelineQueueRetirementTests: XCTestCase {
     /// queue nobody sees.
     func testTheReplacedQueuesRecoveryEnqueuesNothingAfterTheReplacement() async throws {
         let (controller, replaced) = makeControllerAfterAReplacement()
-        let staging = try makeTempDirectory(prefix: "retired_recovery")
+        let staging = try isolatedStagingDir()
         try AudioMixer.saveWAV(
             samples: [Float](repeating: 0.1, count: 1600), sampleRate: 16000,
             url: staging.appendingPathComponent("20260311_140000_mix.wav"),
         )
 
-        await replaced.recoverOrphanedRecordings(recordingsDir: staging)
+        await replaced.recoverOrphanedRecordings()
         await controller.queue.awaitSnapshotFlush()
 
         XCTAssertEqual(replaced.jobs.count, 0, "the replaced queue took on an orphan after the replacement")
@@ -111,17 +118,17 @@ final class PipelineQueueRetirementTests: XCTestCase {
         let replaced = controller.queue
         controller.rebuild(recoversStagedRecordings: false)
         XCTAssertNotIdentical(controller.queue, replaced, "test premise: the folder-change rebuild replaced the queue")
-        let staging = try makeTempDirectory(prefix: "retired_folder_change")
+        let staging = try isolatedStagingDir()
         let orphan = staging.appendingPathComponent("20260311_140000_mix.wav")
         try AudioMixer.saveWAV(samples: [Float](repeating: 0.1, count: 1600), sampleRate: 16000, url: orphan)
 
-        await replaced.recoverOrphanedRecordings(recordingsDir: staging)
+        await replaced.recoverOrphanedRecordings()
 
         XCTAssertEqual(replaced.jobs.count + controller.queue.jobs.count, 0, "test premise: nobody took the orphan yet")
         XCTAssertTrue(FileManager.default.fileExists(atPath: orphan.path))
 
         // The next recovery on the active queue.
-        await controller.queue.recoverOrphanedRecordings(recordingsDir: staging)
+        await controller.queue.recoverOrphanedRecordings()
 
         XCTAssertEqual(controller.queue.jobs.compactMap(\.mixPath?.lastPathComponent), [orphan.lastPathComponent])
     }
