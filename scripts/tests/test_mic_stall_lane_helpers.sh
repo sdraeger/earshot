@@ -5,7 +5,7 @@
 # The lane switches the dev bundle's protocolProvider to `none` and runs the app
 # in a throwaway home. Both have to be undone across runs, a killed one
 # included, without overwriting a choice made since and without removing a home
-# an app still writes into. And it must refuse to run beside a MeetingTranscriber
+# an app still writes into. And it must refuse to run beside a Earshot
 # that is not the dev app, which would record the lane's synthetic meeting into
 # the host's real folders. Each of those is checked in both directions here.
 set -euo pipefail
@@ -134,34 +134,34 @@ mic_stall_sweep_kept_homes "$LIST"
 expect sweep_removes_it_once_that_app_is_gone "no" "$([ -d "$HOME_KEPT" ] && echo yes || echo no)"
 expect sweep_removes_the_empty_list "no" "$([ -f "$LIST" ] && echo yes || echo no)"
 
-# --- non_dev_meetingtranscriber_pids ----------------------------------------
+# --- non_dev_earshot_pids ----------------------------------------
 #
-# Processes named exactly MeetingTranscriber: a symlink to sleep takes the
+# Processes named exactly Earshot: a symlink to sleep takes the
 # link's name. One outside a dev bundle, one inside one. Started through a
 # subshell that exits at once, so the shell reports no job when they are killed.
-mkdir -p "$TMP/bin" "$TMP/MeetingTranscriber-Dev.app/Contents/MacOS"
-ln -s /bin/sleep "$TMP/bin/MeetingTranscriber"
-ln -s /bin/sleep "$TMP/MeetingTranscriber-Dev.app/Contents/MacOS/MeetingTranscriber"
+mkdir -p "$TMP/bin" "$TMP/Earshot-Dev.app/Contents/MacOS"
+ln -s /bin/sleep "$TMP/bin/Earshot"
+ln -s /bin/sleep "$TMP/Earshot-Dev.app/Contents/MacOS/Earshot"
 start() { ( "$1" 30 >/dev/null 2>&1 & echo $! ) ; }
-DEV_PID="$(start "$TMP/MeetingTranscriber-Dev.app/Contents/MacOS/MeetingTranscriber")"
+DEV_PID="$(start "$TMP/Earshot-Dev.app/Contents/MacOS/Earshot")"
 PIDS="$PIDS $DEV_PID"
-OTHER_PID="$(start "$TMP/bin/MeetingTranscriber")"
+OTHER_PID="$(start "$TMP/bin/Earshot")"
 PIDS="$PIDS $OTHER_PID"
 # Wait (with a ceiling only a stand-in that never starts reaches) until both
 # have exec'd under the name, not for a fixed time a loaded host can overrun:
 # a dev pid missing from the answer would pass its check untested.
 _both_named() {
     local named p
-    named="$(pgrep -x MeetingTranscriber)"
+    named="$(pgrep -x Earshot)"
     for p in "$DEV_PID" "$OTHER_PID"; do grep -qx "$p" <<<"$named" || return 1; done
 }
-poll_until 20 0.1 _both_named || bad non_dev_setup "the stand-ins never ran as MeetingTranscriber"
-found="$(non_dev_meetingtranscriber_pids)"
+poll_until 20 0.1 _both_named || bad non_dev_setup "the stand-ins never ran as Earshot"
+found="$(non_dev_earshot_pids)"
 case " $found " in *" $OTHER_PID "*) ok non_dev_app_is_reported ;; *) bad non_dev_app_is_reported "got '$found'" ;; esac
 case " $found " in *" $DEV_PID "*) bad dev_app_is_not_reported "got '$found'" ;; *) ok dev_app_is_not_reported ;; esac
 kill -KILL "$OTHER_PID" 2>/dev/null || true
 poll_until 20 0.1 _no_pid_alive "$OTHER_PID" || bad non_dev_kill_setup "pid $OTHER_PID outlived SIGKILL"
-found="$(non_dev_meetingtranscriber_pids)"
+found="$(non_dev_earshot_pids)"
 case " $found " in *" $OTHER_PID "*) bad nothing_reported_once_it_is_gone "got '$found'" ;; *) ok nothing_reported_once_it_is_gone ;; esac
 
 # --- the wiring in e2e-app.sh -----------------------------------------------

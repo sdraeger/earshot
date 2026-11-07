@@ -16,7 +16,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 source "$REPO_ROOT/scripts/appstore-bundle-check.sh"
 set +e   # the sourced script sets -e; the harness must not stop on a failure
 
-ENTITLEMENTS_DIR="$REPO_ROOT/app/MeetingTranscriber/Entitlements"
+ENTITLEMENTS_DIR="$REPO_ROOT/app/Earshot/Entitlements"
 APPSTORE="$ENTITLEMENTS_DIR/AppStore.entitlements"
 HOMEBREW="$ENTITLEMENTS_DIR/Homebrew.entitlements"
 

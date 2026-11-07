@@ -1,7 +1,7 @@
 import Foundation
 import os.log
 
-private let logger = Logger(subsystem: "com.meetingtranscriber.audiotap", category: "MicCapture")
+private let logger = Logger(subsystem: "com.earshot.audiotap", category: "MicCapture")
 
 /// Whether the microphone capture is getting anywhere. Main queue only, like
 /// `session`.

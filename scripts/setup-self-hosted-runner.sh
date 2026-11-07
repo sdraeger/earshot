@@ -13,14 +13,14 @@
 #      That's fine for our purpose: TCC matches future builds via the
 #      cert's leaf SHA-1, which stays constant across rebuilds even if
 #      the chain is untrusted.
-#   4. Deploys to ~/Applications/MeetingTranscriber-Dev.app (stable path).
+#   4. Deploys to ~/Applications/Earshot-Dev.app (stable path).
 #
 # What you do once after this script:
-#   - Launch the deployed .app (e.g. `open ~/Applications/MeetingTranscriber-Dev.app`).
+#   - Launch the deployed .app (e.g. `open ~/Applications/Earshot-Dev.app`).
 #   - When macOS prompts for Microphone, click Allow.
 #   - When the app first tries to detect a meeting via Screen Recording,
 #     System Settings → Privacy & Security → Screen & System Audio
-#     Recording → toggle on for MeetingTranscriber-Dev.app.
+#     Recording → toggle on for Earshot-Dev.app.
 #   - From that point on, every rebuild keeps the same cert leaf SHA-1, so
 #     TCC keeps the grants — scripts/e2e-app.sh runs end-to-end.
 #
@@ -38,17 +38,17 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # shellcheck source=lib/signing.sh
 source "$SCRIPT_DIR/lib/signing.sh"
 CERT_NAME="$DEV_CERT_NAME"
-CERT_ORG="meetingtranscriber-self-hosted"
+CERT_ORG="earshot-self-hosted"
 # Dedicated keychain with empty password keeps everything non-interactive:
 # - `-A` ACL imports don't need TouchID
 # - `set-key-partition-list -k ""` succeeds without prompts
 # Login keychain has neither property over SSH, hence the separation.
 DEV_KEYCHAIN_PASS=""
-APP_BUNDLE_PATH="$HOME/Applications/MeetingTranscriber-Dev.app"
+APP_BUNDLE_PATH="$HOME/Applications/Earshot-Dev.app"
 # /tmp because world-readable; the cert file may also be useful for a
 # Keychain Access drag-import if the operator wants to manually mark the
 # cert trusted (not required for signing, just nice-to-have).
-ARTIFACTS_DIR="/tmp/meetingtranscriber-setup"
+ARTIFACTS_DIR="/tmp/earshot-setup"
 CERT_PATH="$ARTIFACTS_DIR/dev-cert.crt"
 
 log()  { printf '[setup] %s\n' "$*"; }
@@ -188,7 +188,7 @@ log "Building dev .app"
 "$SCRIPT_DIR/run_app.sh" --build-only
 
 mkdir -p "$(dirname "$APP_BUNDLE_PATH")"
-SRC="$ROOT/app/MeetingTranscriber/.build/MeetingTranscriber-Dev.app"
+SRC="$ROOT/app/Earshot/.build/Earshot-Dev.app"
 log "Deploying to $APP_BUNDLE_PATH"
 if [ -d "$APP_BUNDLE_PATH" ]; then
     rsync -a --delete "$SRC/" "$APP_BUNDLE_PATH/"
@@ -278,8 +278,8 @@ Next (one-time, in the GUI session as user '$USER'):
      "+" → $APP_BUNDLE_PATH.
 
   4. Verify in System Settings → Privacy & Security:
-       - Microphone               → MeetingTranscriber-Dev.app on
-       - Screen & System Audio Recording → MeetingTranscriber-Dev.app on
+       - Microphone               → Earshot-Dev.app on
+       - Screen & System Audio Recording → Earshot-Dev.app on
 
 After that, scripts/e2e-app.sh rebuilds + redeploys, the cert leaf SHA-1
 stays $CERT_HASH across rebuilds, and TCC keeps the grants automatically.

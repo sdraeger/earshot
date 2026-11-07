@@ -2,7 +2,7 @@
 # Issue forms have no include mechanism, so a change to the export flow in the
 # app has to be made in both files.
 name: Bug Report
-description: Report a bug in Meeting Transcriber
+description: Report a bug in Earshot
 title: "[Bug] "
 labels: ["bug"]
 body:
@@ -11,7 +11,7 @@ body:
       value: |
         Thanks for the report! To help diagnose the issue, please attach a diagnostic log:
 
-        1. Open Meeting Transcriber → **Settings → Advanced → Diagnostics**
+        1. Open Earshot → **Settings → Advanced → Diagnostics**
         2. Toggle **Verbose diagnostic logging** ON
         3. Reproduce the problem
         4. Click **Export diagnostics…** — Finder will reveal a `.log` file

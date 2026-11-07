@@ -58,7 +58,7 @@ quit_running_app() {
     # Default pattern matches the dev bundle. Release-bundle callers
     # (e.g. test_rpc.sh against the homebrew-cask binary) override by
     # passing a second arg.
-    local pattern="${2:-MeetingTranscriber-Dev.app/Contents/MacOS/MeetingTranscriber}"
+    local pattern="${2:-Earshot-Dev.app/Contents/MacOS/Earshot}"
     local hold="$E2E_APP_QUIT_HOLD_S" out status=0 verdict gone_status=0 wait_s
     _app_gone "$pattern" && return 0
     out="$(run_bounded $(( hold * 2 + 5 )) osascript \
@@ -77,10 +77,10 @@ quit_running_app() {
     case "$verdict" in
         denied)
             gone_status=2
-            echo "::error title=TCC Automation → MeetingTranscriber-Dev not usable::the AppleScript quit was refused (${out:-exit $status}), so the app's quit hold (stopping a recording, flushing the pipeline snapshots) did not run; ending it by signal instead. Fix: $(tcc_fix_hint 'Automation → MeetingTranscriber-Dev')" >&2
+            echo "::error title=TCC Automation → Earshot-Dev not usable::the AppleScript quit was refused (${out:-exit $status}), so the app's quit hold (stopping a recording, flushing the pipeline snapshots) did not run; ending it by signal instead. Fix: $(tcc_fix_hint 'Automation → Earshot-Dev')" >&2
             ;;
         blocked)
-            echo "::warning title=dev app did not quit::the AppleScript quit got no answer (${out:-exit $status}) and the app was still running $(( hold * 2 )) s later; ending it by signal, without its quit hold. Possible causes: a pending Automation → MeetingTranscriber-Dev prompt on the runner's screen ($(tcc_fix_hint 'Automation → MeetingTranscriber-Dev')), a modal or nested run loop in the app, or a teardown past its quit budget." >&2
+            echo "::warning title=dev app did not quit::the AppleScript quit got no answer (${out:-exit $status}) and the app was still running $(( hold * 2 )) s later; ending it by signal, without its quit hold. Possible causes: a pending Automation → Earshot-Dev prompt on the runner's screen ($(tcc_fix_hint 'Automation → Earshot-Dev')), a modal or nested run loop in the app, or a teardown past its quit budget." >&2
             ;;
     esac
     pkill -f "$pattern" 2>/dev/null || true
@@ -90,7 +90,7 @@ quit_running_app() {
     # wedged in a kernel call can take longer than one `sleep 1` to
     # be reaped — a single check would false-negative.
     poll_until 3 0.2 _app_gone "$pattern" && return "$gone_status"
-    echo "ERROR: could not stop running MeetingTranscriber — kill it manually and retry" >&2
+    echo "ERROR: could not stop running Earshot — kill it manually and retry" >&2
     return 1
 }
 
@@ -665,7 +665,7 @@ rpc_post() {
 # `open`-launched scripts (e2e-app.sh) without two APIs. The default
 # matches the deployed dev .app — same string as `quit_running_app`.
 assert_app_alive() {
-    local pattern="${1:-MeetingTranscriber-Dev.app/Contents/MacOS/MeetingTranscriber}"
+    local pattern="${1:-Earshot-Dev.app/Contents/MacOS/Earshot}"
     if ! pgrep -f "$pattern" >/dev/null 2>&1; then
         die "app process matching '$pattern' is not running"
     fi
@@ -962,12 +962,12 @@ mic_stall_sweep_kept_homes() {
     fi
 }
 
-# The pids of every running MeetingTranscriber that is not the dev app, the
+# The pids of every running Earshot that is not the dev app, the
 # installed one above all, space-separated. Matched on the exact process name,
 # then excluded by the dev bundle in its command line.
-non_dev_meetingtranscriber_pids() {
-    { pgrep -x MeetingTranscriber || true; } | while read -r p; do
-        ps -o command= -p "$p" 2>/dev/null | grep -q "MeetingTranscriber-Dev.app/" || printf '%s ' "$p"
+non_dev_earshot_pids() {
+    { pgrep -x Earshot || true; } | while read -r p; do
+        ps -o command= -p "$p" 2>/dev/null | grep -q "Earshot-Dev.app/" || printf '%s ' "$p"
     done
 }
 
@@ -1250,7 +1250,7 @@ snapshot_new_job_ids() {
 # silently: the --quit-flush lane asserts at launch that the app has exactly
 # one child matching it, so a changed predicate fails there, before the
 # orphan check that relies on it could report a false "none left".
-MT_LOG_STREAM_PREDICATE="subsystem CONTAINS 'com.meetingtranscriber'"
+MT_LOG_STREAM_PREDICATE="subsystem CONTAINS 'com.earshot'"
 
 # unified_log_unusable <stream|show> [log-binary] — whether this user cannot
 # use the unified log the way the --quit-flush lane needs (its header says why

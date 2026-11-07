@@ -4,8 +4,8 @@
 # Voice Activity Detection trims the silence and that the remap step puts
 # transcript timestamps back on the original timeline.
 #
-# Produces: app/MeetingTranscriber/Tests/Fixtures/two_speakers_de_with_silence.wav
-# Source:   app/MeetingTranscriber/Tests/Fixtures/quality/two_speakers_de.wav (17s)
+# Produces: app/Earshot/Tests/Fixtures/two_speakers_de_with_silence.wav
+# Source:   app/Earshot/Tests/Fixtures/quality/two_speakers_de.wav (17s)
 # Result:   ~22 s, 16 kHz mono PCM s16le, ~700 KB. Silence range: [8s, 13s].
 #
 # Requires: sox (`brew install sox`).
@@ -18,7 +18,7 @@ command -v sox >/dev/null 2>&1 || {
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-FIXTURE_DIR="$PROJECT_DIR/app/MeetingTranscriber/Tests/Fixtures"
+FIXTURE_DIR="$PROJECT_DIR/app/Earshot/Tests/Fixtures"
 SOURCE="$FIXTURE_DIR/quality/two_speakers_de.wav"
 OUTPUT="$FIXTURE_DIR/two_speakers_de_with_silence.wav"
 TMPDIR_AUDIO="$(mktemp -d)"

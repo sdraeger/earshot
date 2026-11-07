@@ -1,4 +1,4 @@
-# SwiftFormat configuration for Meeting Transcriber
+# SwiftFormat configuration for Earshot
 
 --swiftversion 6.2
 --indent 4
@@ -35,4 +35,4 @@
 --disable repeatedGuard
 
 # File scope
---exclude FluidAudio,.build,app/MeetingTranscriber/.build,app/MeetingTranscriber/.build-appstore,tools/audiotap/.build,tools/meeting-simulator/.build
+--exclude FluidAudio,.build,app/Earshot/.build,app/Earshot/.build-appstore,tools/audiotap/.build,tools/meeting-simulator/.build

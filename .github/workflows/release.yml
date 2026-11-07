@@ -90,10 +90,10 @@ jobs:
         include:
           - variant: homebrew
             build-flags: ""
-            dmg-prefix: "MeetingTranscriber"
+            dmg-prefix: "Earshot"
           - variant: appstore
             build-flags: "--appstore --no-notarize"
-            dmg-prefix: "MeetingTranscriber-AppStore"
+            dmg-prefix: "Earshot-AppStore"
     name: build (${{ matrix.variant }})
     permissions:
       contents: write  # For creating GitHub releases
@@ -120,7 +120,7 @@ jobs:
       - uses: ./.github/actions/setup-swift-test
         with:
           cache-key-suffix: release-${{ matrix.variant }}
-          cache-path: app/MeetingTranscriber/.build${{ matrix.variant == 'appstore' && '-appstore' || '' }}
+          cache-path: app/Earshot/.build${{ matrix.variant == 'appstore' && '-appstore' || '' }}
           cache-restore-fallback: "false"
           cache-spm: ${{ !startsWith(github.ref, 'refs/tags/v') }}
           cache-models: "false"
@@ -219,7 +219,7 @@ jobs:
         run: |
           # shellcheck source=scripts/lib/signing.sh
           source scripts/lib/signing.sh
-          APP_BUNDLE=".build/release/MeetingTranscriber.app"
+          APP_BUNDLE=".build/release/Earshot.app"
           if bundle_has_time_sensitive "$APP_BUNDLE"; then
             echo "Signature carries $TIME_SENSITIVE_KEY"
             exit 0
@@ -256,7 +256,7 @@ jobs:
       # bundle, so it would have passed the exact artifact this exists to stop.
       - name: Verify the release is signed by a Developer ID
         if: matrix.variant == 'homebrew' && startsWith(github.ref, 'refs/tags/v')
-        run: ./scripts/release-signing-gate.sh verify .build/release/MeetingTranscriber.app
+        run: ./scripts/release-signing-gate.sh verify .build/release/Earshot.app
 
       - name: Get version
         id: version
@@ -322,14 +322,14 @@ jobs:
           generateReleaseNotesPreviousTag: ${{ steps.prev.outputs.tag }}
           prerelease: ${{ steps.version.outputs.prerelease }}
           body: |
-            ## MeetingTranscriber ${{ steps.version.outputs.version }}${{ steps.version.outputs.prerelease == 'true' && ' (Pre-release)' || '' }}
+            ## Earshot ${{ steps.version.outputs.version }}${{ steps.version.outputs.prerelease == 'true' && ' (Pre-release)' || '' }}
 
             ### Installation
 
             **Via Homebrew (${{ steps.version.outputs.prerelease == 'true' && 'Beta channel' || 'recommended' }}):**
             ```bash
             brew tap pasrom/meeting-transcriber
-            brew install --cask ${{ steps.version.outputs.prerelease == 'true' && 'meeting-transcriber@beta' || 'meeting-transcriber' }}
+            brew install --cask ${{ steps.version.outputs.prerelease == 'true' && 'earshot@beta' || 'earshot' }}
             ```
 
             > Homebrew 6.0+ may flag the third-party tap as untrusted. If so, run `brew trust --tap pasrom/meeting-transcriber` before installing.
@@ -338,7 +338,7 @@ jobs:
 
             **Manual:**
             1. Download the DMG below
-            2. Mount it and drag MeetingTranscriber to Applications
+            2. Mount it and drag Earshot to Applications
 
             ### SHA256
             ```
@@ -357,7 +357,7 @@ jobs:
           SHA="${{ steps.sha.outputs.sha256 }}"
           PRERELEASE="${{ steps.version.outputs.prerelease }}"
 
-          DMG=".build/release/MeetingTranscriber-${VERSION}.dmg"
+          DMG=".build/release/Earshot-${VERSION}.dmg"
 
           # Upload the DMG to the tap repo as well. Note the beta cask's url
           # still points at the MAIN repo's release, so beta installs depend on
@@ -377,8 +377,8 @@ jobs:
           git clone https://x-access-token:${GH_TOKEN}@github.com/pasrom/homebrew-meeting-transcriber.git /tmp/tap
           cd /tmp/tap
 
-          BETA_CASK="Casks/meeting-transcriber@beta.rb"
-          STABLE_CASK="Casks/meeting-transcriber.rb"
+          BETA_CASK="Casks/earshot@beta.rb"
+          STABLE_CASK="Casks/earshot.rb"
 
           # Seed a cask from the source repo if the tap does not carry it yet.
           seed_cask() {

@@ -31,7 +31,7 @@ runs:
         SANITIZER_FLAG: ${{ inputs.sanitizer-flag }}
         CFFIXED_USER_HOME: ${{ inputs.user-home }}
       run: |
-        cd "$GITHUB_WORKSPACE/app/MeetingTranscriber" || exit 1
+        cd "$GITHUB_WORKSPACE/app/Earshot" || exit 1
         swift test --parallel --skip ModelPreloadTests "$SANITIZER_FLAG"
     # AudioTapLib is a separate SPM package, so the app's test run never
     # compiles its test target and the sanitizers never saw it. That is the

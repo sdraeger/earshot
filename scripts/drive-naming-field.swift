@@ -60,7 +60,7 @@ func fail(_ code: Int32, _ message: String) -> Never {
 
 guard CommandLine.arguments.count >= 2 else { usage() }
 let command = CommandLine.arguments[1]
-let bundleID = argument("--bundle-id") ?? "app.meetingtranscriber.dev"
+let bundleID = argument("--bundle-id") ?? "app.earshot.dev"
 let identifier = argument("--identifier")
 let text = argument("--text")
 

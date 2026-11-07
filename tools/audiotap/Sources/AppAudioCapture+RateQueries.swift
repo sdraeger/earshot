@@ -2,7 +2,7 @@ import CoreAudio
 import Foundation
 import os
 
-private let logger = Logger(subsystem: "com.meetingtranscriber.audiotap", category: "AppAudioCapture")
+private let logger = Logger(subsystem: "com.earshot.audiotap", category: "AppAudioCapture")
 
 /// The sample-rate property queries and the priority ladder that picks between
 /// them, split out of `AppAudioCapture.swift` to stay under the 600-line lint

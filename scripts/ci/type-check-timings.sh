@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2016  # single-quoted Markdown backticks and an awk `$1` are meant literally
 # Per-body type-check timings from an xcodebuild log: which function bodies come
-# closest to the limit that app/MeetingTranscriber/Package.swift enforces with
+# closest to the limit that app/Earshot/Package.swift enforces with
 # `-warn-long-function-bodies`.
 #
 # Why this exists: that flag reports a body only once it is already over the
@@ -41,8 +41,8 @@
 #       lines again. Always exits 0 on a readable stream.
 #
 # Reproduce the CI report locally (the same build the analyze lane runs):
-#   cd app/MeetingTranscriber
-#   xcodebuild -scheme MeetingTranscriber -destination 'platform=macOS' \
+#   cd app/Earshot
+#   xcodebuild -scheme Earshot -destination 'platform=macOS' \
 #     SWIFT_SUPPRESS_WARNINGS=NO \
 #     OTHER_SWIFT_FLAGS='$(inherited) -Xfrontend -debug-time-function-bodies' \
 #     build-for-testing 2>&1 | tee /tmp/xcodebuild.log | ../../scripts/ci/type-check-timings.sh strip

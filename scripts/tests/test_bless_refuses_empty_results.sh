@@ -17,7 +17,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SCRIPT="$ROOT/scripts/bless_quality_baseline.sh"
-BASELINE_REL="app/MeetingTranscriber/Tests/Fixtures/quality/quality-baseline.json"
+BASELINE_REL="app/Earshot/Tests/Fixtures/quality/quality-baseline.json"
 PASSED=0
 FAILED=0
 

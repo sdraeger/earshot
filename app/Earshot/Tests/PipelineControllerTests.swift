@@ -1,0 +1,582 @@
+@testable import Earshot
+import XCTest
+
+/// Unit tests for `PipelineController`'s queue lifecycle — exercised on a bare
+/// controller (no full `AppState`), which is the construction the extraction
+/// enables. They focus on the genuinely-new `engineProvider` seam: before the
+/// split, `makePipelineQueue` read `AppState.activeTranscriptionEngine`
+/// directly, so the "no engine source wired" path and the provider→engine
+/// wiring couldn't be exercised in isolation.
+@MainActor
+final class PipelineControllerTests: XCTestCase {
+    // swiftlint:disable implicitly_unwrapped_optional
+    private var tmpDir: URL!
+    /// Settings over a per-test `UserDefaults` suite, never `.standard`.
+    private var settings: AppSettings!
+    // swiftlint:enable implicitly_unwrapped_optional
+
+    override func setUp() async throws {
+        try await super.setUp()
+        tmpDir = try makeTempDirectory(prefix: "PipelineControllerTests")
+        let suite = "PipelineControllerTests-\(getpid())-\(UUID().uuidString)"
+        settings = try AppSettings(
+            defaults: XCTUnwrap(DefaultsSuite.open(suite)),
+            defaultOutputDir: tmpDir.appendingPathComponent("output", isDirectory: true),
+        )
+        addTeardownBlock { DefaultsSuite.remove(suite) }
+    }
+
+    /// A controller over this test's own settings and folders: a queue it
+    /// builds keeps its logs and snapshot in `tmpDir` and runs no recovery over
+    /// the real recordings folder.
+    /// `queue:` is the queue the controller starts with, injected through the
+    /// environment rather than assigned afterwards, so the controller never has
+    /// a queue the test did not choose.
+    private func makeController(
+        terminalJobStore: TerminalJobStore? = nil,
+        queue: PipelineQueue? = nil,
+    ) -> PipelineController {
+        PipelineController(
+            settings: settings,
+            notifier: RecordingNotifier(),
+            queueEnvironment: IsolatedQueueEnvironment.make(logDir: tmpDir, initialQueue: queue),
+            terminalJobStore: terminalJobStore,
+        )
+    }
+
+    override func tearDown() async throws {
+        if let tmpDir { try? FileManager.default.removeItem(at: tmpDir) }
+        try await super.tearDown()
+    }
+
+    /// A controller whose queue is already wired to a mock engine + isolated
+    /// `logDir`, so `ensureQueue()` short-circuits and no production-path I/O
+    /// is touched.
+    private func makeWiredController() -> PipelineController {
+        makeController(queue: PipelineQueue(
+            engine: MockEngine(),
+            diarizationFactory: { MockDiarization() },
+            protocolGeneratorFactory: { MockProtocolGen() },
+            outputDir: tmpDir,
+            logDir: tmpDir,
+        ))
+    }
+
+    // MARK: - engineProvider seam
+
+    /// Without an engine there is no queue to build, and saying so with nil is
+    /// the point: this used to hand back the *current* queue as a sentinel, so
+    /// the caller had to tell a no-op from an install by object identity, and
+    /// `rebuild` carried a `guard built !== queue` to do it. Getting that guard
+    /// wrong is what disarmed the folder-change rebuild for a whole session.
+    func testMakeQueueWithoutAnEngineYieldsNothingAndRebuildLeavesTheQueueAlone() {
+        let pc = makeController()
+        let before = pc.queue
+
+        // No `activate(engineProvider:)` call.
+        XCTAssertNil(pc.makeQueue())
+
+        pc.rebuild()
+
+        XCTAssertIdentical(pc.queue, before, "a rebuild with no engine replaced the queue")
+    }
+
+    /// A queue the controller builds reads its speakers from the environment's
+    /// database. It used to build `SpeakerMatcher()` on the installed app's
+    /// `speakers.json`, so every rebuild in a test read the user's own voice
+    /// profiles. The file sits outside `logDir`, so a controller deriving the
+    /// path from the log folder would not pass.
+    func testARebuiltQueueReadsTheEnvironmentsSpeakerDatabase() {
+        var environment = IsolatedQueueEnvironment.make(logDir: tmpDir)
+        environment.speakersDB = makeTempFile(suffix: "-speakers.json")
+        SpeakerMatcher(dbPath: environment.speakersDB).mutateDB { speakers in
+            speakers = [StoredSpeaker(name: "Speaker A", embeddings: [[1, 0, 0]])]
+        }
+        let pc = PipelineController(settings: settings, notifier: RecordingNotifier(), queueEnvironment: environment)
+        pc.activate { MockEngine() }
+
+        pc.rebuild()
+
+        XCTAssertEqual(pc.queue.knownSpeakerNames, ["Speaker A"])
+    }
+
+    /// The recognition history the queue appends to as speakers are named
+    /// goes to the environment's file. Written through the queue's own log
+    /// and read back from the path, which is the whole wiring.
+    func testARebuiltQueueWritesTheEnvironmentsRecognitionLog() async throws {
+        var environment = IsolatedQueueEnvironment.make(logDir: tmpDir)
+        environment.recognitionStatsLog = makeTempFile(suffix: "-recognition_log.jsonl")
+        let pc = PipelineController(settings: settings, notifier: RecordingNotifier(), queueEnvironment: environment)
+        pc.activate { MockEngine() }
+        pc.rebuild()
+
+        let log = try XCTUnwrap(pc.queue.recognitionStatsLog)
+        await log.append([RecognitionEvent(
+            ts: Date(), jobID: UUID(), meetingTitle: "Standup", track: .app, label: "R_S1",
+            autoName: nil, userName: "Speaker A", action: .added, topCandidates: nil,
+        )])
+
+        let written = await RecognitionStatsLog(path: environment.recognitionStatsLog).loadRecent(within: 3600)
+        XCTAssertEqual(written.map(\.userName), ["Speaker A"])
+    }
+
+    /// What production hands its queues. Compared, never opened: reading
+    /// these would touch the user's own files.
+    func testTheProductionEnvironmentNamesTheAppsOwnFiles() {
+        let production = PipelineController.QueueEnvironment.production
+        XCTAssertEqual(production.logDir, AppPaths.ipcDir)
+        XCTAssertEqual(production.stagingDir, AppPaths.recordingsDir)
+        XCTAssertEqual(production.speakersDB, AppPaths.speakersDB)
+        XCTAssertEqual(production.recognitionStatsLog, RecognitionStatsLog.defaultPath)
+        XCTAssertEqual(production.stageTimingLog, StageTimingLog.defaultPath)
+    }
+
+    /// Same for the stage-timing history the menu compares a running job
+    /// against: a rebuilt queue loads it from the environment's log.
+    func testARebuiltQueueReadsTheEnvironmentsStageTimingLog() async throws {
+        var environment = IsolatedQueueEnvironment.make(logDir: tmpDir)
+        environment.stageTimingLog = makeTempFile(suffix: "-stage_timing.jsonl")
+        await StageTimingLog(path: environment.stageTimingLog).append([StageTimingEvent(
+            ts: Date(), jobID: UUID(), stage: .transcribing, wallClockSeconds: 12, audioSeconds: 60,
+            engine: "parakeet", diarizerMode: nil,
+        )])
+        let pc = PipelineController(settings: settings, notifier: RecordingNotifier(), queueEnvironment: environment)
+        pc.activate { MockEngine() }
+
+        pc.rebuild()
+
+        // The queue reloads the history in a task of its own.
+        for _ in 0 ..< 200 where pc.queue.stageAverageByConfig.isEmpty {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(Array(pc.queue.stageAverageByConfig.values), [12])
+    }
+
+    func testEnsureQueueRebuildsBareQueueUsingProviderEngine() {
+        let pc = makeController()
+        XCTAssertNil(pc.queue.engine, "Precondition: fresh queue has no engine")
+
+        let engine = MockEngine()
+        pc.activate { engine }
+        pc.ensureQueue()
+
+        XCTAssertIdentical(
+            pc.queue.engine as AnyObject, engine,
+            "ensureQueue must rebuild the bare queue with the engine the provider supplies",
+        )
+    }
+
+    func testEnsureQueueIsNoOpWhenEngineAlreadySet() {
+        let pc = makeWiredController()
+        let before = ObjectIdentifier(pc.queue)
+
+        pc.ensureQueue()
+
+        XCTAssertEqual(
+            ObjectIdentifier(pc.queue), before,
+            "ensureQueue must not replace a queue that is already wired to an engine",
+        )
+    }
+
+    // The seam this test drives is debug-only, so the test is too.
+    #if DEBUG
+        /// Which queue the rebuild adopts from is decided before the engine
+        /// provider runs, because the provider is a closure the owner supplies. A
+        /// provider that reassigns `queue` would otherwise flip the identity test
+        /// after the fact, and the rebuild would read the older file instead of
+        /// taking the in-memory jobs: they would be lost, or run a second time.
+        func testTheAdoptionSourceIsDecidedBeforeTheEngineProviderRuns() throws {
+            let pc = makeController()
+            let foreign = PipelineQueue(logDir: tmpDir)
+            let mixPath = tmpDir.appendingPathComponent("adopt-mix.wav")
+            try Data([0]).write(to: mixPath)
+            var hijack = false
+            pc.activate { [weak pc] in
+                if hijack { pc?.installQueueForTesting(foreign) }
+                return MockEngine()
+            }
+            pc.ensureQueue()
+            // `.error` so the queue counts as replaceable, with its audio on disk so
+            // the adoption does not discard it for missing audio.
+            let jobID = pc.queue.insertJobForTesting(
+                mixPath: mixPath, state: .error, title: "In Memory",
+            )
+            hijack = true
+
+            pc.rebuild()
+
+            XCTAssertEqual(
+                pc.queue.jobs.map(\.id), [jobID],
+                "the rebuild read the file instead of adopting the queue it replaced",
+            )
+        }
+    #endif
+
+    /// The queue the controller starts with takes its staging folder from the
+    /// environment. It used to hardcode `AppPaths.recordingsDir`, so a
+    /// controller built for a test still decided from the installed app's
+    /// recordings folder whether finished audio was the app's own to relocate,
+    /// and the recovery that repairs and re-mixes files there reached into it.
+    func testTheInitialQueueTakesItsStagingFolderFromTheEnvironment() {
+        // A staging folder the controller cannot arrive at on its own: naming
+        // it `logDir/staging`, as the isolated-environment helper does, would
+        // let a controller that derived the path from `logDir` pass while
+        // still ignoring the environment.
+        let staging = tmpDir.appendingPathComponent("staging-elsewhere", isDirectory: true)
+        var environment = IsolatedQueueEnvironment.make(logDir: tmpDir)
+        environment.stagingDir = staging
+        let pc = PipelineController(settings: settings, notifier: RecordingNotifier(), queueEnvironment: environment)
+
+        XCTAssertEqual(
+            pc.queue.stagingDir, staging,
+            "the initial queue did not take the staging folder it was given",
+        )
+    }
+
+    /// The setting reaches a job through the queue the controller builds, read at
+    /// enqueue time. Shipping it on, or a controller that ignores the setting,
+    /// would rename every user's files, and the queue-level tests that set the
+    /// flag on the job directly would not notice.
+    func testAJobTakesTheAITitleSettingFromTheQueueTheControllerBuilds() throws {
+        let pc = makeController()
+        pc.activate { MockEngine() }
+        let queue = try XCTUnwrap(pc.makeQueue())
+
+        func enqueuedJob() -> PipelineJob? {
+            queue.enqueue(PipelineJob(
+                meetingTitle: "Weekly Sync", appName: "Teams",
+                mixPath: nil, appPath: nil, micPath: nil, micDelay: 0,
+            ))
+            return queue.jobs.last
+        }
+
+        XCTAssertEqual(enqueuedJob()?.useAITitleForFilenames, false, "the setting is off by default")
+        settings.useAITitleForFilenames = true
+        XCTAssertEqual(enqueuedJob()?.useAITitleForFilenames, true)
+        settings.useAITitleForFilenames = false
+        XCTAssertEqual(enqueuedJob()?.useAITitleForFilenames, false)
+    }
+
+    // MARK: - rebuild() double-processing guard
+
+    func testRebuildSkippedWhileQueueIsProcessing() {
+        let pc = makeWiredController()
+        // Provider wired → without the guard, rebuild() WOULD build a fresh queue
+        // (otherwise makeQueue's own engine-provider guard would no-op for an
+        // unrelated reason and the test would be vacuous).
+        pc.activate { MockEngine() }
+        pc.queue.isProcessing = true
+        let before = pc.queue
+
+        pc.rebuild()
+
+        XCTAssertIdentical(
+            pc.queue, before,
+            "rebuild must not swap a queue mid-job: the running job's queue owns it to completion, "
+                + "while a replacement would loadSnapshot() the same in-flight job and process it twice",
+        )
+    }
+
+    // The idle case (rebuild DOES replace an idle queue, so the guard can't
+    // over-fire into never rebuilding) is already characterized by
+    // `testEnsureQueueRebuildsBareQueueUsingProviderEngine` above, which drives
+    // ensureQueue() -> rebuild() on an idle queue and asserts the provider's
+    // engine got wired in. Re-asserting it here would only duplicate that test.
+
+    func testRebuildSkippedWhileSpeakerNamingPending() {
+        let pc = makeWiredController()
+        pc.activate { MockEngine() }
+        // A parked naming job: not processing (isProcessing stays false once
+        // processNext returns), so only the pendingSpeakerNamingJobs half of the
+        // guard keeps the queue — the naming session's data lives only here and a
+        // fresh queue would restore the job from the snapshot without it.
+        _ = seedPendingNaming(on: pc, mapping: ["Speaker 1": "Speaker 1"])
+        XCTAssertFalse(pc.queue.isProcessing, "precondition: parked at naming, not processing")
+        let before = pc.queue
+
+        pc.rebuild()
+
+        XCTAssertIdentical(
+            pc.queue, before,
+            "rebuild must not swap a queue with a job awaiting speaker naming: its in-memory "
+                + "naming session can't be reconstructed on a fresh queue",
+        )
+    }
+
+    /// A late confirm or re-run runs in the naming session's own task, so its
+    /// job is mid-stage while `isProcessing` is false and nothing is parked for
+    /// naming. A fresh queue would restore that job from the snapshot and run it
+    /// a second time next to the first.
+    func testRebuildSkippedWhileALateNamingFlowRuns() {
+        for state in [JobState.diarizing, .generatingProtocol, .transcribing, .waiting] {
+            let pc = makeWiredController()
+            pc.activate { MockEngine() }
+            pc.queue.insertJobForTesting(mixPath: tmpDir.appendingPathComponent("late.wav"), state: state)
+            XCTAssertFalse(pc.queue.isProcessing, "precondition: no processNext running")
+            XCTAssertTrue(pc.queue.pendingSpeakerNamingJobs.isEmpty, "precondition: nothing parked for naming")
+            let before = pc.queue
+
+            pc.rebuild()
+
+            XCTAssertIdentical(pc.queue, before, "rebuild replaced a queue holding a job in \(state)")
+        }
+    }
+
+    // MARK: - enqueueFiles (bare controller)
+
+    func testEnqueueFilesCreatesJobOnBareController() {
+        let pc = makeWiredController()
+
+        pc.enqueueFiles([URL(fileURLWithPath: "/tmp/sprint-review.wav")])
+
+        XCTAssertEqual(pc.queue.jobs.count, 1)
+        XCTAssertEqual(pc.queue.jobs[0].meetingTitle, "sprint-review")
+    }
+
+    func testEnqueueFilesReturnsCreatedJobIDs() {
+        let pc = makeWiredController()
+
+        let ids = pc.enqueueFiles([URL(fileURLWithPath: "/tmp/sprint-review.wav")])
+
+        XCTAssertEqual(ids, pc.queue.jobs.map(\.id), "Returned IDs must match the enqueued jobs")
+    }
+
+    func testEnqueueExistingFilesReturningIDsFiltersMissingFiles() {
+        let pc = makeWiredController()
+        let existing = tmpDir.appendingPathComponent("real-meeting.wav")
+        FileManager.default.createFile(atPath: existing.path, contents: Data("RIFF".utf8))
+        let missing = URL(fileURLWithPath: "/tmp/no-such-file-\(UUID().uuidString).wav")
+
+        let ids = pc.enqueueExistingFilesReturningIDs([existing, missing])
+
+        XCTAssertEqual(ids.count, 1, "Only the file that exists on disk is enqueued")
+        XCTAssertEqual(ids, pc.queue.jobs.map(\.id))
+    }
+
+    func testEnqueueExistingFilesCountsExistingFilesNotCollapsedJobs() {
+        let pc = makeWiredController()
+        // A paired _app + _mic recording collapses into ONE job, but the
+        // documented `enqueued` count is the number of files that existed.
+        let app = tmpDir.appendingPathComponent("standup_app.wav")
+        let mic = tmpDir.appendingPathComponent("standup_mic.wav")
+        FileManager.default.createFile(atPath: app.path, contents: Data("RIFF".utf8))
+        FileManager.default.createFile(atPath: mic.path, contents: Data("RIFF".utf8))
+
+        let count = pc.enqueueExistingFiles([app, mic])
+
+        XCTAssertEqual(count, 2, "Count reflects files that existed on disk, not collapsed jobs")
+        XCTAssertEqual(pc.queue.jobs.count, 1, "Paired _app + _mic collapse into a single job")
+    }
+
+    func testPairedReimportAnchorsMeetingStartOnSidecar() throws {
+        let pc = makeWiredController()
+        // A record-only capture reprocessed later on a separate host: paired
+        // app+mic files plus a sidecar recording the real meeting-start time.
+        let app = tmpDir.appendingPathComponent("standup_app.wav")
+        let mic = tmpDir.appendingPathComponent("standup_mic.wav")
+        FileManager.default.createFile(atPath: app.path, contents: Data("RIFF".utf8))
+        FileManager.default.createFile(atPath: mic.path, contents: Data("RIFF".utf8))
+        let meetingStart = try localDate(2026, 3, 4, 9, 15)
+        let sidecar = RecordingSidecar(
+            title: "Weekly Sync", appName: "Teams",
+            startedAt: meetingStart, stoppedAt: meetingStart.addingTimeInterval(1800),
+            participants: [], micDelaySeconds: 0, trigger: .auto,
+            mixFilename: "standup_mix.wav", appFilename: "standup_app.wav", micFilename: "standup_mic.wav",
+        )
+        try sidecar.write(toDirectory: tmpDir, basename: "standup")
+
+        pc.enqueueExistingFiles([app, mic])
+
+        let job = try XCTUnwrap(pc.queue.jobs.first)
+        XCTAssertEqual(
+            job.meetingStartTime, meetingStart,
+            "reimport must anchor the basename on the sidecar's meeting-start, not the reprocess time",
+        )
+        XCTAssertEqual(job.meetingTitle, "Weekly Sync")
+    }
+
+    // MARK: - jobStatus
+
+    func testJobStatusReturnsLiveJob() {
+        let store = TerminalJobStore(path: tmpDir.appendingPathComponent("terminal_jobs.json"))
+        let pc = makeController(terminalJobStore: store)
+        var job = PipelineJob(
+            meetingTitle: "Live Sync", appName: "File",
+            mixPath: URL(fileURLWithPath: "/tmp/x.wav"), appPath: nil, micPath: nil, micDelay: 0,
+        )
+        job.transcriptPath = URL(fileURLWithPath: "/out/x.txt")
+        pc.queue.insertJobForTesting(job)
+
+        let dto = pc.jobStatus(forID: job.id)
+
+        XCTAssertEqual(dto?.state, .waiting)
+        XCTAssertEqual(dto?.meetingTitle, "Live Sync")
+        XCTAssertEqual(dto?.transcriptPath, "/out/x.txt")
+    }
+
+    func testJobStatusFallsBackToTerminalStore() {
+        let store = TerminalJobStore(path: tmpDir.appendingPathComponent("terminal_jobs.json"))
+        let pc = makeController(terminalJobStore: store)
+        let id = UUID()
+        store.record(JobStatusDTO(
+            jobID: id.uuidString, state: .done, meetingTitle: "Reaped",
+            transcriptPath: "/out/r.txt", protocolPath: nil, error: nil, warnings: [],
+        ))
+
+        let dto = pc.jobStatus(forID: id)
+
+        XCTAssertEqual(dto?.state, .done, "Must read back a job already reaped from the queue")
+        XCTAssertEqual(dto?.meetingTitle, "Reaped")
+        XCTAssertEqual(dto?.transcriptPath, "/out/r.txt")
+    }
+
+    func testJobStatusUnknownReturnsNil() {
+        let store = TerminalJobStore(path: tmpDir.appendingPathComponent("terminal_jobs.json"))
+        let pc = makeController(terminalJobStore: store)
+        XCTAssertNil(pc.jobStatus(forID: UUID()))
+    }
+
+    // MARK: - namingStatus / confirmNaming / skipNaming
+
+    /// Seed a pending-speaker-naming job on the controller's queue, return its id.
+    private func seedPendingNaming(
+        on pc: PipelineController,
+        mapping: [String: String],
+        speakingTimes: [String: TimeInterval] = [:],
+        participants: [String] = [],
+    ) -> UUID {
+        let job = PipelineJob(
+            meetingTitle: "Q3 Sync", appName: "File",
+            mixPath: URL(fileURLWithPath: "/tmp/x.wav"), appPath: nil, micPath: nil, micDelay: 0,
+        )
+        pc.queue.insertJobForTesting(job)
+        pc.queue.speakerNamingDataByJob[job.id] = PipelineQueue.SpeakerNamingData(
+            jobID: job.id, meetingTitle: "Q3 Sync",
+            mapping: mapping, speakingTimes: speakingTimes,
+            embeddings: [:], audioPath: nil, segments: [], participants: participants,
+            isDualSource: false,
+        )
+        pc.queue.updateJobState(id: job.id, to: .speakerNamingPending)
+        return job.id
+    }
+
+    func testNamingStatusMapsPendingNamingData() {
+        let pc = makeWiredController()
+        let id = seedPendingNaming(
+            on: pc,
+            mapping: ["Speaker 1": "Roman", "Speaker 2": "Speaker 2"],
+            speakingTimes: ["Speaker 1": 42, "Speaker 2": 7],
+            participants: ["Alice"],
+        )
+
+        let dto = pc.namingStatus(forID: id)
+
+        XCTAssertEqual(dto?.meetingTitle, "Q3 Sync")
+        XCTAssertEqual(dto?.participants, ["Alice"])
+        XCTAssertEqual(dto?.speakers.map(\.label), ["Speaker 1", "Speaker 2"], "speakers sorted by label")
+        XCTAssertEqual(dto?.speakers.first?.suggested, "Roman")
+        XCTAssertEqual(dto?.speakers.first?.speakingSeconds, 42)
+    }
+
+    func testNamingStatusUnknownReturnsNil() {
+        XCTAssertNil(makeWiredController().namingStatus(forID: UUID()))
+    }
+
+    func testConfirmNamingResolvesPendingJobAndRejectsUnknown() {
+        let pc = makeWiredController()
+        let id = seedPendingNaming(on: pc, mapping: ["Speaker 1": "Speaker 1"])
+
+        XCTAssertTrue(pc.confirmNaming(jobID: id, mapping: ["Speaker 1": "Roman"]))
+        XCTAssertFalse(pc.confirmNaming(jobID: UUID(), mapping: [:]), "no pending naming → false")
+    }
+
+    func testConfirmNamingIsIdempotentOnRetry() {
+        let pc = makeWiredController()
+        let id = seedPendingNaming(on: pc, mapping: ["Speaker 1": "Speaker 1"])
+
+        XCTAssertTrue(pc.confirmNaming(jobID: id, mapping: ["Speaker 1": "Roman"]))
+        // Confirming transitions the job out of .speakerNamingPending, so a
+        // duplicate call (automation retry) is rejected — no double-processing.
+        XCTAssertFalse(pc.confirmNaming(jobID: id, mapping: ["Speaker 1": "Roman"]), "retry rejected")
+    }
+
+    func testSkipNamingResolvesPendingJobAndRejectsUnknown() {
+        let pc = makeWiredController()
+        let id = seedPendingNaming(on: pc, mapping: ["Speaker 1": "Speaker 1"])
+
+        XCTAssertTrue(pc.skipNaming(jobID: id))
+        XCTAssertFalse(pc.skipNaming(jobID: UUID()), "no pending naming → false")
+    }
+
+    // MARK: - transcribeAndWait (blocking)
+
+    func testTranscribeAndWaitReturnsNoFileForMissingPath() async {
+        let pc = makeWiredController()
+        let result = await pc.transcribeAndWait(
+            path: URL(fileURLWithPath: "/tmp/missing-\(UUID().uuidString).wav"), maxWaitSeconds: 1,
+        )
+        guard case .noFile = result else { XCTFail("expected .noFile, got \(result)"); return }
+    }
+
+    func testTranscribeAndWaitCompletesJob() async {
+        let pc = makeWiredController()
+        let file = tmpDir.appendingPathComponent("blocking.wav")
+        FileManager.default.createFile(atPath: file.path, contents: Data("RIFF".utf8))
+
+        let result = await pc.transcribeAndWait(path: file, maxWaitSeconds: 10, pollInterval: .milliseconds(10))
+
+        guard case let .completed(dto) = result else { XCTFail("expected .completed, got \(result)"); return }
+        XCTAssertTrue(dto.state == .done || dto.state == .error, "wait loop returns on terminal state: \(dto.state)")
+    }
+
+    func testTranscribeAndWaitTimesOutWhileInFlight() async {
+        let pc = makeWiredController()
+        let file = tmpDir.appendingPathComponent("blocking-timeout.wav")
+        FileManager.default.createFile(atPath: file.path, contents: Data("RIFF".utf8))
+
+        // maxWaitSeconds 0 → the deadline is already past, so the just-enqueued
+        // (still non-terminal) job yields a timeout with its in-flight status.
+        let result = await pc.transcribeAndWait(path: file, maxWaitSeconds: 0, pollInterval: .milliseconds(10))
+
+        guard case let .timedOut(dto) = result else { XCTFail("expected .timedOut, got \(result)"); return }
+        XCTAssertNotEqual(dto?.state, .done)
+    }
+
+    func testTranscribeAndWaitFallsBackToTerminalStoreWhenJobReaped() async {
+        // A job that completed and was reaped from the live queue before the poll
+        // loop observed it must still resolve via the terminal store (the slow
+        // poller the store exists for). ReapingQueue reproduces that
+        // deterministically: enqueue records a terminal DTO and leaves `jobs`
+        // empty.
+        let store = TerminalJobStore(path: tmpDir.appendingPathComponent("terminal_reap.json"))
+        let pc = makeController(terminalJobStore: store, queue: ReapingQueue(store: store, logDir: tmpDir))
+
+        let file = tmpDir.appendingPathComponent("reaped.wav")
+        FileManager.default.createFile(atPath: file.path, contents: Data("RIFF".utf8))
+
+        let result = await pc.transcribeAndWait(path: file, maxWaitSeconds: 5, pollInterval: .milliseconds(10))
+
+        guard case let .completed(dto) = result else { XCTFail("expected .completed from terminal store, got \(result)"); return }
+        XCTAssertEqual(dto.state, .done)
+    }
+}
+
+/// A `PipelineQueue` whose `enqueue` records a terminal DTO to the store and
+/// never keeps the job in `jobs` — reproduces a job reaped from the live queue
+/// before `transcribeAndWait`'s poll loop observes it.
+@MainActor
+private final class ReapingQueue: PipelineQueue {
+    private let store: TerminalJobStore
+
+    init(store: TerminalJobStore, logDir: URL) {
+        self.store = store
+        super.init(logDir: logDir, terminalJobStore: store)
+    }
+
+    override func enqueue(_ job: PipelineJob) {
+        store.record(JobStatusDTO(
+            jobID: job.id.uuidString, state: .done, meetingTitle: job.meetingTitle,
+            transcriptPath: nil, protocolPath: nil, error: nil, warnings: [],
+        ))
+    }
+}

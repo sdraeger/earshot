@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Build a self-contained MeetingTranscriber.app bundle.
+# Build a self-contained Earshot.app bundle.
 #
 # Usage:
 #   ./scripts/build_release.sh [--no-notarize] [--staple] [--appstore]
 #
 # Output:
-#   .build/release/MeetingTranscriber.dmg
+#   .build/release/Earshot.dmg
 #
 # Requirements:
 #   - macOS 14+ (Sonoma) on Apple Silicon
@@ -39,7 +39,7 @@ if [ -f "$PROJECT_ROOT/.env" ]; then
 fi
 
 BUILD_DIR="$PROJECT_ROOT/.build/release"
-APP_BUNDLE="$BUILD_DIR/MeetingTranscriber.app"
+APP_BUNDLE="$BUILD_DIR/Earshot.app"
 CONTENTS="$APP_BUNDLE/Contents"
 MACOS_DIR="$CONTENTS/MacOS"
 RESOURCES="$CONTENTS/Resources"
@@ -63,7 +63,7 @@ if [ -n "$OVERRIDE_VERSION" ]; then
 else
     VERSION=$(cat "$PROJECT_ROOT/VERSION" | tr -d '[:space:]')
 fi
-echo "Building MeetingTranscriber v${VERSION}"
+echo "Building Earshot v${VERSION}"
 echo "  Notarize:    $NOTARIZE"
 echo "  Staple:      $STAPLE"
 echo "  App Store:   $APPSTORE"
@@ -79,7 +79,7 @@ mkdir -p "$MACOS_DIR" "$RESOURCES"
 echo ""
 echo "Step 1: Building Swift menu bar app..."
 
-SPM_DIR="$PROJECT_ROOT/app/MeetingTranscriber"
+SPM_DIR="$PROJECT_ROOT/app/Earshot"
 SWIFT_BUILD_FLAGS=(-c release --disable-sandbox)
 SPM_SCRATCH=".build"
 if [ "$APPSTORE" = true ]; then
@@ -93,7 +93,7 @@ if [ "$APPSTORE" = true ]; then
 fi
 (cd "$SPM_DIR" && swift build "${SWIFT_BUILD_FLAGS[@]}")
 
-cp "$SPM_DIR/$SPM_SCRATCH/release/MeetingTranscriber" "$MACOS_DIR/MeetingTranscriber"
+cp "$SPM_DIR/$SPM_SCRATCH/release/Earshot" "$MACOS_DIR/Earshot"
 
 # ── Step 2: Assemble app bundle ──────────────────────────────────────────────
 
@@ -134,7 +134,7 @@ install_third_party_licenses "$RESOURCES"
 
 # LocalVQE acoustic echo cancellation model.
 # Bundled rather than downloaded on first use; the reasoning is in the header of
-# app/MeetingTranscriber/Sources/LocalVQEModel.swift. Both variants get it: the
+# app/Earshot/Sources/LocalVQEModel.swift. Both variants get it: the
 # model is a plain data file, so nothing here is sandbox-sensitive.
 #
 # The App Store bundle carries it ahead of any code that reads it, on purpose.
@@ -207,7 +207,7 @@ if [ "$NOTARIZE" = true ]; then
         fi
 
         echo "  Notarizing .app bundle..."
-        APP_ZIP="$BUILD_DIR/MeetingTranscriber-app.zip"
+        APP_ZIP="$BUILD_DIR/Earshot-app.zip"
         rm -f "$APP_ZIP"
         ditto -c -k --keepParent "$APP_BUNDLE" "$APP_ZIP"
         xcrun notarytool submit "$APP_ZIP" \
@@ -236,9 +236,9 @@ fi
 # ── Step 5: Create DMG ───────────────────────────────────────────────────────
 
 if [ "$APPSTORE" = true ]; then
-    DMG_NAME="MeetingTranscriber-AppStore-${VERSION}.dmg"
+    DMG_NAME="Earshot-AppStore-${VERSION}.dmg"
 else
-    DMG_NAME="MeetingTranscriber-${VERSION}.dmg"
+    DMG_NAME="Earshot-${VERSION}.dmg"
 fi
 DMG_PATH="$BUILD_DIR/$DMG_NAME"
 
@@ -251,15 +251,15 @@ if [ -z "${HOMEBREW_TEMP:-}" ]; then
     DMG_STAGING="$BUILD_DIR/dmg-staging"
     rm -rf "$DMG_STAGING"
     mkdir -p "$DMG_STAGING"
-    mv "$APP_BUNDLE" "$DMG_STAGING/MeetingTranscriber.app"
+    mv "$APP_BUNDLE" "$DMG_STAGING/Earshot.app"
     ln -s /Applications "$DMG_STAGING/Applications"
 
-    hdiutil create -volname "MeetingTranscriber" \
+    hdiutil create -volname "Earshot" \
         -srcfolder "$DMG_STAGING" \
         -ov -format UDZO \
         "$DMG_PATH"
 
-    mv "$DMG_STAGING/MeetingTranscriber.app" "$APP_BUNDLE"
+    mv "$DMG_STAGING/Earshot.app" "$APP_BUNDLE"
     rm -rf "$DMG_STAGING"
 
     # ── Step 5: Notarize (optional) ──────────────────────────────────────────

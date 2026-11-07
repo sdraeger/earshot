@@ -9,7 +9,7 @@
       `git fetch https://github.com/pasrom/meeting-transcriber main && git rebase FETCH_HEAD`
       (the URL spelled out because in a fork clone `origin` is your fork)
 - [ ] `./scripts/lint.sh` is clean
-- [ ] Tests pass: `cd app/MeetingTranscriber && swift test`
+- [ ] Tests pass: `cd app/Earshot && swift test`
 - [ ] Conventional Commits, one logical change per commit
 
 The **Update branch** button merges by default; pick **Update with rebase** from its

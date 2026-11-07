@@ -2,7 +2,7 @@
 import Foundation
 import os.log
 
-private let logger = Logger(subsystem: "com.meetingtranscriber.audiotap", category: "StreamingMonoResampler")
+private let logger = Logger(subsystem: "com.earshot.audiotap", category: "StreamingMonoResampler")
 
 /// Converts interleaved float32 capture buffers to mono Float32 at a fixed
 /// target rate, rebuilding the underlying `AVAudioConverter` whenever the input

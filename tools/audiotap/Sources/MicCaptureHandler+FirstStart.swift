@@ -1,7 +1,7 @@
 import Foundation
 import os.log
 
-private let logger = Logger(subsystem: "com.meetingtranscriber.audiotap", category: "MicCapture")
+private let logger = Logger(subsystem: "com.earshot.audiotap", category: "MicCapture")
 
 /// The first start under a deadline (issue #778).
 ///

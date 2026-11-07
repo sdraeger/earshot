@@ -25,12 +25,12 @@ on:
       - 'scripts/appstore-bundle-check.sh'
       # The entitlement check compares against this file, so an edit to it
       # has to prove the signed bundle still matches.
-      - 'app/MeetingTranscriber/Entitlements/AppStore.entitlements'
+      - 'app/Earshot/Entitlements/AppStore.entitlements'
       # The launch check finds the app's data through the liveness marker,
       # so a PR that renames or moves it must prove the check still holds.
-      - 'app/MeetingTranscriber/Sources/AppPaths.swift'
-      - 'app/MeetingTranscriber/Sources/LivenessMarker.swift'
-      - 'app/MeetingTranscriber/Sources/AppLauncher.swift'
+      - 'app/Earshot/Sources/AppPaths.swift'
+      - 'app/Earshot/Sources/LivenessMarker.swift'
+      - 'app/Earshot/Sources/AppLauncher.swift'
       # A model-pin bump edits only these and changes what the bundle
       # contains, so filtering on build_release.sh alone would let a
       # broken revision or checksum reach a release untested.
@@ -39,11 +39,11 @@ on:
   push:
     branches: [main]
     paths:
-      - 'app/MeetingTranscriber/Sources/**'
-      - 'app/MeetingTranscriber/Package.swift'
-      - 'app/MeetingTranscriber/Package.resolved'
-      - 'app/MeetingTranscriber/Entitlements/AppStore.entitlements'
-      - 'app/MeetingTranscriber/Sources/Info.plist'
+      - 'app/Earshot/Sources/**'
+      - 'app/Earshot/Package.swift'
+      - 'app/Earshot/Package.resolved'
+      - 'app/Earshot/Entitlements/AppStore.entitlements'
+      - 'app/Earshot/Sources/Info.plist'
       - 'tools/audiotap/**'
       - 'scripts/build_release.sh'
       - 'scripts/appstore-bundle-check.sh'
@@ -83,7 +83,7 @@ jobs:
       - uses: ./.github/actions/setup-swift-test
         with:
           cache-key-suffix: release-appstore
-          cache-path: app/MeetingTranscriber/.build-appstore
+          cache-path: app/Earshot/.build-appstore
           cache-restore-fallback: "false"
           cache-models: "false"
 
@@ -97,18 +97,18 @@ jobs:
       - name: Check signed entitlements
         run: |
           ./scripts/appstore-bundle-check.sh entitlements \
-            "$GITHUB_WORKSPACE/.build/release/MeetingTranscriber.app" \
-            app/MeetingTranscriber/Entitlements/AppStore.entitlements
+            "$GITHUB_WORKSPACE/.build/release/Earshot.app" \
+            app/Earshot/Entitlements/AppStore.entitlements
 
       - name: Smoke-launch the .app and check its data location
         run: |
           ./scripts/appstore-bundle-check.sh launch \
-            "$GITHUB_WORKSPACE/.build/release/MeetingTranscriber.app"
+            "$GITHUB_WORKSPACE/.build/release/Earshot.app"
 
       - name: Upload crash reports on failure
         if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: crash-reports
-          path: ~/Library/Logs/DiagnosticReports/MeetingTranscriber-*.ips
+          path: ~/Library/Logs/DiagnosticReports/Earshot-*.ips
           if-no-files-found: ignore

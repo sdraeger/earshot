@@ -3,7 +3,7 @@ import CoreAudio
 import Foundation
 import os.log
 
-private let logger = Logger(subsystem: "com.meetingtranscriber.audiotap", category: "MicCapture")
+private let logger = Logger(subsystem: "com.earshot.audiotap", category: "MicCapture")
 
 /// The device-change restart path, split out of `MicCaptureHandler.swift` to keep
 /// it under the 600-line lint cap (same pattern as `+Timeline`).

@@ -1,11 +1,11 @@
 ---
-name: meeting-transcriber
-description: Use when working on the Meeting Transcriber repo and you need to inspect or drive the running dev app from the shell instead of asking the user for screenshots.
+name: earshot
+description: Use when working on the Earshot repo and you need to inspect or drive the running dev app from the shell instead of asking the user for screenshots.
 ---
 
-# Meeting Transcriber — shell-driven inspection
+# Earshot — shell-driven inspection
 
-The dev build of Meeting Transcriber can run an embedded debug RPC server.
+The dev build of Earshot can run an embedded debug RPC server.
 When it's running, prefer `mt-cli` over asking the user "kannst du screenshot
 machen" / "ist das im Menü sichtbar".
 
@@ -33,11 +33,11 @@ Either persistent (preferred for repeated dev sessions):
 Or per-session (one-shot, e.g. for `scripts/test_rpc.sh`):
 
 ```bash
-MEETINGTRANSCRIBER_DEBUG_RPC=1 ./scripts/run_app.sh
+EARSHOT_DEBUG_RPC=1 ./scripts/run_app.sh
 ```
 
 The app writes a 64-hex bearer token to
-`~/Library/Application Support/MeetingTranscriber/.rpc-token` (chmod 0600).
+`~/Library/Application Support/Earshot/.rpc-token` (chmod 0600).
 `mt-cli` reads it automatically — no config needed on your side.
 
 ## Endpoints
@@ -68,7 +68,7 @@ cd tools/mt-cli && swift build
 - **"app is not running on http://127.0.0.1:9876"** → either the dev app
   isn't running, or the toggle / env flag was off when it launched. Ask the
   user to enable Settings → Advanced → Local Automation API, or relaunch with
-  `MEETINGTRANSCRIBER_DEBUG_RPC=1 ./scripts/run_app.sh`.
+  `EARSHOT_DEBUG_RPC=1 ./scripts/run_app.sh`.
 - **"RPC token not found"** → same as above; the token is created on first
   successful start.
 - **HTTP 401** → token rotated. Restart the app or delete the token file.
@@ -79,4 +79,4 @@ cd tools/mt-cli && swift build
 
 Loopback bind (`127.0.0.1` only) + Origin reject + bearer token. Two-layer
 defense against browser CSRF and cross-user access on shared Macs. See
-`app/MeetingTranscriber/Sources/DebugRPCServer.swift` for the threat model.
+`app/Earshot/Sources/DebugRPCServer.swift` for the threat model.

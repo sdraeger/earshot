@@ -9,10 +9,10 @@
 # Usage:
 #   ./scripts/localvqe-bundle-check.sh [--no-build]
 #
-#   --no-build   Reuse an existing .build/release/MeetingTranscriber.app
+#   --no-build   Reuse an existing .build/release/Earshot.app
 #                  instead of rebuilding.
 #
-# MEETINGTRANSCRIBER_LOCALVQE_MODEL is unset for the probe, deliberately. It
+# EARSHOT_LOCALVQE_MODEL is unset for the probe, deliberately. It
 # takes precedence in the app's resolver, so leaving an exported one in place
 # would have the probe load THAT model while this script reported the bundled
 # one: a green check that never touched the artifact under test. To compare
@@ -23,8 +23,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-APP_BUNDLE="$PROJECT_ROOT/.build/release/MeetingTranscriber.app"
-APP_BINARY="$APP_BUNDLE/Contents/MacOS/MeetingTranscriber"
+APP_BUNDLE="$PROJECT_ROOT/.build/release/Earshot.app"
+APP_BINARY="$APP_BUNDLE/Contents/MacOS/Earshot"
 
 SKIP_BUILD=false
 for arg in "$@"; do
@@ -52,7 +52,7 @@ echo "Bundle signature verified: $APP_BUNDLE"
 # Contents/MacOS.
 echo ""
 echo "--- bundle probe ---"
-PROBE_OUT="$(env -u MEETINGTRANSCRIBER_LOCALVQE_MODEL "$APP_BINARY" --localvqe-selftest 2>&1)" || {
+PROBE_OUT="$(env -u EARSHOT_LOCALVQE_MODEL "$APP_BINARY" --localvqe-selftest 2>&1)" || {
     echo "$PROBE_OUT"
     echo "FAIL: selftest exited non-zero" >&2
     exit 1

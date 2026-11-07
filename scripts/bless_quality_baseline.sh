@@ -31,7 +31,7 @@ RESULTS="$1"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-OUT="$PROJECT_DIR/app/MeetingTranscriber/Tests/Fixtures/quality/quality-baseline.json"
+OUT="$PROJECT_DIR/app/Earshot/Tests/Fixtures/quality/quality-baseline.json"
 
 python3 - "$RESULTS" "$OUT" <<'PY'
 import json, sys

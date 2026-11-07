@@ -2,7 +2,7 @@
 # Regenerate the phone/messenger voice-format fixtures, so they are
 # reproducible instead of mystery blobs.
 #
-# Produces in app/MeetingTranscriber/Tests/Fixtures/:
+# Produces in app/Earshot/Tests/Fixtures/:
 #   two_speakers_de.opus  — Ogg Opus, first 5 s of two_speakers_de.wav (~12 KB),
 #                           the format messengers and voice recorders write
 #   two_speakers_de.3gp   — AAC-in-3GP, 5 s at 16 kHz (~20 KB). Deliberately at
@@ -31,7 +31,7 @@ command -v python3 >/dev/null 2>&1 || { echo "ERROR: python3 is required."; exit
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-FIXTURE_DIR="$PROJECT_DIR/app/MeetingTranscriber/Tests/Fixtures"
+FIXTURE_DIR="$PROJECT_DIR/app/Earshot/Tests/Fixtures"
 SOURCE="$FIXTURE_DIR/two_speakers_de.wav"
 CLIP_SECONDS=5
 

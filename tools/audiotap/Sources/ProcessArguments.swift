@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 import os
 
-private let logger = Logger(subsystem: "com.meetingtranscriber.audiotap", category: "ProcessArguments")
+private let logger = Logger(subsystem: "com.earshot.audiotap", category: "ProcessArguments")
 
 /// Reads another process's launch arguments, which is how a Chromium helper
 /// says what it is for (`--type=utility --utility-sub-type=...`). Nothing in

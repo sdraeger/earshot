@@ -71,12 +71,12 @@ if [ "$status" -eq 2 ]; then ok torn_snapshot_is_status_2; else bad torn_snapsho
 # --- streamer_pids -----------------------------------------------------------
 
 # `ps -axo pid=,ppid=,command=` as the lane feeds it. 500 is the app.
-PS_TABLE="  500     1 /Users/u/Applications/MeetingTranscriber-Dev.app/Contents/MacOS/MeetingTranscriber
-  501   500 /usr/bin/log stream --predicate subsystem CONTAINS 'com.meetingtranscriber' --style syslog --info
+PS_TABLE="  500     1 /Users/u/Applications/Earshot-Dev.app/Contents/MacOS/Earshot
+  501   500 /usr/bin/log stream --predicate subsystem CONTAINS 'com.earshot' --style syslog --info
   502   500 /bin/ps -axo pid=,ppid=,command=
-  600     1 /usr/bin/log stream --predicate subsystem CONTAINS 'com.meetingtranscriber' --style syslog --info
+  600     1 /usr/bin/log stream --predicate subsystem CONTAINS 'com.earshot' --style syslog --info
   601     1 /usr/bin/log stream --predicate subsystem == 'com.apple.coreaudio'
-  602   777 /usr/bin/log stream --predicate subsystem CONTAINS 'com.meetingtranscriber' --style syslog --info
+  602   777 /usr/bin/log stream --predicate subsystem CONTAINS 'com.earshot' --style syslog --info
   603   500 /usr/bin/log show --last 5m"
 
 expect_output child_of_app "501" "$(streamer_pids 500 <<<"$PS_TABLE")"
@@ -89,7 +89,7 @@ expect_output none_for_unrelated_parent "" "$(streamer_pids 4242 <<<"$PS_TABLE")
 # AppState starting a second streamer); both must be reported.
 expect_output two_children_both_reported "501
 504" "$(streamer_pids 500 <<<"$PS_TABLE
-  504   500 /usr/bin/log stream --predicate subsystem CONTAINS 'com.meetingtranscriber' --style syslog --info")"
+  504   500 /usr/bin/log stream --predicate subsystem CONTAINS 'com.earshot' --style syslog --info")"
 
 # --- queue_snapshot_is_empty -------------------------------------------------
 
@@ -364,20 +364,20 @@ fi
 # go two ways, both ending in one exit; the lane logs which one happened and
 # fails only on a trace that is neither. Lines as `log show --style compact`
 # prints them, from the two live runs.
-TRACE_CANCEL='12:09:41.101 I  MeetingTranscriber[1:2] [com.apple.appleevents:receive] RECEIVED:(aevt,quit) {aevt,quit target=osascript returnID=1}
-12:09:41.101 Df MeetingTranscriber[1:2] [com.apple.AppKit:Application] Asking app delegate whether applicationShouldTerminate:
-12:09:41.101 Df MeetingTranscriber[1:2] [com.apple.AppKit:Application] applicationShouldTerminate: NSTerminateLater
-12:09:41.105 I  MeetingTranscriber[1:2] [com.apple.appleevents:receive] RECEIVED:(aevt,quit) {aevt,quit target=osascript returnID=2}
-12:09:41.105 E  MeetingTranscriber[1:2] [com.apple.AppKit:Application] Failed responder chain validation for terminate: action. Canceling termination.
-12:09:41.130 Df MeetingTranscriber[1:2] [com.apple.AppKit:Application] replyToApplicationShouldTerminate:YES'
-TRACE_REASKED='06:42:20.547 I  MeetingTranscriber[1:2] [com.apple.appleevents:receive] RECEIVED:(aevt,quit) {aevt,quit target=osascript returnID=214}
-06:42:20.547 Df MeetingTranscriber[1:2] [com.apple.AppKit:Application] Asking app delegate whether applicationShouldTerminate:
-06:42:20.547 Df MeetingTranscriber[1:2] [com.apple.AppKit:Application] applicationShouldTerminate: NSTerminateLater
-06:42:20.551 I  MeetingTranscriber[1:2] [com.apple.appleevents:receive] RECEIVED:(aevt,quit) {aevt,quit target=osascript returnID=25895}
-06:42:20.569 Df MeetingTranscriber[1:2] [com.apple.AppKit:Application] replyToApplicationShouldTerminate:YES
-06:42:20.578 Df MeetingTranscriber[1:2] [com.apple.AppKit:Application] Asking app delegate whether applicationShouldTerminate:
-06:42:20.582 Df MeetingTranscriber[1:2] [com.apple.AppKit:Application] applicationShouldTerminate: NSTerminateNow'
-OSA_CANCEL='37:41: execution error: MeetingTranscriber got an error: User canceled. (-128)'
+TRACE_CANCEL='12:09:41.101 I  Earshot[1:2] [com.apple.appleevents:receive] RECEIVED:(aevt,quit) {aevt,quit target=osascript returnID=1}
+12:09:41.101 Df Earshot[1:2] [com.apple.AppKit:Application] Asking app delegate whether applicationShouldTerminate:
+12:09:41.101 Df Earshot[1:2] [com.apple.AppKit:Application] applicationShouldTerminate: NSTerminateLater
+12:09:41.105 I  Earshot[1:2] [com.apple.appleevents:receive] RECEIVED:(aevt,quit) {aevt,quit target=osascript returnID=2}
+12:09:41.105 E  Earshot[1:2] [com.apple.AppKit:Application] Failed responder chain validation for terminate: action. Canceling termination.
+12:09:41.130 Df Earshot[1:2] [com.apple.AppKit:Application] replyToApplicationShouldTerminate:YES'
+TRACE_REASKED='06:42:20.547 I  Earshot[1:2] [com.apple.appleevents:receive] RECEIVED:(aevt,quit) {aevt,quit target=osascript returnID=214}
+06:42:20.547 Df Earshot[1:2] [com.apple.AppKit:Application] Asking app delegate whether applicationShouldTerminate:
+06:42:20.547 Df Earshot[1:2] [com.apple.AppKit:Application] applicationShouldTerminate: NSTerminateLater
+06:42:20.551 I  Earshot[1:2] [com.apple.appleevents:receive] RECEIVED:(aevt,quit) {aevt,quit target=osascript returnID=25895}
+06:42:20.569 Df Earshot[1:2] [com.apple.AppKit:Application] replyToApplicationShouldTerminate:YES
+06:42:20.578 Df Earshot[1:2] [com.apple.AppKit:Application] Asking app delegate whether applicationShouldTerminate:
+06:42:20.582 Df Earshot[1:2] [com.apple.AppKit:Application] applicationShouldTerminate: NSTerminateNow'
+OSA_CANCEL='37:41: execution error: Earshot got an error: User canceled. (-128)'
 
 expect_output second_quit_cancelled_by_appkit "cancelled" \
     "$(second_quit_outcome "$TRACE_CANCEL" "$OSA_CANCEL")"
@@ -397,7 +397,7 @@ check_unexplained second_quit_cancel_line_without_minus_128 "$TRACE_CANCEL" ""
 # Asked a second time BEFORE the first reply: the held-open guard path, which
 # was never measured; reported, not passed.
 TRACE_ASKED_WHILE_HELD="$(printf '%s\n' "$TRACE_REASKED" | sed -n '1,4p;6,7p')
-06:42:20.590 Df MeetingTranscriber[1:2] [com.apple.AppKit:Application] replyToApplicationShouldTerminate:YES"
+06:42:20.590 Df Earshot[1:2] [com.apple.AppKit:Application] replyToApplicationShouldTerminate:YES"
 check_unexplained second_quit_asked_while_held "$TRACE_ASKED_WHILE_HELD" ""
 # Only one request in the trace: nothing about a second quit is shown.
 check_unexplained second_quit_never_asked "$(printf '%s\n' "$TRACE_REASKED" | sed -n '1,5p')" ""

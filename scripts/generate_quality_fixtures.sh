@@ -7,7 +7,7 @@
 # segment scripts change — the JSON is rebuilt with the audio so they stay
 # consistent.
 #
-# Output: app/MeetingTranscriber/Tests/Fixtures/quality/
+# Output: app/Earshot/Tests/Fixtures/quality/
 #
 # Requires: macOS `say` (voices Anna, Flo, Sandy), `sox`, `python3`.
 
@@ -19,7 +19,7 @@ command -v python3 >/dev/null 2>&1 || { echo "ERROR: python3 is required"; exit 
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-OUT_DIR="$PROJECT_DIR/app/MeetingTranscriber/Tests/Fixtures/quality"
+OUT_DIR="$PROJECT_DIR/app/Earshot/Tests/Fixtures/quality"
 mkdir -p "$OUT_DIR"
 
 SILENCE_DURATION=1.0

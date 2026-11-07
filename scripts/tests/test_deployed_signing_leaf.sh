@@ -369,7 +369,7 @@ test_a_failed_verification_would_record_nothing() {
 # dev app.
 _lane_sandbox() {
     local home="$1"
-    mkdir -p "$home/bin" "$home/Applications/MeetingTranscriber-Dev.app"
+    mkdir -p "$home/bin" "$home/Applications/Earshot-Dev.app"
     printf '#!/usr/bin/env bash\nexit 0\n' > "$home/bin/launchctl"
     chmod +x "$home/bin/launchctl"
 }
@@ -409,7 +409,7 @@ test_the_lane_refuses_a_bundle_that_is_not_the_one_recorded() {
     _lane_sandbox "$home"
     # The sandbox bundle carries no certificate, so a record naming one is the
     # "something replaced it" state.
-    printf '%s' "$LEAF_A" > "$home/Applications/.MeetingTranscriber-Dev.app.signing-leaf"
+    printf '%s' "$LEAF_A" > "$home/Applications/.Earshot-Dev.app.signing-leaf"
     status="$(_run_lane "$home")"
     if [ "$status" -eq 0 ]; then
         echo "  the lane accepted a bundle that is not the one recorded" >&2

@@ -26,7 +26,7 @@ runs:
           exit 1
         fi
         echo "sha256=$BINARY_SHA256" >> "$GITHUB_OUTPUT"
-        echo "dir=$TOOL_CACHE/meetingtranscriber-ffmpeg/$BINARY_SHA256" >> "$GITHUB_OUTPUT"
+        echo "dir=$TOOL_CACHE/earshot-ffmpeg/$BINARY_SHA256" >> "$GITHUB_OUTPUT"
         echo "key=ffmpeg-$KEY_PLATFORM-$BINARY_SHA256" >> "$GITHUB_OUTPUT"
 
     # Hosted only: a self-hosted runner keeps its tool cache on disk, where a

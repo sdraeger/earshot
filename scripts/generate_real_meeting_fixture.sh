@@ -11,14 +11,14 @@
 #
 # Source: AMI Meeting Corpus (University of Edinburgh), CC BY 4.0. Both the
 # signals and the manual annotations are redistributable with attribution; see
-# app/MeetingTranscriber/Tests/Fixtures/quality/ATTRIBUTION.md.
+# app/Earshot/Tests/Fixtures/quality/ATTRIBUTION.md.
 #
 # The window is snapped to instants where all four speakers are silent, so no
 # utterance is cut mid-word and the reference transcript is complete. Which
 # window, and why that one, is documented in scripts/lib/ami_fixture_truth.py
 # next to the constants that define it.
 #
-# Output: app/MeetingTranscriber/Tests/Fixtures/quality/
+# Output: app/Earshot/Tests/Fixtures/quality/
 #   four_speakers_en_ami.wav        16 kHz mono 16-bit
 #   four_speakers_en_ami_truth.json same shape as the synthetic fixtures
 #
@@ -33,7 +33,7 @@ done
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-OUT_DIR="$PROJECT_DIR/app/MeetingTranscriber/Tests/Fixtures/quality"
+OUT_DIR="$PROJECT_DIR/app/Earshot/Tests/Fixtures/quality"
 CACHE_DIR="${AMI_CACHE_DIR:-${TMPDIR:-/tmp}/ami-fixture-cache}"
 
 MEETING="ES2004a"

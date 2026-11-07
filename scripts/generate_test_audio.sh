@@ -7,7 +7,7 @@
 # Requires: macOS `say` command with voices Anna and Flo installed, and `sox`.
 #
 # THIS SCRIPT DOES NOT REPRODUCE THE COMMITTED FIXTURE. The checked-in
-# app/MeetingTranscriber/Tests/Fixtures/two_speakers_de.wav is 49.8s and holds a
+# app/Earshot/Tests/Fixtures/two_speakers_de.wav is 49.8s and holds a
 # longer dialogue; the two drifted apart when the fixture was regenerated with
 # different voices and the script was not carried along. Overwriting the fixture
 # with this script's output is therefore a silent downgrade, which is why the
@@ -23,7 +23,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-FIXTURE_DIR="$PROJECT_DIR/app/MeetingTranscriber/Tests/Fixtures"
+FIXTURE_DIR="$PROJECT_DIR/app/Earshot/Tests/Fixtures"
 FIXTURE="$FIXTURE_DIR/two_speakers_de.wav"
 
 OUTPUT=""

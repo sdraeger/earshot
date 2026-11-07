@@ -195,7 +195,7 @@ jobs:
           # pipefail: without it `xcodebuild ... | tee` masks an xcodebuild
           # failure, leaving swiftlint analyze to pass against an empty log.
           set -o pipefail
-          cd app/MeetingTranscriber
+          cd app/Earshot
           # SWIFT_SUPPRESS_WARNINGS=NO: without it xcodebuild fails outright on
           # AudioTapLib's warning gate. Reason at the flag in
           # tools/audiotap/Package.swift.
@@ -210,7 +210,7 @@ jobs:
           # dependencies, so the file keeps them and the console stream does
           # not. Clean build time was unchanged within noise.
           # shellcheck disable=SC2016  # $(inherited) is an Xcode setting reference, not a shell expansion
-          xcodebuild -scheme MeetingTranscriber -destination 'platform=macOS' SWIFT_SUPPRESS_WARNINGS=NO \
+          xcodebuild -scheme Earshot -destination 'platform=macOS' SWIFT_SUPPRESS_WARNINGS=NO \
             OTHER_SWIFT_FLAGS='$(inherited) -Xfrontend -debug-time-function-bodies' build-for-testing 2>&1 \
             | tee /tmp/xcodebuild.log | bash "$GITHUB_WORKSPACE/scripts/ci/type-check-timings.sh" strip
           cd "$GITHUB_WORKSPACE"
@@ -289,14 +289,14 @@ jobs:
       # already downloads the same model through `build_release.sh`, so this
       # adds no network dependency that CI did not have.
       - name: Fetch the echo-cancellation model
-        run: echo "MEETINGTRANSCRIBER_LOCALVQE_MODEL=$(./scripts/fetch-localvqe-model.sh)" >> "$GITHUB_ENV"
+        run: echo "EARSHOT_LOCALVQE_MODEL=$(./scripts/fetch-localvqe-model.sh)" >> "$GITHUB_ENV"
       # Build and run are separate steps so each has a timeout of its own and
       # the run summary shows where the time went. Step timeouts fail as
       # `timed_out`, which a bare job timeout would report as `cancelled`.
       - name: Build tests
         id: build-tests
         timeout-minutes: 15
-        run: cd app/MeetingTranscriber && swift build --build-tests --enable-code-coverage ${{ matrix.swift-flags }}
+        run: cd app/Earshot && swift build --build-tests --enable-code-coverage ${{ matrix.swift-flags }}
       # Three shards for the runner's three vCPUs, not `swift test --parallel`,
       # which starts one process per test method; the header of
       # scripts/ci/test-shards.sh has the measurements and what the script
@@ -311,7 +311,7 @@ jobs:
       - name: Swift tests
         id: swift-tests
         timeout-minutes: 15
-        run: cd app/MeetingTranscriber && ../../scripts/ci/test-shards.sh run --shards 3 --skip ModelPreloadTests --coverage --out "$RUNNER_TEMP/test-shards"
+        run: cd app/Earshot && ../../scripts/ci/test-shards.sh run --shards 3 --skip ModelPreloadTests --coverage --out "$RUNNER_TEMP/test-shards"
       # The shard logs are what `test-shards.sh weights` regenerates the weights
       # file from, and a plan is only balanced for the machine the weights were
       # measured on, so the logs of this runner are kept. On a red run they also
@@ -372,7 +372,7 @@ jobs:
       - uses: ./.github/actions/export-lcov
         if: success()
         with:
-          package-dir: app/MeetingTranscriber
+          package-dir: app/Earshot
           flag: ${{ matrix.variant }}
           codecov-token: ${{ secrets.CODECOV_TOKEN }}
       # The mt-cli tree is saved here, at the end of the job, so that only a

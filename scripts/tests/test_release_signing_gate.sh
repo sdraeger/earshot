@@ -472,7 +472,7 @@ _assert_gate_step_is_binding() {
     # The one bundle build_release.sh produces and the DMG is built from. A
     # check pointed anywhere else inspects something nobody ships.
     case "$body" in
-        *".build/release/MeetingTranscriber.app"*) ;;
+        *".build/release/Earshot.app"*) ;;
         *) echo "  '$name' does not inspect the bundle that gets published" >&2; rc=1 ;;
     esac
     return "$rc"
@@ -559,7 +559,7 @@ test_the_release_workflow_does_not_decide_the_mode_itself() {
     verify_cmd="$(awk '/^      - name: Verify the release is signed by a Developer ID$/{f=1; next}
                        f && /^      - name: /{exit}
                        f && /^        run:/{print; exit}' "$wf")"
-    if [ "$verify_cmd" != "        run: ./scripts/release-signing-gate.sh verify .build/release/MeetingTranscriber.app" ]; then
+    if [ "$verify_cmd" != "        run: ./scripts/release-signing-gate.sh verify .build/release/Earshot.app" ]; then
         echo "  the Developer-ID verify step is no longer exactly the gate call:" >&2
         printf '%s\n' "${verify_cmd:-<not found>}" | sed 's|^|    |' >&2
         rc=1

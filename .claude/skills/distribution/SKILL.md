@@ -13,18 +13,18 @@ The app can be distributed as a self-contained `.app` via Homebrew Cask:
 
 # Install stable via Homebrew
 brew tap pasrom/meeting-transcriber
-brew install --cask meeting-transcriber
+brew install --cask earshot
 
 # Install pre-release (RC) via Homebrew
-brew install --cask meeting-transcriber@beta
+brew install --cask earshot@beta
 ```
 
 > Note: The stable and beta casks conflict — uninstall one before installing the other.
 
 **Release workflow:** Push a `v*` tag to trigger `.github/workflows/release.yml` which
 builds the DMG on a macOS runner and creates a GitHub Release. Pre-release tags
-(containing `-`) update `meeting-transcriber@beta`. Stable tags update
-`meeting-transcriber` and *also* carry `@beta` forward when the stable version is newer
+(containing `-`) update `earshot@beta`. Stable tags update
+`earshot` and *also* carry `@beta` forward when the stable version is newer
 than what that cask holds.
 
 That second half exists because the beta channel would otherwise freeze at the last RC:

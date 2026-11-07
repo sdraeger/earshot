@@ -52,7 +52,7 @@ line="$(sed -n "${n}p" "$FAKE_DIR/script")"
 case "$line" in
     answer\ *) echo "${line#answer }" ;;
     empty) ;;
-    fail) echo "Error: Meeting Transcriber app is not running on http://127.0.0.1:9876" >&2; exit 1 ;;
+    fail) echo "Error: Earshot app is not running on http://127.0.0.1:9876" >&2; exit 1 ;;
     garbage) echo "<html>proxy error</html>" ;;
     hang) sleep 30 ;;
 esac

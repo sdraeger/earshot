@@ -48,8 +48,8 @@ source "$ROOT/scripts/lib/e2e-helpers.sh"
 # Ends what a timed-out earlier step left running, then records this
 # driver for the next (see e2e_register_driver).
 e2e_register_driver
-APP="$ROOT/app/MeetingTranscriber/.build/MeetingTranscriber-Dev.app"
-BIN="$APP/Contents/MacOS/MeetingTranscriber"
+APP="$ROOT/app/Earshot/.build/Earshot-Dev.app"
+BIN="$APP/Contents/MacOS/Earshot"
 MTCLI="$ROOT/tools/mt-cli/.build/debug/mt-cli"
 
 cleanup() {
@@ -135,8 +135,8 @@ fi
 # whatever a previous lane left in this host's defaults, and it leaves nothing
 # behind. Suppression wins over it in the app, which is exactly the ordering
 # being tested.
-open --env MEETINGTRANSCRIBER_DEBUG_RPC=1 \
-    --env MEETINGTRANSCRIBER_DEBUG_SUPPRESS_AUTOWATCH=1 \
+open --env EARSHOT_DEBUG_RPC=1 \
+    --env EARSHOT_DEBUG_SUPPRESS_AUTOWATCH=1 \
     "$APP" --args --auto-watch
 
 # --- 4. Wait for RPC server to come up (max 30 s) ------------------------
@@ -154,7 +154,7 @@ wait_for_rpc "$MTCLI" 30 || die "RPC server did not start within 30 s"
 rpc_pid="$(/usr/sbin/lsof -ti :9876 -sTCP:LISTEN 2>/dev/null | head -1)"
 [ -n "$rpc_pid" ] || die "nothing is listening on 9876 although the RPC poll succeeded"
 ps -p "$rpc_pid" -o command= 2>/dev/null | grep -qF "$BIN" \
-    || die "port 9876 is held by pid $rpc_pid ($(ps -p "$rpc_pid" -o comm= 2>/dev/null)), not by $BIN — the permission verdicts below would describe that process, not the bundle this lane built. Quit the other MeetingTranscriber and re-run."
+    || die "port 9876 is held by pid $rpc_pid ($(ps -p "$rpc_pid" -o comm= 2>/dev/null)), not by $BIN — the permission verdicts below would describe that process, not the bundle this lane built. Quit the other Earshot and re-run."
 echo "  RPC up"
 
 # --- 5. Wait for the async permission check to populate (max 20 s) -------
@@ -201,7 +201,7 @@ echo "▸ Confirming the launch environment reached the app…"
 status=0
 poll_state 12 0.5 state_is '.watchState == "watching"' || status=$?
 case "$status" in
-    0) die "the app is watching, so MEETINGTRANSCRIBER_DEBUG_SUPPRESS_AUTOWATCH did not reach it — open --env is not delivering the launch environment, and what this lane measured is not what it configured" ;;
+    0) die "the app is watching, so EARSHOT_DEBUG_SUPPRESS_AUTOWATCH did not reach it — open --env is not delivering the launch environment, and what this lane measured is not what it configured" ;;
     1) ;;
     *) die "$(state_why "$status" "whether the launch environment reached the app (the app must stay unwatched through the window)")" ;;
 esac

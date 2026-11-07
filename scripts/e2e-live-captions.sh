@@ -12,7 +12,7 @@
 # Runs on the same self-hosted Mac runner as e2e-app.sh and reuses the
 # same one-time TCC setup (scripts/setup-self-hosted-runner.sh).
 #
-# The fixture-based xctest E2E (app/MeetingTranscriber/Tests/
+# The fixture-based xctest E2E (app/Earshot/Tests/
 # LiveTranscriptionE2ETests.swift) covers everything from
 # LiveTranscriptionController inward; this script covers the parts
 # that are outside the xctest harness — CATap tap, AudioCaptureSession,
@@ -36,7 +36,7 @@ while [ $# -gt 0 ]; do
             cat <<'HELP'
 Usage: e2e-live-captions.sh [--no-build] [--keep-app] [--fixture path/to.wav]
 
-  --no-build           Skip build/deploy/re-sign; use ~/Applications/MeetingTranscriber-Dev.app as-is.
+  --no-build           Skip build/deploy/re-sign; use ~/Applications/Earshot-Dev.app as-is.
   --keep-app           Leave the dev app running on exit. Default: quit it.
   --fixture            Audio fixture for meeting-simulator. Default: two_speakers_de.wav.
 HELP
@@ -51,13 +51,13 @@ done
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-DEV_BUNDLE_BUILD="$ROOT/app/MeetingTranscriber/.build/MeetingTranscriber-Dev.app"
-DEV_BUNDLE_DEPLOY="$HOME/Applications/MeetingTranscriber-Dev.app"
+DEV_BUNDLE_BUILD="$ROOT/app/Earshot/.build/Earshot-Dev.app"
+DEV_BUNDLE_DEPLOY="$HOME/Applications/Earshot-Dev.app"
 SIMULATOR_PKG="$ROOT/tools/meeting-simulator"
 SIMULATOR_BIN="$SIMULATOR_PKG/.build/release/meeting-simulator"
-DEFAULT_FIXTURE="$ROOT/app/MeetingTranscriber/Tests/Fixtures/two_speakers_de.wav"
+DEFAULT_FIXTURE="$ROOT/app/Earshot/Tests/Fixtures/two_speakers_de.wav"
 # shellcheck disable=SC2034 # read by the RPC helpers in lib/e2e-helpers.sh
-RPC_TOKEN_FILE="$HOME/Library/Application Support/MeetingTranscriber/.rpc-token"
+RPC_TOKEN_FILE="$HOME/Library/Application Support/Earshot/.rpc-token"
 # shellcheck disable=SC2034 # read by the RPC helpers in lib/e2e-helpers.sh
 RPC_BASE="http://127.0.0.1:9876"
 # shellcheck source=lib/bundle-ids.sh

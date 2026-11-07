@@ -23,7 +23,7 @@ The inspection-only `/state` response's `lastJob` also exposes the optional
 - **Off by default.** Enable it one of two ways:
   - **Settings → Advanced → "Local Automation API"** (persistent toggle, backed
     by the `debugRPCEnabled` user default).
-  - **`MEETINGTRANSCRIBER_DEBUG_RPC=1`** environment variable, which force-starts
+  - **`EARSHOT_DEBUG_RPC=1`** environment variable, which force-starts
     the server at launch (used by `./scripts/run_app.sh` and the E2E drivers).
 - **Bind address:** `127.0.0.1:9876`. The listener is pinned to the IPv4
   loopback and accepts local connections only; it is never reachable off the
@@ -35,7 +35,7 @@ Two layers of defense, both enforced on every request:
 
 1. **Bearer token.** Send `Authorization: Bearer <token>`. The token is a
    64-character hex string (32 bytes of entropy) stored at
-   `~/Library/Application Support/MeetingTranscriber/.rpc-token` (mode `0600`).
+   `~/Library/Application Support/Earshot/.rpc-token` (mode `0600`).
    It is generated on first launch and reused across launches. Toggling the
    server off then on rotates the token (invalidating any previously leaked
    value). A missing or wrong token returns `401`. Comparison is constant-time.
@@ -49,7 +49,7 @@ Two layers of defense, both enforced on every request:
 Read the token into a shell variable for the examples below:
 
 ```bash
-TOKEN=$(cat ~/Library/Application\ Support/MeetingTranscriber/.rpc-token)
+TOKEN=$(cat ~/Library/Application\ Support/Earshot/.rpc-token)
 BASE=http://127.0.0.1:9876
 ```
 
@@ -747,7 +747,7 @@ side.
 
 ## See also
 
-- `app/MeetingTranscriber/Sources/DebugRPCServer.swift` for the server, auth, and
+- `app/Earshot/Sources/DebugRPCServer.swift` for the server, auth, and
   threat model, and `DebugRPCServer+V1.swift` for the `/v1` routing.
 - `tools/mt-cli/skill.md` for the inspection CLI.
 - `scripts/test_rpc.sh` for a live end-to-end smoketest.

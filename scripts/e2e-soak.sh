@@ -58,7 +58,7 @@ Usage: ./scripts/e2e-soak.sh [options]
   --max-growth N     Catastrophe gate: max MB/hour of footprint growth
                      (default 500). Everything is logged regardless.
   --fixture PATH     Audio fixture for meeting-simulator.
-  --no-build         Use ~/Applications/MeetingTranscriber-Dev.app as-is.
+  --no-build         Use ~/Applications/Earshot-Dev.app as-is.
   --leave-app        Leave the app running afterwards (debugging).
 USAGE
             exit 0 ;;
@@ -71,16 +71,16 @@ done
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-DEV_BUNDLE_DEPLOY="$HOME/Applications/MeetingTranscriber-Dev.app"
+DEV_BUNDLE_DEPLOY="$HOME/Applications/Earshot-Dev.app"
 SIMULATOR_PKG="$ROOT/tools/meeting-simulator"
 SIMULATOR_BIN="$SIMULATOR_PKG/.build/release/meeting-simulator"
-DEFAULT_FIXTURE="$ROOT/app/MeetingTranscriber/Tests/Fixtures/two_speakers_de.wav"
+DEFAULT_FIXTURE="$ROOT/app/Earshot/Tests/Fixtures/two_speakers_de.wav"
 # shellcheck disable=SC2034 # read by the RPC helpers in lib/e2e-helpers.sh
-RPC_TOKEN_FILE="$HOME/Library/Application Support/MeetingTranscriber/.rpc-token"
+RPC_TOKEN_FILE="$HOME/Library/Application Support/Earshot/.rpc-token"
 # Record-only writes to `<effectiveOutputDir>/recordings`, which defaults to
 # Downloads — NOT the Application Support path that only appears as a default
 # initializer argument. e2e-app.sh asserts against this same directory.
-REC_DIR="$HOME/Downloads/MeetingTranscriber/recordings"
+REC_DIR="$HOME/Downloads/Earshot/recordings"
 # shellcheck disable=SC2034 # read by the RPC helpers in lib/e2e-helpers.sh
 RPC_BASE="http://127.0.0.1:9876"
 # shellcheck source=lib/bundle-ids.sh

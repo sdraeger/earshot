@@ -12,8 +12,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 SWIFT_DIRS=(
-    app/MeetingTranscriber/Sources
-    app/MeetingTranscriber/Tests
+    app/Earshot/Sources
+    app/Earshot/Tests
     tools/audiotap/Sources
     tools/audiotap/Tests
     tools/meeting-simulator/Sources

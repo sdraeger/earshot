@@ -115,5 +115,5 @@ jobs:
         env:
           CFFIXED_USER_HOME: ${{ steps.home.outputs.home }}
         run: |
-          cd app/MeetingTranscriber
+          cd app/Earshot
           swift test --filter '${{ steps.filter.outputs.filter }}|RunnerHomeIsolationTests'

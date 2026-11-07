@@ -51,7 +51,7 @@ Usage: e2e-cpu-load.sh [--no-build] [--keep-app] [--fixture path/to.wav]
                        [--idle-window SECONDS] [--active-window SECONDS]
                        [--idle-max-cpu PERCENT]
 
-  --no-build           Skip build/deploy/re-sign; use ~/Applications/MeetingTranscriber-Dev.app as-is.
+  --no-build           Skip build/deploy/re-sign; use ~/Applications/Earshot-Dev.app as-is.
   --keep-app           Leave the dev app running on exit. Default: quit it.
   --fixture            Audio fixture for meeting-simulator. Default: two_speakers_de.wav.
   --idle-window        Idle measurement window in seconds (default 60).
@@ -70,14 +70,14 @@ done
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-DEV_BUNDLE_BUILD="$ROOT/app/MeetingTranscriber/.build/MeetingTranscriber-Dev.app"
-DEV_BUNDLE_DEPLOY="$HOME/Applications/MeetingTranscriber-Dev.app"
+DEV_BUNDLE_BUILD="$ROOT/app/Earshot/.build/Earshot-Dev.app"
+DEV_BUNDLE_DEPLOY="$HOME/Applications/Earshot-Dev.app"
 SIMULATOR_PKG="$ROOT/tools/meeting-simulator"
 SIMULATOR_BIN="$SIMULATOR_PKG/.build/release/meeting-simulator"
-DEFAULT_FIXTURE="$ROOT/app/MeetingTranscriber/Tests/Fixtures/two_speakers_de.wav"
+DEFAULT_FIXTURE="$ROOT/app/Earshot/Tests/Fixtures/two_speakers_de.wav"
 # shellcheck disable=SC2034 # read by the RPC helpers in lib/e2e-helpers.sh
-RPC_TOKEN_FILE="$HOME/Library/Application Support/MeetingTranscriber/.rpc-token"
-REC_DIR="$HOME/Library/Application Support/MeetingTranscriber/recordings"
+RPC_TOKEN_FILE="$HOME/Library/Application Support/Earshot/.rpc-token"
+REC_DIR="$HOME/Library/Application Support/Earshot/recordings"
 # shellcheck disable=SC2034 # read by the RPC helpers in lib/e2e-helpers.sh
 RPC_BASE="http://127.0.0.1:9876"
 # shellcheck source=lib/bundle-ids.sh
@@ -171,7 +171,7 @@ quit_running_app
 # via $GITHUB_ACTIONS — never set in a developer's shell; removes ONLY the
 # regenerable queue snapshot (same pattern as e2e-app.sh).
 if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
-    _ipc_dir="$HOME/Library/Application Support/MeetingTranscriber/ipc"
+    _ipc_dir="$HOME/Library/Application Support/Earshot/ipc"
     rm -f "$_ipc_dir/pipeline_queue.json" "$_ipc_dir/pipeline_queue.tmp"
     log "CI: reset stale pipeline-queue snapshot"
 fi

@@ -1,8 +1,8 @@
-# SwiftLint configuration for Meeting Transcriber
+# SwiftLint configuration for Earshot
 
 included:
-  - app/MeetingTranscriber/Sources
-  - app/MeetingTranscriber/Tests
+  - app/Earshot/Sources
+  - app/Earshot/Tests
   - tools/audiotap/Sources
   - tools/audiotap/Tests
   - tools/meeting-simulator/Sources
@@ -13,8 +13,8 @@ included:
 excluded:
   - FluidAudio
   - .build
-  - app/MeetingTranscriber/.build
-  - app/MeetingTranscriber/.build-appstore
+  - app/Earshot/.build
+  - app/Earshot/.build-appstore
   - tools/audiotap/.build
   - tools/meeting-simulator/.build
 
@@ -177,7 +177,7 @@ custom_rules:
   scratch_defaults_suite:
     name: "Scratch defaults suite"
     regex: '(UserDefaults\??|\.init)\(\s*suiteName\s*:'
-    included: '/app/MeetingTranscriber/Tests/'
+    included: '/app/Earshot/Tests/'
     excluded: '/Tests/DefaultsSuite\.swift$'
     excluded_match_kinds:
       - comment

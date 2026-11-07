@@ -1,7 +1,7 @@
 import Foundation
 import os
 
-private let logger = Logger(subsystem: "com.meetingtranscriber.audiotap", category: "ChromiumHelperFilter")
+private let logger = Logger(subsystem: "com.earshot.audiotap", category: "ChromiumHelperFilter")
 
 /// Keeps a Chromium-based app's audio service in the tap set and drops its
 /// other helpers (issue #791).

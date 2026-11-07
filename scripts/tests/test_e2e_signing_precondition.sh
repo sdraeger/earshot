@@ -167,7 +167,7 @@ test_the_refusal_actually_stops_the_run() {
     # Without this, a refusal caused by the sandbox itself would read as a pass.
     local dev="$home/dev.keychain-db"
     : > "$dev"
-    printf '#!/usr/bin/env bash\ncase "${1:-}" in find-identity) echo "  1) 1234567890ABCDEF1234567890ABCDEF12345678 \"MeetingTranscriberDevSelfHosted\"";; esac\nexit 0\n' \
+    printf '#!/usr/bin/env bash\ncase "${1:-}" in find-identity) echo "  1) 1234567890ABCDEF1234567890ABCDEF12345678 \"EarshotDevSelfHosted\"";; esac\nexit 0\n' \
         > "$home/bin/security"
     chmod +x "$home/bin/security"
     status="$(_run_build_path "$home" env DEVELOPER_ID= DEV_KEYCHAIN="$dev")"

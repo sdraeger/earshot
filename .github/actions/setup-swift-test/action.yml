@@ -35,11 +35,11 @@ inputs:
   cache-path:
     description: >
       The SwiftPM scratch directory to cache. build_release.sh builds the App
-      Store variant in `app/MeetingTranscriber/.build-appstore`, so that leg
+      Store variant in `app/Earshot/.build-appstore`, so that leg
       passes that directory. The path is part of the cache version, so
       changing it for one caller leaves the other callers' caches alone.
     required: false
-    default: app/MeetingTranscriber/.build
+    default: app/Earshot/.build
   swift-flags:
     description: >
       Extra arguments forwarded to the pre-warm `swift test` invocation
@@ -151,9 +151,9 @@ runs:
       id: keys
       shell: bash
       env:
-        SPM_KEY: spm-${{ runner.os }}-${{ steps.toolchain.outputs.id }}-${{ inputs.cache-key-suffix }}-${{ hashFiles('app/MeetingTranscriber/Package.resolved', 'app/MeetingTranscriber/Package.swift', 'tools/audiotap/Package.swift') }}
+        SPM_KEY: spm-${{ runner.os }}-${{ steps.toolchain.outputs.id }}-${{ inputs.cache-key-suffix }}-${{ hashFiles('app/Earshot/Package.resolved', 'app/Earshot/Package.swift', 'tools/audiotap/Package.swift') }}
         SPM_RESTORE_KEYS: ${{ inputs.cache-restore-fallback == 'true' && format('spm-{0}-{1}-{2}-', runner.os, steps.toolchain.outputs.id, inputs.cache-key-suffix) || '' }}
-        MODELS_KEY: ml-models-${{ runner.os }}-${{ hashFiles('app/MeetingTranscriber/Package.resolved', 'app/MeetingTranscriber/Tests/ModelPreloadTests.swift') }}-v3
+        MODELS_KEY: ml-models-${{ runner.os }}-${{ hashFiles('app/Earshot/Package.resolved', 'app/Earshot/Tests/ModelPreloadTests.swift') }}-v3
         MODELS_RESTORE_KEYS: ml-models-${{ runner.os }}-
       run: |
         {
@@ -191,7 +191,7 @@ runs:
       uses: actions/cache/restore@v5
       with:
         path: |
-          ~/Library/Application Support/MeetingTranscriber/huggingface
+          ~/Library/Application Support/Earshot/huggingface
           ~/Library/Application Support/FluidAudio
         key: ${{ steps.keys.outputs.models }}
         restore-keys: ${{ steps.keys.outputs.models-restore }}
@@ -202,7 +202,7 @@ runs:
       uses: actions/cache@v5
       with:
         path: |
-          ~/Library/Application Support/MeetingTranscriber/huggingface
+          ~/Library/Application Support/Earshot/huggingface
           ~/Library/Application Support/FluidAudio
         key: ${{ steps.keys.outputs.models }}
         restore-keys: ${{ steps.keys.outputs.models-restore }}
@@ -228,7 +228,7 @@ runs:
         SWIFT_FLAGS: ${{ inputs.swift-flags }}
       run: |
         set -euo pipefail
-        cd app/MeetingTranscriber
+        cd app/Earshot
         # Split into words without glob expansion. The `+` form keeps an
         # empty list from tripping `set -u` on the system bash 3.2.
         read -ra flags <<< "$SWIFT_FLAGS"

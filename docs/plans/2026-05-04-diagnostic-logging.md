@@ -35,16 +35,16 @@ Foundation pieces every later phase depends on: redaction helpers, settings rena
 ### Task 1.1: Add `LogRedaction.swift` with `pseudonymized` + `redactedName`
 
 **Files:**
-- Create: `app/MeetingTranscriber/Sources/LogRedaction.swift`
-- Test: `app/MeetingTranscriber/Tests/LogRedactionTests.swift`
+- Create: `app/Earshot/Sources/LogRedaction.swift`
+- Test: `app/Earshot/Tests/LogRedactionTests.swift`
 
 **Step 1: Write the failing test**
 
-Create `app/MeetingTranscriber/Tests/LogRedactionTests.swift`:
+Create `app/Earshot/Tests/LogRedactionTests.swift`:
 
 ```swift
 import XCTest
-@testable import MeetingTranscriber
+@testable import Earshot
 
 final class LogRedactionTests: XCTestCase {
     // pseudonymized — stable, hex, 4 chars
@@ -99,14 +99,14 @@ final class LogRedactionTests: XCTestCase {
 **Step 2: Run test to verify it fails**
 
 ```bash
-cd app/MeetingTranscriber && swift test --filter LogRedactionTests
+cd app/Earshot && swift test --filter LogRedactionTests
 ```
 
 Expected: compile error "no member 'pseudonymized'" / "no member 'redactedName'".
 
 **Step 3: Create the implementation**
 
-Create `app/MeetingTranscriber/Sources/LogRedaction.swift`:
+Create `app/Earshot/Sources/LogRedaction.swift`:
 
 ```swift
 import CryptoKit
@@ -145,7 +145,7 @@ extension String {
 **Step 4: Run test to verify it passes**
 
 ```bash
-cd app/MeetingTranscriber && swift test --filter LogRedactionTests
+cd app/Earshot && swift test --filter LogRedactionTests
 ```
 
 Expected: 8 tests pass.
@@ -153,7 +153,7 @@ Expected: 8 tests pass.
 **Step 5: Commit**
 
 ```bash
-git add app/MeetingTranscriber/Sources/LogRedaction.swift app/MeetingTranscriber/Tests/LogRedactionTests.swift
+git add app/Earshot/Sources/LogRedaction.swift app/Earshot/Tests/LogRedactionTests.swift
 git commit -m "feat(app): add LogRedaction with pseudonymized + redactedName helpers"
 ```
 
@@ -164,15 +164,15 @@ git commit -m "feat(app): add LogRedaction with pseudonymized + redactedName hel
 Generalises the existing flag — same UserDefaults key reused so users keep their setting; new name reflects new scope.
 
 **Files:**
-- Modify: `app/MeetingTranscriber/Sources/AppSettings.swift:288-290, 363`
-- Modify: `app/MeetingTranscriber/Sources/AppState.swift:250, 308`
-- Modify: `app/MeetingTranscriber/Sources/WatchLoop.swift:54, 81, 94, 157, 265`
-- Modify: `app/MeetingTranscriber/Sources/Settings/AdvancedSettingsView.swift:59-65`
-- Modify: `app/MeetingTranscriber/Tests/AppSettingsTests.swift` (any tests touching `audioDebugLogging`)
+- Modify: `app/Earshot/Sources/AppSettings.swift:288-290, 363`
+- Modify: `app/Earshot/Sources/AppState.swift:250, 308`
+- Modify: `app/Earshot/Sources/WatchLoop.swift:54, 81, 94, 157, 265`
+- Modify: `app/Earshot/Sources/Settings/AdvancedSettingsView.swift:59-65`
+- Modify: `app/Earshot/Tests/AppSettingsTests.swift` (any tests touching `audioDebugLogging`)
 
 **Step 1: Update test for new name + migration**
 
-In `app/MeetingTranscriber/Tests/AppSettingsTests.swift`, find any test using `audioDebugLogging` and rename. Add a new test for migration:
+In `app/Earshot/Tests/AppSettingsTests.swift`, find any test using `audioDebugLogging` and rename. Add a new test for migration:
 
 ```swift
 func test_verboseDiagnostics_migratesFromAudioDebugLoggingKey() {
@@ -205,7 +205,7 @@ func test_verboseDiagnostics_persistsUnderNewKey() {
 **Step 2: Run tests to verify they fail**
 
 ```bash
-cd app/MeetingTranscriber && swift test --filter AppSettingsTests
+cd app/Earshot && swift test --filter AppSettingsTests
 ```
 
 Expected: failures on `verboseDiagnostics` (member not found) and migration test.
@@ -222,8 +222,8 @@ Replace lines 281-290:
     /// (segment counts, input RMS, sample-rate validation), VAD
     /// (segment boundaries, round-trip checks), diarization, speaker
     /// matching (top-2 candidates + margins), and protocol generation.
-    /// Off by default. Logs go to `com.meetingtranscriber` and
-    /// `com.meetingtranscriber.audiotap`. Use the "Export Diagnostics"
+    /// Off by default. Logs go to `com.earshot` and
+    /// `com.earshot.audiotap`. Use the "Export Diagnostics"
     /// button in Settings → Advanced to attach a log to a bug report.
     var verboseDiagnostics: Bool {
         didSet { defaults.set(verboseDiagnostics, forKey: "verboseDiagnostics") }
@@ -251,19 +251,19 @@ Replace `audioDebugLogging` → `verboseDiagnostics` everywhere it occurs:
 
 ```bash
 # Verify the changes
-grep -rn "audioDebugLogging" app/MeetingTranscriber/Sources/ tools/audiotap/Sources/
+grep -rn "audioDebugLogging" app/Earshot/Sources/ tools/audiotap/Sources/
 ```
 
 Expected after edit: no matches in `Sources/` (legacy key only appears in the migration block in `AppSettings.swift`).
 
 Files to edit (use `Edit` tool, one occurrence at a time):
-- `app/MeetingTranscriber/Sources/AppState.swift:250` — `audioDebugLogging:` parameter label and value
-- `app/MeetingTranscriber/Sources/AppState.swift:308` — same
-- `app/MeetingTranscriber/Sources/WatchLoop.swift:54` — property
-- `app/MeetingTranscriber/Sources/WatchLoop.swift:81, 94` — init param + assignment
-- `app/MeetingTranscriber/Sources/WatchLoop.swift:157, 265` — call sites still pass `debugLogging:` to AudioCaptureSession (unchanged param name there) — *only rename the source, not the audiotap-side parameter*
+- `app/Earshot/Sources/AppState.swift:250` — `audioDebugLogging:` parameter label and value
+- `app/Earshot/Sources/AppState.swift:308` — same
+- `app/Earshot/Sources/WatchLoop.swift:54` — property
+- `app/Earshot/Sources/WatchLoop.swift:81, 94` — init param + assignment
+- `app/Earshot/Sources/WatchLoop.swift:157, 265` — call sites still pass `debugLogging:` to AudioCaptureSession (unchanged param name there) — *only rename the source, not the audiotap-side parameter*
 
-In `app/MeetingTranscriber/Sources/Settings/AdvancedSettingsView.swift:59-65`:
+In `app/Earshot/Sources/Settings/AdvancedSettingsView.swift:59-65`:
 
 ```swift
                 Toggle("Verbose Diagnostic Logging", isOn: $settings.verboseDiagnostics)
@@ -281,7 +281,7 @@ In `app/MeetingTranscriber/Sources/Settings/AdvancedSettingsView.swift:59-65`:
 **Step 5: Build + run tests**
 
 ```bash
-cd app/MeetingTranscriber && swift build && swift test --filter AppSettingsTests
+cd app/Earshot && swift build && swift test --filter AppSettingsTests
 ```
 
 Expected: build succeeds, AppSettingsTests pass (including the two new migration tests).
@@ -289,7 +289,7 @@ Expected: build succeeds, AppSettingsTests pass (including the two new migration
 **Step 6: Commit**
 
 ```bash
-git add app/MeetingTranscriber/Sources/ app/MeetingTranscriber/Tests/AppSettingsTests.swift
+git add app/Earshot/Sources/ app/Earshot/Tests/AppSettingsTests.swift
 git commit -m "refactor(app): rename audioDebugLogging → verboseDiagnostics with UserDefaults migration"
 ```
 
@@ -300,17 +300,17 @@ git commit -m "refactor(app): rename audioDebugLogging → verboseDiagnostics wi
 The pipeline runs transcription → diarization → protocol generation per job. Today the logs in each stage have no shared identifier. Add a UUID per job, log it at every stage entry/exit.
 
 **Files:**
-- Modify: `app/MeetingTranscriber/Sources/PipelineJob.swift`
-- Modify: `app/MeetingTranscriber/Sources/PipelineQueue.swift` (add `[\(job.shortID)]` prefix to existing log lines at stage boundaries — narrowed to ~5 spots, see Step 3)
-- Test: `app/MeetingTranscriber/Tests/PipelineJobTests.swift` (create if absent)
+- Modify: `app/Earshot/Sources/PipelineJob.swift`
+- Modify: `app/Earshot/Sources/PipelineQueue.swift` (add `[\(job.shortID)]` prefix to existing log lines at stage boundaries — narrowed to ~5 spots, see Step 3)
+- Test: `app/Earshot/Tests/PipelineJobTests.swift` (create if absent)
 
 **Step 1: Write the failing test**
 
-Create `app/MeetingTranscriber/Tests/PipelineJobTests.swift` if not present, otherwise extend it:
+Create `app/Earshot/Tests/PipelineJobTests.swift` if not present, otherwise extend it:
 
 ```swift
 import XCTest
-@testable import MeetingTranscriber
+@testable import Earshot
 
 final class PipelineJobTests: XCTestCase {
     func test_jobHasUniqueID() {
@@ -337,14 +337,14 @@ final class PipelineJobTests: XCTestCase {
 **Step 2: Run test to verify it fails**
 
 ```bash
-cd app/MeetingTranscriber && swift test --filter PipelineJobTests
+cd app/Earshot && swift test --filter PipelineJobTests
 ```
 
 Expected: missing-member error on `id` and `shortID`.
 
 **Step 3: Implement**
 
-In `app/MeetingTranscriber/Sources/PipelineJob.swift`, add:
+In `app/Earshot/Sources/PipelineJob.swift`, add:
 
 ```swift
 struct PipelineJob: ... {  // existing properties unchanged
@@ -382,7 +382,7 @@ init(from decoder: Decoder) throws {
 **Step 4: Run tests + build**
 
 ```bash
-cd app/MeetingTranscriber && swift build && swift test --filter PipelineJobTests
+cd app/Earshot && swift build && swift test --filter PipelineJobTests
 ```
 
 Expected: tests pass, build clean.
@@ -400,9 +400,9 @@ logger.info("[\(job.shortID, privacy: .public)] Transcription start")
 **Step 6: Commit**
 
 ```bash
-git add app/MeetingTranscriber/Sources/PipelineJob.swift \
-        app/MeetingTranscriber/Sources/PipelineQueue.swift \
-        app/MeetingTranscriber/Tests/PipelineJobTests.swift
+git add app/Earshot/Sources/PipelineJob.swift \
+        app/Earshot/Sources/PipelineQueue.swift \
+        app/Earshot/Tests/PipelineJobTests.swift
 git commit -m "feat(app): add per-PipelineJob UUID + shortID for log correlation"
 ```
 
@@ -460,7 +460,7 @@ static func describeTapError(_ status: OSStatus) -> String {
     case -12988:
         return "OSStatus -12988: likely missing permission. " +
                "Check System Settings → Privacy & Security → Screen Recording " +
-               "and enable Meeting Transcriber."
+               "and enable Earshot."
     case -10851:
         return "OSStatus -10851 (kAudioUnitErr_InvalidProperty): tap target may have exited."
     case -50:
@@ -497,7 +497,7 @@ git commit -m "feat(audiotap): translate tap-creation OSStatus to human-readable
 When transcription returns 0 segments, today the pipeline silently produces an empty protocol. Log a warning with input audio RMS so the cause is identifiable (silent input vs. ASR misconfiguration).
 
 **Files:**
-- Modify: `app/MeetingTranscriber/Sources/PipelineQueue.swift` (after the call site that runs transcription — find the line that calls `engine.transcribeSegments` or equivalent)
+- Modify: `app/Earshot/Sources/PipelineQueue.swift` (after the call site that runs transcription — find the line that calls `engine.transcribeSegments` or equivalent)
 - Reuse existing RMS computation from `tools/audiotap/Sources/DebugRMSReporter.swift` if exposed; otherwise use a small inline helper.
 
 **Step 1: Add a public test helper for RMS-from-PCM-buffer**
@@ -544,19 +544,19 @@ func test_rmsDecibels_silentBuffer_returnsLow() {
 **Step 3: Run tests + manual verification**
 
 ```bash
-cd app/MeetingTranscriber && swift test --filter AudioMixerTests
+cd app/Earshot && swift test --filter AudioMixerTests
 ```
 
 Manual: launch the app with a known-silent WAV, verify the warning fires:
 
 ```bash
-log stream --predicate 'subsystem == "com.meetingtranscriber" && category == "PipelineQueue"' --style compact
+log stream --predicate 'subsystem == "com.earshot" && category == "PipelineQueue"' --style compact
 ```
 
 **Step 4: Commit**
 
 ```bash
-git add app/MeetingTranscriber/Sources/PipelineQueue.swift app/MeetingTranscriber/Sources/AudioMixer.swift app/MeetingTranscriber/Tests/AudioMixerTests.swift
+git add app/Earshot/Sources/PipelineQueue.swift app/Earshot/Sources/AudioMixer.swift app/Earshot/Tests/AudioMixerTests.swift
 git commit -m "feat(app): log transcription summary + warn on empty result with input RMS"
 ```
 
@@ -565,7 +565,7 @@ git commit -m "feat(app): log transcription summary + warn on empty result with 
 ### Task 2.3: VAD round-trip validation log in `FluidVAD`
 
 **Files:**
-- Modify: `app/MeetingTranscriber/Sources/FluidVAD.swift:114-152` (around `extractSpeechSamples`)
+- Modify: `app/Earshot/Sources/FluidVAD.swift:114-152` (around `extractSpeechSamples`)
 
 **Step 1: Manual verification only — no unit test**
 
@@ -598,7 +598,7 @@ if !regions.isEmpty, let map = vadMap {
 **Step 3: Build + run app, verify log appears**
 
 ```bash
-cd app/MeetingTranscriber && swift build
+cd app/Earshot && swift build
 ./scripts/run_app.sh
 # Trigger a recording with VAD enabled, check Console.app for vad_extract lines
 ```
@@ -606,7 +606,7 @@ cd app/MeetingTranscriber && swift build
 **Step 4: Commit**
 
 ```bash
-git add app/MeetingTranscriber/Sources/FluidVAD.swift
+git add app/Earshot/Sources/FluidVAD.swift
 git commit -m "feat(app): log VAD trim summary + round-trip drift detection"
 ```
 
@@ -615,7 +615,7 @@ git commit -m "feat(app): log VAD trim summary + round-trip drift detection"
 ### Task 2.4: Mic-delay clamp logging in `AudioMixer`
 
 **Files:**
-- Modify: `app/MeetingTranscriber/Sources/AudioMixer.swift` (around `maxMicDelay` clamp, line ~29)
+- Modify: `app/Earshot/Sources/AudioMixer.swift` (around `maxMicDelay` clamp, line ~29)
 
 **Step 1: Write a failing test**
 
@@ -662,13 +662,13 @@ Replace the existing inline clamp with `let micDelay = clampMicDelay(rawDelay)`.
 **Step 4: Run tests**
 
 ```bash
-cd app/MeetingTranscriber && swift test --filter AudioMixerDelayTests
+cd app/Earshot && swift test --filter AudioMixerDelayTests
 ```
 
 **Step 5: Commit**
 
 ```bash
-git add app/MeetingTranscriber/Sources/AudioMixer.swift app/MeetingTranscriber/Tests/AudioMixerDelayTests.swift
+git add app/Earshot/Sources/AudioMixer.swift app/Earshot/Tests/AudioMixerDelayTests.swift
 git commit -m "feat(app): warn when mic delay is clamped (likely device-switch artefact)"
 ```
 
@@ -677,8 +677,8 @@ git commit -m "feat(app): warn when mic delay is clamped (likely device-switch a
 ### Task 2.5: Log LLM errors in OpenAI + Claude CLI generators
 
 **Files:**
-- Modify: `app/MeetingTranscriber/Sources/OpenAIProtocolGenerator.swift:154`
-- Modify: `app/MeetingTranscriber/Sources/ClaudeCLIProtocolGenerator.swift:71` (and the silent declared-but-unused logger)
+- Modify: `app/Earshot/Sources/OpenAIProtocolGenerator.swift:154`
+- Modify: `app/Earshot/Sources/ClaudeCLIProtocolGenerator.swift:71` (and the silent declared-but-unused logger)
 
 **Step 1: Manual verification only**
 
@@ -720,13 +720,13 @@ logger.warning("claude_cli_timeout elapsed=\(elapsed)s parts_received=\(parts.co
 **Step 4: Build + smoke**
 
 ```bash
-cd app/MeetingTranscriber && swift build
+cd app/Earshot && swift build
 ```
 
 **Step 5: Commit**
 
 ```bash
-git add app/MeetingTranscriber/Sources/OpenAIProtocolGenerator.swift app/MeetingTranscriber/Sources/ClaudeCLIProtocolGenerator.swift
+git add app/Earshot/Sources/OpenAIProtocolGenerator.swift app/Earshot/Sources/ClaudeCLIProtocolGenerator.swift
 git commit -m "feat(app): log LLM generation errors and Claude CLI subprocess progress"
 ```
 
@@ -735,14 +735,14 @@ git commit -m "feat(app): log LLM generation errors and Claude CLI subprocess pr
 ### Task 2.6: Permission-denial logging in `Permissions` + `AXHelper`
 
 **Files:**
-- Modify: `app/MeetingTranscriber/Sources/Permissions.swift`
-- Modify: `app/MeetingTranscriber/Sources/AXHelper.swift`
+- Modify: `app/Earshot/Sources/Permissions.swift`
+- Modify: `app/Earshot/Sources/AXHelper.swift`
 
 **Step 1: Read both files first**
 
 ```bash
-cat app/MeetingTranscriber/Sources/Permissions.swift
-cat app/MeetingTranscriber/Sources/AXHelper.swift
+cat app/Earshot/Sources/Permissions.swift
+cat app/Earshot/Sources/AXHelper.swift
 ```
 
 (Adapt the snippets below to the actual function signatures.)
@@ -765,7 +765,7 @@ For `AXHelper`: most calls return `nil` on failure. Add `logger.warning("ax_call
 **Step 3: Build + manual smoke**
 
 ```bash
-cd app/MeetingTranscriber && swift build
+cd app/Earshot && swift build
 ./scripts/run_app.sh
 # Verify that a fresh install with mic permission denied logs to Console.app
 ```
@@ -773,7 +773,7 @@ cd app/MeetingTranscriber && swift build
 **Step 4: Commit**
 
 ```bash
-git add app/MeetingTranscriber/Sources/Permissions.swift app/MeetingTranscriber/Sources/AXHelper.swift
+git add app/Earshot/Sources/Permissions.swift app/Earshot/Sources/AXHelper.swift
 git commit -m "feat(app): log permission and accessibility-API denials"
 ```
 
@@ -784,12 +784,12 @@ git commit -m "feat(app): log permission and accessibility-API denials"
 The Big One — logs top-2 candidates and which threshold check failed when a speaker is rejected. Uses `pseudonymized` from Task 1.1.
 
 **Files:**
-- Modify: `app/MeetingTranscriber/Sources/SpeakerMatcher.swift:176-182`
+- Modify: `app/Earshot/Sources/SpeakerMatcher.swift:176-182`
 
 **Step 1: Read SpeakerMatcher first to understand the current matching code**
 
 ```bash
-sed -n '160,210p' app/MeetingTranscriber/Sources/SpeakerMatcher.swift
+sed -n '160,210p' app/Earshot/Sources/SpeakerMatcher.swift
 ```
 
 **Step 2: Add forensic logs at the decision point**
@@ -819,13 +819,13 @@ logger.info("speaker_match_assigned label=\(label, privacy: .public) speaker=\(b
 **Step 3: Build + smoke**
 
 ```bash
-cd app/MeetingTranscriber && swift build && swift test --filter SpeakerMatcher
+cd app/Earshot && swift build && swift test --filter SpeakerMatcher
 ```
 
 **Step 4: Commit**
 
 ```bash
-git add app/MeetingTranscriber/Sources/SpeakerMatcher.swift
+git add app/Earshot/Sources/SpeakerMatcher.swift
 git commit -m "feat(app): log speaker-match decisions with pseudonymized names + reject reason"
 ```
 
@@ -836,14 +836,14 @@ git commit -m "feat(app): log speaker-match decisions with pseudonymized names +
 ### Task 3.1: `DiagnosticExporter.swift` reads `OSLogStore` and writes a redacted file
 
 **Files:**
-- Create: `app/MeetingTranscriber/Sources/DiagnosticExporter.swift`
-- Test: `app/MeetingTranscriber/Tests/DiagnosticExporterTests.swift`
+- Create: `app/Earshot/Sources/DiagnosticExporter.swift`
+- Test: `app/Earshot/Tests/DiagnosticExporterTests.swift`
 
 **Step 1: Write a failing test for the header generator (pure function)**
 
 ```swift
 import XCTest
-@testable import MeetingTranscriber
+@testable import Earshot
 
 final class DiagnosticExporterTests: XCTestCase {
     func test_header_includesRequiredFields() {
@@ -853,7 +853,7 @@ final class DiagnosticExporterTests: XCTestCase {
             macOSVersion: "14.5",
             settings: ["verboseDiagnostics": "true", "diarize": "true"]
         )
-        XCTAssertTrue(header.contains("MeetingTranscriber 1.2.3"))
+        XCTAssertTrue(header.contains("Earshot 1.2.3"))
         XCTAssertTrue(header.contains("abcdef"))
         XCTAssertTrue(header.contains("macOS 14.5"))
         XCTAssertTrue(header.contains("verboseDiagnostics=true"))
@@ -864,12 +864,12 @@ final class DiagnosticExporterTests: XCTestCase {
 **Step 2: Run → fail**
 
 ```bash
-cd app/MeetingTranscriber && swift test --filter DiagnosticExporterTests
+cd app/Earshot && swift test --filter DiagnosticExporterTests
 ```
 
 **Step 3: Implement**
 
-Create `app/MeetingTranscriber/Sources/DiagnosticExporter.swift`:
+Create `app/Earshot/Sources/DiagnosticExporter.swift`:
 
 ```swift
 import Foundation
@@ -885,7 +885,7 @@ enum DiagnosticExporter {
         let pairs = settings.sorted(by: { $0.key < $1.key })
             .map { "\($0.key)=\($0.value)" }.joined(separator: " ")
         return """
-        # MeetingTranscriber \(appVersion) (\(commit))
+        # Earshot \(appVersion) (\(commit))
         # macOS \(macOSVersion)
         # exported_at=\(ISO8601DateFormatter().string(from: Date()))
         # settings: \(pairs)
@@ -907,7 +907,7 @@ enum DiagnosticExporter {
         let store = try OSLogStore(scope: .currentProcessIdentifier)
         let position = store.position(date: Date().addingTimeInterval(-windowSeconds))
         let predicate = NSPredicate(
-            format: "subsystem CONTAINS 'com.meetingtranscriber'"
+            format: "subsystem CONTAINS 'com.earshot'"
         )
         let entries = try store.getEntries(at: position, matching: predicate)
 
@@ -931,7 +931,7 @@ enum DiagnosticExporter {
 **Step 4: Run tests**
 
 ```bash
-cd app/MeetingTranscriber && swift test --filter DiagnosticExporterTests
+cd app/Earshot && swift test --filter DiagnosticExporterTests
 ```
 
 Note: integration test of `export(to:)` can't be reliably written in unit tests — it depends on live OSLogStore. Cover only `makeHeader` with unit tests; verify `export` manually in Task 3.2.
@@ -939,7 +939,7 @@ Note: integration test of `export(to:)` can't be reliably written in unit tests 
 **Step 5: Commit**
 
 ```bash
-git add app/MeetingTranscriber/Sources/DiagnosticExporter.swift app/MeetingTranscriber/Tests/DiagnosticExporterTests.swift
+git add app/Earshot/Sources/DiagnosticExporter.swift app/Earshot/Tests/DiagnosticExporterTests.swift
 git commit -m "feat(app): add DiagnosticExporter to write last-30-min OSLogStore entries"
 ```
 
@@ -948,7 +948,7 @@ git commit -m "feat(app): add DiagnosticExporter to write last-30-min OSLogStore
 ### Task 3.2: "Export Diagnostics" button in `AdvancedSettingsView`
 
 **Files:**
-- Modify: `app/MeetingTranscriber/Sources/Settings/AdvancedSettingsView.swift` (Diagnostics section)
+- Modify: `app/Earshot/Sources/Settings/AdvancedSettingsView.swift` (Diagnostics section)
 
 **Step 1: Add the button + state**
 
@@ -974,7 +974,7 @@ if let err = exportError {
 
 private func exportDiagnostics() {
     let tmp = FileManager.default.temporaryDirectory
-        .appendingPathComponent("MeetingTranscriber-diagnostics-\(Int(Date().timeIntervalSince1970)).log")
+        .appendingPathComponent("Earshot-diagnostics-\(Int(Date().timeIntervalSince1970)).log")
     do {
         let count = try DiagnosticExporter.export(
             to: tmp,
@@ -1010,14 +1010,14 @@ private func exportDiagnostics() {
 # In the app: Settings → Advanced → Diagnostics → "Export Diagnostics…"
 # Finder should open with the .log file selected. Open it and verify:
 # 1. Header with version, commit, macOS, settings
-# 2. Log lines from com.meetingtranscriber subsystems
+# 2. Log lines from com.earshot subsystems
 # 3. No clear-text speaker names — only "speaker_xxxx" pseudonyms
 ```
 
 **Step 3: Commit**
 
 ```bash
-git add app/MeetingTranscriber/Sources/Settings/AdvancedSettingsView.swift
+git add app/Earshot/Sources/Settings/AdvancedSettingsView.swift
 git commit -m "feat(app): add Export Diagnostics button revealing log file in Finder"
 ```
 
@@ -1028,12 +1028,12 @@ git commit -m "feat(app): add Export Diagnostics button revealing log file in Fi
 ### Task 4.1: WhisperKitEngine NSLog → Logger
 
 **Files:**
-- Modify: `app/MeetingTranscriber/Sources/WhisperKitEngine.swift`
+- Modify: `app/Earshot/Sources/WhisperKitEngine.swift`
 
 **Step 1: Find call sites**
 
 ```bash
-grep -n "NSLog" app/MeetingTranscriber/Sources/WhisperKitEngine.swift
+grep -n "NSLog" app/Earshot/Sources/WhisperKitEngine.swift
 ```
 
 **Step 2: Add logger + replace each NSLog**
@@ -1054,8 +1054,8 @@ logger.error("...")  // for failures
 **Step 3: Build + commit**
 
 ```bash
-cd app/MeetingTranscriber && swift build
-git add app/MeetingTranscriber/Sources/WhisperKitEngine.swift
+cd app/Earshot && swift build
+git add app/Earshot/Sources/WhisperKitEngine.swift
 git commit -m "chore(app): switch WhisperKitEngine from NSLog to os.Logger"
 ```
 
@@ -1063,16 +1063,16 @@ git commit -m "chore(app): switch WhisperKitEngine from NSLog to os.Logger"
 
 ### Task 4.2: Qwen3AsrEngine NSLog → Logger
 
-Same approach as Task 4.1, applied to `app/MeetingTranscriber/Sources/Qwen3AsrEngine.swift`.
+Same approach as Task 4.1, applied to `app/Earshot/Sources/Qwen3AsrEngine.swift`.
 
 ```bash
-grep -n "NSLog" app/MeetingTranscriber/Sources/Qwen3AsrEngine.swift
+grep -n "NSLog" app/Earshot/Sources/Qwen3AsrEngine.swift
 ```
 
 Replace, build, commit:
 
 ```bash
-git add app/MeetingTranscriber/Sources/Qwen3AsrEngine.swift
+git add app/Earshot/Sources/Qwen3AsrEngine.swift
 git commit -m "chore(app): switch Qwen3AsrEngine from NSLog to os.Logger"
 ```
 
@@ -1081,16 +1081,16 @@ git commit -m "chore(app): switch Qwen3AsrEngine from NSLog to os.Logger"
 ### Task 4.3: NotificationManager print → Logger
 
 **Files:**
-- Modify: `app/MeetingTranscriber/Sources/NotificationManager.swift`
+- Modify: `app/Earshot/Sources/NotificationManager.swift`
 
 ```bash
-grep -n "print(" app/MeetingTranscriber/Sources/NotificationManager.swift
+grep -n "print(" app/Earshot/Sources/NotificationManager.swift
 ```
 
 Replace `print("...")` with `logger.warning("...")` or `logger.error("...")` based on context.
 
 ```bash
-git add app/MeetingTranscriber/Sources/NotificationManager.swift
+git add app/Earshot/Sources/NotificationManager.swift
 git commit -m "chore(app): switch NotificationManager from print to os.Logger"
 ```
 
@@ -1114,7 +1114,7 @@ ls -la .github/ISSUE_TEMPLATE/ 2>/dev/null
 
 ```yaml
 name: Bug Report
-description: Report a bug with Meeting Transcriber
+description: Report a bug with Earshot
 title: "[Bug] "
 labels: ["bug"]
 body:
@@ -1123,7 +1123,7 @@ body:
       value: |
         Thanks for the report! To help us debug, please attach a diagnostic log:
 
-        1. Open Meeting Transcriber → Settings → Advanced → Diagnostics
+        1. Open Earshot → Settings → Advanced → Diagnostics
         2. Toggle **Verbose Diagnostic Logging** ON
         3. Reproduce the problem
         4. Click **Export Diagnostics…** — Finder will reveal a `.log` file
@@ -1208,7 +1208,7 @@ End-to-end "users attach a log file to GitHub issues" workflow.
 
 ## Test plan
 
-- [ ] All Swift tests pass: `cd app/MeetingTranscriber && swift test --parallel`
+- [ ] All Swift tests pass: `cd app/Earshot && swift test --parallel`
 - [ ] Lint clean: `./scripts/lint.sh`
 - [ ] Manually toggle Verbose Diagnostic Logging, run a recording, click Export Diagnostics, verify Finder opens to the .log file
 - [ ] Verify the .log file contains pseudonymised speaker names (no clear text)

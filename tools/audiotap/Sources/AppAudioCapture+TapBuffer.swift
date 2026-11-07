@@ -2,7 +2,7 @@ import CoreAudio
 import Foundation
 import os
 
-private let logger = Logger(subsystem: "com.meetingtranscriber.audiotap", category: "AppAudioCapture")
+private let logger = Logger(subsystem: "com.earshot.audiotap", category: "AppAudioCapture")
 
 /// Which buffer of the aggregate's input carries the process tap (issue #803).
 ///

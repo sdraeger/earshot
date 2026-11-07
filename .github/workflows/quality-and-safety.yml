@@ -323,8 +323,8 @@ jobs:
           # The manifest arm; the job comment says what is on this list and
           # what was left off it. Paths, not globs, so a reader can grep them.
           manifest_files=$(git diff --name-only HEAD^1 HEAD -- \
-            app/MeetingTranscriber/Package.swift \
-            app/MeetingTranscriber/Package.resolved \
+            app/Earshot/Package.swift \
+            app/Earshot/Package.resolved \
             tools/audiotap/Package.swift \
             tools/audiotap/Package.resolved \
             .github/workflows/quality-and-safety.yml)
@@ -751,7 +751,7 @@ jobs:
           RUN_QUALITY_TESTS: "1"
           QUALITY_RESULTS_PATH: ${{ github.workspace }}/quality-results.json
           WHISPERKIT_MODEL: openai_whisper-large-v3-v20240930_turbo
-        run: cd app/MeetingTranscriber && swift test --filter "WhisperKitQualityTests|FluidDiarizerQualityTests|ParakeetQualityTests"
+        run: cd app/Earshot && swift test --filter "WhisperKitQualityTests|FluidDiarizerQualityTests|ParakeetQualityTests"
       # Diff this run's WER/DER against the committed baseline
       # (Tests/Fixtures/quality/quality-baseline.json). Fails the job if any
       # metric regressed beyond tolerance — a relative regression the per-test
@@ -765,7 +765,7 @@ jobs:
         env:
           RUN_QUALITY_TESTS: "1"
           QUALITY_RESULTS_PATH: ${{ github.workspace }}/quality-results.json
-        run: cd app/MeetingTranscriber && swift test --filter QualityBaselineGateTests
+        run: cd app/Earshot && swift test --filter QualityBaselineGateTests
       # No cancel-on-failure in this job: it would cancel the sanitizer legs,
       # and sanitizer-gate counts a cancelled leg as a sanitizer failure, so a
       # quality regression or a transport error here read as a red sanitizer

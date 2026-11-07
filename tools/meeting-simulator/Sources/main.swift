@@ -82,7 +82,7 @@ struct MeetingSimulator: ParsableCommand {
     /// of where the binary is later executed — works for both `swift run`
     /// in the package dir and a built binary copied elsewhere, as long as
     /// the source was compiled from the repo checkout.
-    private static let fixtureRepoRelativePath = "app/MeetingTranscriber/Tests/Fixtures/two_speakers_de.wav"
+    private static let fixtureRepoRelativePath = "app/Earshot/Tests/Fixtures/two_speakers_de.wav"
 
     private static func findFixture() -> String {
         // Walk Sources/ → meeting-simulator/ → tools/ → repo root. The

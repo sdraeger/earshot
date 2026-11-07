@@ -359,10 +359,10 @@ case "\$1" in
     find-identity)
         if [ "\${!#}" = "$workdir/dev.keychain-db" ]; then
             printf '  1) AAAA1111BBBB2222CCCC3333DDDD4444EEEE5555 "Apple Development: someone"\n'
-            printf '  2) 1234567890ABCDEF1234567890ABCDEF12345678 "MeetingTranscriberDevSelfHosted"\n'
+            printf '  2) 1234567890ABCDEF1234567890ABCDEF12345678 "EarshotDevSelfHosted"\n'
             printf '     2 valid identities found\n'
         else
-            printf '  1) 9999888877776666555544443333222211110000 "MeetingTranscriberDevSelfHosted"\n'
+            printf '  1) 9999888877776666555544443333222211110000 "EarshotDevSelfHosted"\n'
             printf '     1 valid identities found\n'
         fi ;;
 esac
@@ -397,7 +397,7 @@ STUB
 
 test_no_lane_depends_on_the_volatile_cert_copy() {
     local offenders
-    offenders="$(grep -ln 'meetingtranscriber-setup' "$REPO_ROOT"/scripts/e2e-*.sh 2>/dev/null)"
+    offenders="$(grep -ln 'earshot-setup' "$REPO_ROOT"/scripts/e2e-*.sh 2>/dev/null)"
     if [ -n "$offenders" ]; then
         echo "  these lanes read the setup script's /tmp export copy, which macOS" >&2
         echo "  discards on reboot — after which the lane aborts although the" >&2

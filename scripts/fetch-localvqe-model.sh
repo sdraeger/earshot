@@ -55,7 +55,7 @@ UPSTREAM_URL="https://huggingface.co/${REPO}/resolve/${REVISION}/${FILE}"
 # machine. Safe to delete: the next build refetches. Named for LocalVQE and not
 # for models in general, because it moves nothing else: WhisperKit and
 # FluidAudio cache under their own SDK directories, and those are the ~1 GB.
-CACHE_DIR="${MEETINGTRANSCRIBER_LOCALVQE_CACHE:-$HOME/Library/Caches/MeetingTranscriber/models}"
+CACHE_DIR="${EARSHOT_LOCALVQE_CACHE:-$HOME/Library/Caches/Earshot/models}"
 CACHED="$CACHE_DIR/$FILE"
 
 verify() {

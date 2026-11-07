@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Generate a three-speaker German test WAV for E2E diarization tests.
 #
-# Produces: app/MeetingTranscriber/Tests/Fixtures/three_speakers_de.wav (~25s, 16kHz mono)
+# Produces: app/Earshot/Tests/Fixtures/three_speakers_de.wav (~25s, 16kHz mono)
 # Requires: macOS `say` command with voices Anna, Flo, and Sandy installed, and `sox`.
 set -euo pipefail
 
@@ -9,7 +9,7 @@ command -v sox >/dev/null 2>&1 || { echo "ERROR: sox is required. Install with: 
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-FIXTURE_DIR="$PROJECT_DIR/app/MeetingTranscriber/Tests/Fixtures"
+FIXTURE_DIR="$PROJECT_DIR/app/Earshot/Tests/Fixtures"
 OUTPUT="$FIXTURE_DIR/three_speakers_de.wav"
 TMPDIR_AUDIO="$(mktemp -d)"
 

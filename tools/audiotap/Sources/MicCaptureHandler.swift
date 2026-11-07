@@ -3,7 +3,7 @@ import CoreAudio
 import Foundation
 import os.log
 
-private let logger = Logger(subsystem: "com.meetingtranscriber.audiotap", category: "MicCapture")
+private let logger = Logger(subsystem: "com.earshot.audiotap", category: "MicCapture")
 
 /// Records microphone audio to a WAV file via AVAudioEngine.
 /// Monitors for device changes via CoreAudio property listener (default input device)
@@ -79,7 +79,7 @@ public class MicCaptureHandler: @unchecked Sendable {
     /// an engine up can block forever, and on the main queue that takes the whole
     /// app down with it rather than just the microphone track.
     let restartQueue = DispatchQueue(
-        label: "com.meetingtranscriber.audiotap.mic-restart",
+        label: "com.earshot.audiotap.mic-restart",
         qos: .userInitiated,
     )
 

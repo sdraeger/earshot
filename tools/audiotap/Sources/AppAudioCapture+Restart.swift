@@ -2,7 +2,7 @@ import CoreAudio
 import Foundation
 import os.log
 
-private let logger = Logger(subsystem: "com.meetingtranscriber.audiotap", category: "AppAudioCapture")
+private let logger = Logger(subsystem: "com.earshot.audiotap", category: "AppAudioCapture")
 
 /// The output-device restart path, split out of `AppAudioCapture.swift` to stay
 /// under the 600-line lint cap.

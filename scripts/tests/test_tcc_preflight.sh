@@ -157,12 +157,12 @@ chmod +x "$TMP/bin/pkill"
 cat >"$TMP/bin/osascript" <<EOF
 #!/bin/sh
 case "\$(cat "$TMP/osa-mode")" in
-    refuse) echo "execution error: Not authorized to send Apple events to MeetingTranscriber-Dev. (-1743)" >&2; exit 1 ;;
-    timeout) echo "execution error: MeetingTranscriber-Dev got an error: AppleEvent timed out. (-1712)" >&2; exit 1 ;;
+    refuse) echo "execution error: Not authorized to send Apple events to Earshot-Dev. (-1743)" >&2; exit 1 ;;
+    timeout) echo "execution error: Earshot-Dev got an error: AppleEvent timed out. (-1712)" >&2; exit 1 ;;
     other) kill \$(cat "$TMP/quit-app.pid") 2>/dev/null
-           echo "execution error: MeetingTranscriber-Dev got an error: Application isn't running. (-600)" >&2; exit 1 ;;
+           echo "execution error: Earshot-Dev got an error: Application isn't running. (-600)" >&2; exit 1 ;;
     late) ( sleep 0.5; kill \$(cat "$TMP/quit-app.pid") ) >/dev/null 2>&1 &
-          echo "execution error: MeetingTranscriber-Dev got an error: AppleEvent timed out. (-1712)" >&2; exit 1 ;;
+          echo "execution error: Earshot-Dev got an error: AppleEvent timed out. (-1712)" >&2; exit 1 ;;
     *) kill \$(cat "$TMP/quit-app.pid") 2>/dev/null ;;
 esac
 EOF
@@ -186,8 +186,8 @@ expect_quit() {
     out="$(PATH="$TMP/bin:$PATH" E2E_APP_QUIT_HOLD_S="$hold" quit_running_app some.bundle "$marker" 2>&1)" || status=$?
     if [ "$status" -eq "$want" ] && _no_pid_alive "$(cat "$TMP/quit-app.pid")" \
         && case "$annotation" in
-               error) grep -q '^::error title=TCC Automation → MeetingTranscriber-Dev not usable::' <<<"$out" ;;
-               warning) grep -q '^::warning title=dev app did not quit::.*Possible causes: a pending Automation → MeetingTranscriber-Dev prompt' <<<"$out" \
+               error) grep -q '^::error title=TCC Automation → Earshot-Dev not usable::' <<<"$out" ;;
+               warning) grep -q '^::warning title=dev app did not quit::.*Possible causes: a pending Automation → Earshot-Dev prompt' <<<"$out" \
                    && ! grep -q '^::error' <<<"$out" ;;
                *) [ -z "$out" ] && [ ! -e "$TMP/pkill.log" ] ;;
            esac; then

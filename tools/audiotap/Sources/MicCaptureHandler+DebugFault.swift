@@ -2,7 +2,7 @@
 import Foundation
 import os.log
 
-private let logger = Logger(subsystem: "com.meetingtranscriber.audiotap", category: "MicCapture")
+private let logger = Logger(subsystem: "com.earshot.audiotap", category: "MicCapture")
 
 /// Debug fault injection for the e2e lanes (issues #379, #724/#706), split from
 /// `MicCaptureHandler.swift` to keep that file under the line cap. Inert unless

@@ -6,7 +6,7 @@ import Foundation
 struct MTCLI: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "mt-cli",
-        abstract: "Thin client for the Meeting Transcriber debug RPC server.",
+        abstract: "Thin client for the Earshot debug RPC server.",
         subcommands: [
             State.self, Healthz.self, Screenshot.self, UITree.self, UIPress.self,
             OpenSettings.self, CloseSettings.self, ConfirmBrowserConsent.self,

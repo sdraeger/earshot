@@ -5,7 +5,7 @@ import XCTest
 final class RPCClientTests: XCTestCase {
     func testDefaultTokenURLPointsAtAppDataDir() {
         let path = RPCClient.defaultTokenURL.path
-        XCTAssertTrue(path.contains("MeetingTranscriber"))
+        XCTAssertTrue(path.contains("Earshot"))
         XCTAssertTrue(path.hasSuffix(".rpc-token"))
     }
 
@@ -16,7 +16,7 @@ final class RPCClientTests: XCTestCase {
 
     func testMissingTokenErrorMessageMentionsEnvVar() {
         let err = RPCClient.RPCError.missingToken(URL(fileURLWithPath: "/tmp/nope"))
-        XCTAssertTrue(err.description.contains("MEETINGTRANSCRIBER_DEBUG_RPC"))
+        XCTAssertTrue(err.description.contains("EARSHOT_DEBUG_RPC"))
     }
 
     func testAppNotRunningErrorMessageMentionsURL() {

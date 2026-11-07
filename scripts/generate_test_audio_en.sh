@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Generate a short English test WAV for the streaming live-captions E2E.
 #
-# Produces: app/MeetingTranscriber/Tests/Fixtures/two_speakers_en.wav (~15s, 16kHz mono, ~485KB)
+# Produces: app/Earshot/Tests/Fixtures/two_speakers_en.wav (~15s, 16kHz mono, ~485KB)
 # Requires: macOS `say` command with voices Samantha and Daniel installed, and `sox`.
 #
 # The script is intentionally a KNOWN word list so the real-model E2E
@@ -15,7 +15,7 @@ command -v sox >/dev/null 2>&1 || { echo "ERROR: sox is required. Install with: 
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-FIXTURE_DIR="$PROJECT_DIR/app/MeetingTranscriber/Tests/Fixtures"
+FIXTURE_DIR="$PROJECT_DIR/app/Earshot/Tests/Fixtures"
 OUTPUT="$FIXTURE_DIR/two_speakers_en.wav"
 TMPDIR_AUDIO="$(mktemp -d)"
 

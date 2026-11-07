@@ -1,6 +1,6 @@
 # Stream Deck, hotkeys and other buttons
 
-Meeting Transcriber watches for meetings on its own, but sometimes you want a
+Earshot watches for meetings on its own, but sometimes you want a
 physical control: a Stream Deck key to arm it before a call, a hotkey to stop it
 when you switch to something private, a menu bar of your own.
 
@@ -17,20 +17,20 @@ Turn the API on: **Settings → Advanced → Local Automation API**. It is off b
 default and binds to `127.0.0.1` only.
 
 Enabling it writes a bearer token to
-`~/Library/Application Support/MeetingTranscriber/.rpc-token` (mode `0600`).
+`~/Library/Application Support/Earshot/.rpc-token` (mode `0600`).
 Everything below reads that file at run time rather than copying the value, so
 nothing breaks when the token rotates — which it does every time you switch the
 toggle off and back on.
 
 ## A Stream Deck plugin, if you want live state
 
-[**Meeting Transcriber for Stream Deck**](https://github.com/alexpfau/meeting-transcriber-streamdeck)
+[**Earshot for Stream Deck**](https://github.com/alexpfau/meeting-transcriber-streamdeck)
 is a plugin that polls `/v1/watch` and repaints the key, so it shows whether
 watching is on even when it was turned on from the app. Three actions — toggle,
 start, stop.
 
 [Download the latest `.streamDeckPlugin`](https://github.com/alexpfau/meeting-transcriber-streamdeck/releases/latest)
-and double-click it. The actions then appear under **Meeting Transcriber** in
+and double-click it. The actions then appear under **Earshot** in
 the Stream Deck app. It reads the token file itself, so there is no pairing
 step and nothing to configure.
 
@@ -58,9 +58,9 @@ In Shortcuts.app, create a new Shortcut named **Start Meeting Watching**
 containing a single **Run Shell Script** action (shell `/bin/zsh`) with:
 
 ```bash
-TOKEN_FILE="$HOME/Library/Application Support/MeetingTranscriber/.rpc-token"
+TOKEN_FILE="$HOME/Library/Application Support/Earshot/.rpc-token"
 if [ ! -r "$TOKEN_FILE" ]; then
-  echo "Meeting Transcriber automation API is off. Enable it in Settings > Advanced." >&2
+  echo "Earshot automation API is off. Enable it in Settings > Advanced." >&2
   exit 1
 fi
 TOKEN=$(cat "$TOKEN_FILE")
@@ -106,7 +106,7 @@ Maestro, Hammerspoon, a `.zshrc` alias — anything that can run a command can d
 this directly:
 
 ```bash
-TOKEN=$(cat "$HOME/Library/Application Support/MeetingTranscriber/.rpc-token")
+TOKEN=$(cat "$HOME/Library/Application Support/Earshot/.rpc-token")
 curl -sS -X POST http://127.0.0.1:9876/v1/watch \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
@@ -129,7 +129,7 @@ has its own resource, `/v1/record`, which records the system microphone and no
 app audio. Same recipe, one path changed:
 
 ```bash
-TOKEN=$(cat "$HOME/Library/Application Support/MeetingTranscriber/.rpc-token")
+TOKEN=$(cat "$HOME/Library/Application Support/Earshot/.rpc-token")
 curl -sS --fail-with-body -X POST http://127.0.0.1:9876/v1/record \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \

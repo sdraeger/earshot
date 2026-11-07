@@ -93,15 +93,15 @@ source "$ROOT/scripts/lib/e2e-helpers.sh"
 e2e_register_driver
 # Stable deploy path so the runner's manual TCC grants survive rebuilds; see
 # scripts/e2e-silent-recording.sh for the full reasoning.
-DEV_BUNDLE_DEPLOY="$HOME/Applications/MeetingTranscriber-Dev.app"
-BIN="$DEV_BUNDLE_DEPLOY/Contents/MacOS/MeetingTranscriber"
+DEV_BUNDLE_DEPLOY="$HOME/Applications/Earshot-Dev.app"
+BIN="$DEV_BUNDLE_DEPLOY/Contents/MacOS/Earshot"
 MTCLI="$ROOT/tools/mt-cli/.build/debug/mt-cli"
 SIM="$ROOT/tools/meeting-simulator/.build/release/meeting-simulator"
 NOISE="$ROOT/scripts/play-quiet-noise.swift"
 # shellcheck source=lib/bundle-ids.sh
 source "$ROOT/scripts/lib/bundle-ids.sh"
 BUNDLE_ID="$DEV_BUNDLE_ID"
-REC_DIR="$HOME/Library/Application Support/MeetingTranscriber/recordings"
+REC_DIR="$HOME/Library/Application Support/Earshot/recordings"
 RUN_START_MARKER="$(mktemp "${TMPDIR:-/tmp}/e2e-channel-fault-start.XXXXXX")"
 
 # The loopback device the microphone track reads from. Named, not a UID:
@@ -161,7 +161,7 @@ cleanup() {
     if [ -n "${SIM_PID:-}" ] && kill -0 "$SIM_PID" 2>/dev/null; then
         kill -TERM "$SIM_PID" 2>/dev/null || true
     fi
-    pkill -f "MeetingTranscriber-Dev.app/Contents/MacOS/MeetingTranscriber" 2>/dev/null || true
+    pkill -f "Earshot-Dev.app/Contents/MacOS/Earshot" 2>/dev/null || true
     sweep_run_artifacts "$REC_DIR" "$RUN_START_MARKER"
     rm -f "${RUN_START_MARKER:-}" 2>/dev/null || true
     # Only the two domains that exist as files. Restoring "$BUNDLE_ID" as a third

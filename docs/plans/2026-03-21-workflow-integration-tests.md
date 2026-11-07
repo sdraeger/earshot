@@ -86,7 +86,7 @@ Note: Check if `ProtocolGenerating.generate()` has `throws` in the protocol. If 
 
 **Step 3: Run tests to verify mocks still work**
 
-Run: `cd app/MeetingTranscriber && swift test 2>&1 | grep -E "(passed|failed)"`
+Run: `cd app/Earshot && swift test 2>&1 | grep -E "(passed|failed)"`
 Expected: All existing tests pass. Fix any `runCalled` → `runCount > 0` references.
 
 **Step 4: Commit**
@@ -107,7 +107,7 @@ test(app): enhance mocks with runCount and shouldThrow for workflow tests
 The harness bundles all mocks, creates the PipelineQueue, and tracks state transitions:
 
 ```swift
-@testable import MeetingTranscriber
+@testable import Earshot
 import XCTest
 
 @MainActor
@@ -334,7 +334,7 @@ Then the first happy-path test:
 
 **Step 2: Run test to verify it passes**
 
-Run: `cd app/MeetingTranscriber && swift test --filter WorkflowIntegrationTests`
+Run: `cd app/Earshot && swift test --filter WorkflowIntegrationTests`
 Expected: PASS
 
 **Step 3: Commit**
@@ -706,7 +706,7 @@ test(app): add multi-job sequential processing workflow tests
 **Step 1: Run full test suite**
 
 ```bash
-cd app/MeetingTranscriber && swift test
+cd app/Earshot && swift test
 ```
 
 Expected: All tests pass (existing + ~12 new workflow integration tests).

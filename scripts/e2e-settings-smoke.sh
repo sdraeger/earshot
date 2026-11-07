@@ -20,8 +20,8 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # build_release.sh assembles the bundle at the repo-root .build/release (it moves
 # the .app back there after staging the DMG), NOT the SPM package's .build.
-APP="$REPO_ROOT/.build/release/MeetingTranscriber.app"
-TOKEN_FILE="$HOME/Library/Application Support/MeetingTranscriber/.rpc-token"
+APP="$REPO_ROOT/.build/release/Earshot.app"
+TOKEN_FILE="$HOME/Library/Application Support/Earshot/.rpc-token"
 BASE="http://127.0.0.1:9876"
 TREE_JSON="$(mktemp)"
 
@@ -30,14 +30,14 @@ ok()   { printf "    \033[0;32m✓\033[0m %s\n" "$1"; }
 fail() { printf "    \033[0;31m✗\033[0m %s\n" "$1"; exit 1; }
 
 # Kill only THIS release bundle's process, matched by its unique bundle path.
-# Both the release and a developer's MeetingTranscriber-Dev bundle share the
-# executable name "MeetingTranscriber" (only the .app dir differs), so `pkill -x`
+# Both the release and a developer's Earshot-Dev bundle share the
+# executable name "Earshot" (only the .app dir differs), so `pkill -x`
 # would hit both; `-f "$APP"` disambiguates so running this locally never touches
 # a running Dev app.
 kill_app() { pkill -f "$APP" 2>/dev/null || true; }
 trap 'kill_app; rm -f "$TREE_JSON"' EXIT
 
-# This drives the RELEASE bundle, which shares the `app.meetingtranscriber`
+# This drives the RELEASE bundle, which shares the `app.earshot`
 # defaults domain with an installed copy — so the run mutates the REAL settings of
 # whoever executes it. Each step restores what it changed, but a run that dies in
 # between leaves them changed, and `recordOnly` stuck ON means the next real meeting
@@ -45,7 +45,7 @@ trap 'kill_app; rm -f "$TREE_JSON"' EXIT
 # machine does, so local runs must opt in knowingly.
 if [ -z "${CI:-}" ] && [ "${MT_SMOKE_ALLOW_LOCAL:-}" != "1" ]; then
     printf "\033[0;31m✗\033[0m %s\n" \
-        "refusing to run outside CI: this toggles recordOnly and rewrites micName in your REAL settings (app.meetingtranscriber)." >&2
+        "refusing to run outside CI: this toggles recordOnly and rewrites micName in your REAL settings (app.earshot)." >&2
     printf "  %s\n" "Re-run with MT_SMOKE_ALLOW_LOCAL=1 if you accept that a crashed run can leave them changed." >&2
     exit 1
 fi
@@ -57,8 +57,8 @@ sleep 1
 [ -d "$APP" ] || fail "no app bundle at $APP"
 ok "built $APP"
 
-step "Launch with MEETINGTRANSCRIBER_DEBUG_RPC=1"
-MEETINGTRANSCRIBER_DEBUG_RPC=1 open -gj "$APP"
+step "Launch with EARSHOT_DEBUG_RPC=1"
+EARSHOT_DEBUG_RPC=1 open -gj "$APP"
 for _ in $(seq 1 60); do
     [ -s "$TOKEN_FILE" ] && lsof -i :9876 >/dev/null 2>&1 && break
     sleep 0.5

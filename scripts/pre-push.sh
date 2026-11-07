@@ -37,7 +37,7 @@ for arg in "$@"; do
     esac
 done
 
-cd app/MeetingTranscriber
+cd app/Earshot
 
 echo "==> swift build -c release (Homebrew variant)"
 swift build -c release
@@ -50,8 +50,8 @@ if [[ "$WITH_APPSTORE" == 1 ]]; then
 fi
 
 if [[ "$WITH_TESTS" == 1 ]]; then
-    echo "==> swift build --target MeetingTranscriberTests"
-    swift build --target MeetingTranscriberTests
+    echo "==> swift build --target EarshotTests"
+    swift build --target EarshotTests
 fi
 
 echo

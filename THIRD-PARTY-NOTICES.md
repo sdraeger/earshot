@@ -1,6 +1,6 @@
 # Third-party notices
 
-Meeting Transcriber itself is MIT licensed (see `LICENSE`).
+Earshot itself is MIT licensed (see `LICENSE`).
 
 **Scope:** this file covers every third-party component redistributed in the
 shipped application, whether statically linked into the app binary or bundled as
@@ -22,7 +22,7 @@ Speech recognition (the default transcription engine), statically linked into
 the app binary.
 
 - **Project:** <https://github.com/argmaxinc/WhisperKit>
-- **Version:** 1.1.0, pinned in `app/MeetingTranscriber/Package.resolved`
+- **Version:** 1.1.0, pinned in `app/Earshot/Package.resolved`
 - **Copyright:** Copyright (c) 2024 argmax, inc.
 - **License:** MIT. MIT requires the copyright notice and permission notice in
   all copies, and a binary is a copy, so the text ships as
@@ -44,7 +44,7 @@ Parakeet and Nemotron live-caption engines, statically linked into the app
 binary.
 
 - **Project:** <https://github.com/FluidInference/FluidAudio>
-- **Version:** 0.15.6, pinned in `app/MeetingTranscriber/Package.resolved`
+- **Version:** 0.15.6, pinned in `app/Earshot/Package.resolved`
 - **Copyright:** the upstream `LICENSE` is the unmodified Apache-2.0 text with
   the boilerplate `Copyright [yyyy] [name of copyright owner]` line left as
   written, so it names no holder. The project is published by FluidInference.
@@ -158,7 +158,7 @@ LocalVQE is a streaming, CPU-tuned derivative of DeepVQE (Indenbom et al.,
 Interspeech 2023, <https://arxiv.org/abs/2306.03177>).
 
 The macOS `.xcframework` this app links is built from that source and published
-separately, because upstream ships no macOS artifact; `app/MeetingTranscriber/Package.swift`
+separately, because upstream ships no macOS artifact; `app/Earshot/Package.swift`
 pins it by checksum. `scripts/fetch-localvqe-model.sh` pins the weights the same
 way, by revision and SHA-256.
 

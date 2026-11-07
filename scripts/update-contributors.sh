@@ -62,7 +62,7 @@ TITLE="docs(docs): add new contributors"
 
 notify() {
   command -v osascript >/dev/null || return 0
-  osascript -e "display notification \"$1\" with title \"meeting-transcriber contributors\"" || true
+  osascript -e "display notification \"$1\" with title \"earshot contributors\"" || true
 }
 
 # Check the layout in the current directory and set TABLE to the file the

@@ -1,6 +1,6 @@
 import Foundation
 
-/// Thin HTTP client for the running Meeting Transcriber app's debug RPC server.
+/// Thin HTTP client for the running Earshot app's debug RPC server.
 /// Reads the bearer token from disk at the same path the app writes it to.
 struct RPCClient {
     let baseURL: URL
@@ -14,15 +14,15 @@ struct RPCClient {
         var description: String {
             switch self {
             case let .appNotRunning(url):
-                "Meeting Transcriber app is not running on \(url.absoluteString) " +
-                    "(or MEETINGTRANSCRIBER_DEBUG_RPC=1 was not set when it launched)"
+                "Earshot app is not running on \(url.absoluteString) " +
+                    "(or EARSHOT_DEBUG_RPC=1 was not set when it launched)"
 
             case let .http(status, body):
                 "RPC returned HTTP \(status): \(body)"
 
             case let .missingToken(url):
                 "RPC token not found at \(url.path) — start the app with " +
-                    "MEETINGTRANSCRIBER_DEBUG_RPC=1 first"
+                    "EARSHOT_DEBUG_RPC=1 first"
             }
         }
     }
@@ -35,7 +35,7 @@ struct RPCClient {
             ?? FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support")
         return appSupport
-            .appendingPathComponent("MeetingTranscriber")
+            .appendingPathComponent("Earshot")
             .appendingPathComponent(".rpc-token")
     }()
 

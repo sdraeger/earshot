@@ -1,10 +1,10 @@
-# Meeting Transcriber
+# Earshot
 
 ## Project Structure
 
 ```
 VERSION                    # App version (read by build scripts)
-app/MeetingTranscriber/    # Swift macOS menu-bar app (SPM)
+app/Earshot/    # Swift macOS menu-bar app (SPM)
   Package.swift            # WhisperKit + FluidAudio + AudioTapLib + CLocalVQE runtime deps;
                            #   ViewInspector + SnapshotTesting test deps
   Sources/                 # @main app shell + AppState composition root wiring the concern
@@ -26,14 +26,14 @@ tools/meeting-simulator/   # Meeting simulator for testing
 tools/mt-cli/              # Thin Swift client for DebugRPCServer (+ skill.md)
 scripts/                   # build_release / run_app / e2e-*.sh drivers, lint.sh, pre-push.sh,
                            #   test-audio + quality-fixture generators, self-hosted runner setup
-Casks/                     # Homebrew Cask formulae (meeting-transcriber + @beta)
+Casks/                     # Homebrew Cask formulae (earshot + @beta)
 .github/workflows/         # CI (lint/analyze/test), release, e2e lanes, quality-and-safety, pages
 docs/                      # architecture/ (per-area docs) + architecture-macos.md + plans/ (committed RFCs; .local/ = gitignored scratch)
 protocols/                 # Protocol output dir (gitignored)
 speakers.json / .env       # Runtime voice profiles + env vars (gitignored)
 ```
 
-> Full per-file breakdown: `find app/MeetingTranscriber/Sources tools -name '*.swift'` — each
+> Full per-file breakdown: `find app/Earshot/Sources tools -name '*.swift'` — each
 > file's purpose is documented in its header comment. Non-obvious design rationale and gotchas
 > live in the docs listed under Architecture Docs and in Critical Notes below.
 
@@ -69,14 +69,14 @@ Single-source: Audio/Video → 16kHz mono (AVAudioFile → AVAsset → ffmpeg fa
 # the truncation hides which test failed. Redirect to a file and read that instead
 # (`> /tmp/run.log 2>&1`), or enable `set -o pipefail`. Run the suite with
 # CFFIXED_USER_HOME pointed at a scratch folder, or its tests write into the
-# real app data under ~/Library/Application Support/MeetingTranscriber.
-cd app/MeetingTranscriber && swift build --build-tests && ../../scripts/ci/test-shards.sh run --shards 3 --skip ModelPreloadTests
+# real app data under ~/Library/Application Support/Earshot.
+cd app/Earshot && swift build --build-tests && ../../scripts/ci/test-shards.sh run --shards 3 --skip ModelPreloadTests
 
 # Swift tests under sanitizers (slow — TSan ~7.5 min, ASan ~4.5 min on M-series)
 # CI runs these nightly via cron + on push to main; locally use ad-hoc
 # before pushing concurrency-heavy or C-bridging changes.
-cd app/MeetingTranscriber && swift test --parallel --sanitize=thread --skip MenuBarIconSnapshotTests
-cd app/MeetingTranscriber && swift test --parallel --sanitize=address --skip MenuBarIconSnapshotTests
+cd app/Earshot && swift test --parallel --sanitize=thread --skip MenuBarIconSnapshotTests
+cd app/Earshot && swift test --parallel --sanitize=address --skip MenuBarIconSnapshotTests
 
 # Trigger sanitizer matrix on a specific PR/branch via CI
 gh workflow run quality-and-safety.yml -f run-sanitizer=true -f run-quality=false
@@ -95,7 +95,7 @@ gh workflow run quality-and-safety.yml -f run-sanitizer=true -f run-quality=fals
 ./scripts/build_release.sh
 
 # Run app with debug RPC server enabled (dev-only; binds 127.0.0.1:9876)
-MEETINGTRANSCRIBER_DEBUG_RPC=1 ./scripts/run_app.sh
+EARSHOT_DEBUG_RPC=1 ./scripts/run_app.sh
 
 # Build mt-cli (talks to the running RPC server)
 cd tools/mt-cli && swift build && .build/debug/mt-cli state

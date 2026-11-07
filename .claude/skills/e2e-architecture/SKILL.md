@@ -18,7 +18,7 @@ job-level `if:` guard checks `head.repo.full_name == github.repository`, so fork
 PRs are excluded from the self-hosted runner.
 
 **Fixture-based xctest E2E (`e2e.yml`)**
-- Engine + pipeline tests in `app/MeetingTranscriber/Tests/*E2ETests.swift`
+- Engine + pipeline tests in `app/Earshot/Tests/*E2ETests.swift`
   (Parakeet, WhisperKit, WatchLoop) feed pre-recorded `two_speakers_de.wav`
   into the components and assert on transcripts.
 - Triggered on `workflow_dispatch`, every push to `main`, and label-gated
@@ -32,7 +32,7 @@ PRs are excluded from the self-hosted runner.
   routing path, TCC interactions, or detector → recorder handoff.
 
 **Live-recording E2E (`e2e-app.yml`, `scripts/e2e-app.sh`)**
-- Builds the dev `.app`, deploys to `~/Applications/MeetingTranscriber-Dev.app`
+- Builds the dev `.app`, deploys to `~/Applications/Earshot-Dev.app`
   (stable path → TCC permissions persist), launches it, triggers a meeting
   via `meeting-simulator`, polls `DebugRPCServer`'s `/state` for
   `lastJob.state == .done`, asserts on the resulting transcript file.
@@ -193,7 +193,7 @@ PRs are excluded from the self-hosted runner.
   - **It changes host settings** (provider, language, endpoint, model, sampling,
     diarize, three output options). Their old values go, as plist XML so a double
     round-trips bit for bit (`defaults write -float` is 32-bit), to a record
-    under `~/Library/Caches/MeetingTranscriber-e2e` before the first write, with
+    under `~/Library/Caches/Earshot-e2e` before the first write, with
     the job ids and output files beside it. On exit the stub is stopped and the
     settings are restored first, with INT/TERM ignored, and only then the app is
     quit (it holds the settings in memory), its unfinished lane jobs are dropped
@@ -215,7 +215,7 @@ PRs are excluded from the self-hosted runner.
   watchdog in the shipped app, a fault no runner produces on its own (the
   loopback input always delivers; the field cases need a Bluetooth headset). It
   builds the fault-injection bundle and launches it with
-  `MEETINGTRANSCRIBER_E2E_MIC_FAULT=stall`, so the real engine starts and runs
+  `EARSHOT_E2E_MIC_FAULT=stall`, so the real engine starts and runs
   while the handler drops every buffer; `--mic-stall-late` lets the first ten
   seconds through. It asserts, each from the layer that owns it: the capture
   log's rebuilds after 3, 6, 12 and 24 s and its release after the 60 s budget;
@@ -232,7 +232,7 @@ PRs are excluded from the self-hosted runner.
   reads nor writes the host's data dir or output folder; UserDefaults are not
   redirected by that variable, and protocol generation is switched off for the
   run and restored after it, from a record kept under
-  `~/Library/Caches/MeetingTranscriber-e2e`: a killed run is repaired at the
+  `~/Library/Caches/Earshot-e2e`: a killed run is repaired at the
   start of the next `e2e-app.sh` run, whatever its lane (not by
   `e2e-browser.sh`, `e2e-channel-fault.sh` or a hand launch, which run with
   what is left until then), and only while the setting still reads
@@ -240,7 +240,7 @@ PRs are excluded from the self-hosted runner.
   unless the app it launched is still running; such a home is listed there
   and removed by a later run once that app is gone. The helpers behind this
   and the installed-app guard are tested by
-  `scripts/tests/test_mic_stall_lane_helpers.sh`. The isolated home does not cover a MeetingTranscriber
+  `scripts/tests/test_mic_stall_lane_helpers.sh`. The isolated home does not cover a Earshot
   that is not the dev app: it would record the synthetic meeting into the
   host's real folders, so the lane refuses while one is running and never quits
   it. The provenance marker of the app it launched lives in that same cache
@@ -250,7 +250,7 @@ PRs are excluded from the self-hosted runner.
   before recording. With the variable unset that build injects nothing, so the
   fault bundle a lane leaves at the shared deploy path cannot inject into a
   later launch; `--mic-device-change` asks for its fault with
-  `MEETINGTRANSCRIBER_E2E_MIC_FAULT=device-change`. It has no workflow yet: it is run by hand.
+  `EARSHOT_E2E_MIC_FAULT=device-change`. It has no workflow yet: it is run by hand.
 - The `--upgrade` lane is the only one that starts the app on data an older
   release left behind; every other lane runs on a clean or an empty home, and
   three changes of the release after v0.8.1 act only on such data. In its own
@@ -297,7 +297,7 @@ PRs are excluded from the self-hosted runner.
   could be trusted; a hand-started run on the mini is invisible to the CI-worker
   check, which is how this was found). It also looks at a dev app that is
   already running: a launch marker the driver owns
-  (`~/Library/Application Support/MeetingTranscriber/.e2e-app-launched`,
+  (`~/Library/Application Support/Earshot/.e2e-app-launched`,
   `<pid> launched|kept|abandoned`) says whether a previous driver run left it
   (`--keep-app`, or a failed exit), in which case it is quit and relaunched as
   always, with a line saying so. An app no driver marked is treated as possibly
@@ -307,7 +307,7 @@ PRs are excluded from the self-hosted runner.
   one of them is `continue-on-error`, so a refusal there would cascade a
   sibling's leftover into every later step. Hand-run rule on the mini, all three
   before touching it: no `Runner.Worker`, no `e2e-app.sh`, no
-  `MeetingTranscriber-Dev` process.
+  `Earshot-Dev` process.
 - Limitations: needs one-time runner setup (see below); can't run on
   GitHub-hosted runners — only on a self-hosted Mac with an interactive
   GUI session and a stable code-signing identity.
@@ -399,7 +399,7 @@ PRs are excluded from the self-hosted runner.
    here). TCC permissions are instead granted manually, once, and macOS keys
    the grant on the cert leaf SHA-1.
 4. In the GUI session, launch the deployed `.app`
-   (`open ~/Applications/MeetingTranscriber-Dev.app`). Click "Allow" on the
+   (`open ~/Applications/Earshot-Dev.app`). Click "Allow" on the
    Microphone prompt, and toggle the dev `.app` on under System Settings →
    Privacy & Security → Screen & System Audio Recording (used for window-title
    meeting detection — the e2e also has a sandbox-safe power-assertion detector,
@@ -450,11 +450,11 @@ PRs are excluded from the self-hosted runner.
    grants are per binary path, so the new node holds none of them: not Device
    Control, not **Files & Folders → Downloads** (the lanes read and write the
    app's output folder under `~/Downloads`), not **Automation → System Events**,
-   and not **Automation → MeetingTranscriber-Dev** (`quit_running_app` asks the
+   and not **Automation → Earshot-Dev** (`quit_running_app` asks the
    dev app to quit through an Apple Event at the start of nearly every lane,
    which is what runs the app's quit hold: stopping a recording, flushing the
    pipeline snapshots. The call is bounded at twice that hold plus a margin.
-   Refused (-1743), it reports `TCC Automation → MeetingTranscriber-Dev not
+   Refused (-1743), it reports `TCC Automation → Earshot-Dev not
    usable`, ends the app by signal so the next lane does not inherit it, and
    fails the calling lane, since a signal skips the hold. Unanswered, which a
    pending prompt causes but so do a modal run loop or a slow teardown, it

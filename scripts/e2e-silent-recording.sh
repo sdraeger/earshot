@@ -59,15 +59,15 @@ source "$ROOT/scripts/lib/e2e-helpers.sh"
 # Ends what a timed-out earlier step left running, then records this
 # driver for the next (see e2e_register_driver).
 e2e_register_driver
-DEV_BUNDLE_BUILD="$ROOT/app/MeetingTranscriber/.build/MeetingTranscriber-Dev.app"
+DEV_BUNDLE_BUILD="$ROOT/app/Earshot/.build/Earshot-Dev.app"
 # Deploy to a stable path so the dev .app's TCC permissions (granted once
 # manually on the self-hosted runner, keyed on bundle path + cert SHA)
 # persist across builds. A `/tmp/...` launch would get a fresh cdhash AND
 # a fresh path on every clone — TCC would deny Microphone + Screen
 # Recording and the recorder would emit zero-byte WAVs (observed during
 # this script's development).
-DEV_BUNDLE_DEPLOY="$HOME/Applications/MeetingTranscriber-Dev.app"
-BIN="$DEV_BUNDLE_DEPLOY/Contents/MacOS/MeetingTranscriber"
+DEV_BUNDLE_DEPLOY="$HOME/Applications/Earshot-Dev.app"
+BIN="$DEV_BUNDLE_DEPLOY/Contents/MacOS/Earshot"
 MTCLI="$ROOT/tools/mt-cli/.build/debug/mt-cli"
 # `release/` to align with `scripts/e2e-app.sh` — when both scripts run
 # in the same CI workflow, e2e-app.sh's release build is reused via
@@ -76,7 +76,7 @@ SIM="$ROOT/tools/meeting-simulator/.build/release/meeting-simulator"
 # shellcheck source=lib/bundle-ids.sh
 source "$ROOT/scripts/lib/bundle-ids.sh"
 BUNDLE_ID="$DEV_BUNDLE_ID"
-REC_DIR="$HOME/Library/Application Support/MeetingTranscriber/recordings"
+REC_DIR="$HOME/Library/Application Support/Earshot/recordings"
 # Anchor for the EXIT-trap artifact sweep: created before any recording, so
 # every file this run produces is newer than it (see sweep_run_artifacts).
 RUN_START_MARKER="$(mktemp "${TMPDIR:-/tmp}/e2e-silent-rec-start.XXXXXX")"
@@ -225,7 +225,7 @@ write_dev_default "$BUNDLE_ID" perChannelIndicatorEnabled true bool
 
 # --- 4. Launch app with RPC enabled -----------------------------------------
 
-env MEETINGTRANSCRIBER_DEBUG_RPC=1 "$BIN" &
+env EARSHOT_DEBUG_RPC=1 "$BIN" &
 APP_PID=$!
 
 echo "▸ Waiting for RPC on 127.0.0.1:9876…"

@@ -37,7 +37,7 @@ setup() {
     echo secret > "$ACCOUNT/Library/Keychains/login.keychain-db"
     printf '#!/bin/sh\n' > "$ACCOUNT/.local/bin/ffmpeg"
     chmod +x "$ACCOUNT/.local/bin/ffmpeg"
-    HOME_DIR="$TOOLS/meetingtranscriber-home/mini-1"
+    HOME_DIR="$TOOLS/earshot-home/mini-1"
     snapshot
 }
 
@@ -67,14 +67,14 @@ test_rerun_is_idempotent() {
 
 test_home_linked_to_the_account_is_refused() {
     setup
-    mkdir -p "$TOOLS/meetingtranscriber-home"
+    mkdir -p "$TOOLS/earshot-home"
     ln -s "$ACCOUNT" "$HOME_DIR"
     ! prepare >/dev/null && account_intact
 }
 
 test_home_linked_elsewhere_in_the_account_creates_nothing_there() {
     setup
-    mkdir -p "$TOOLS/meetingtranscriber-home" "$ACCOUNT/Documents/scratch"
+    mkdir -p "$TOOLS/earshot-home" "$ACCOUNT/Documents/scratch"
     snapshot   # the scratch folder is part of the account now
     ln -s "$ACCOUNT/Documents/scratch" "$HOME_DIR"
     ! prepare >/dev/null && account_intact
@@ -82,7 +82,7 @@ test_home_linked_elsewhere_in_the_account_creates_nothing_there() {
 
 test_base_linked_into_the_account_is_refused() {
     setup
-    ln -s "$ACCOUNT" "$TOOLS/meetingtranscriber-home"
+    ln -s "$ACCOUNT" "$TOOLS/earshot-home"
     ! prepare >/dev/null && account_intact
 }
 

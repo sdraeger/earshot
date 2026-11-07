@@ -1,0 +1,5515 @@
+// swiftlint:disable file_length
+@testable import Earshot
+import os
+import XCTest
+
+@MainActor
+// swiftlint:disable:next attributes type_body_length balanced_xctest_lifecycle
+final class PipelineQueueTests: XCTestCase {
+    // swiftlint:disable implicitly_unwrapped_optional
+    private var tmpDir: URL!
+    private var queue: PipelineQueue!
+    // swiftlint:enable implicitly_unwrapped_optional
+
+    private actor TagCapturingNotionExporter: NotionExporting {
+        private(set) var receivedTags: [String] = []
+
+        func exportMeeting( // swiftlint:disable:this function_parameter_count
+            title _: String, date _: Date?, tags: [String], markdown _: String,
+            transcript _: String?, existingPageID _: String?,
+            onPageCreated _: @Sendable (NotionPageResult) async -> Void,
+        ) -> NotionPageResult {
+            receivedTags = tags
+            return NotionPageResult(pageID: "page-1", url: "https://www.notion.so/page-1")
+        }
+    }
+
+    override func setUp() async throws {
+        try await super.setUp()
+        tmpDir = try makeTempDirectory(prefix: "pipeline_queue_test")
+        queue = PipelineQueue(logDir: tmpDir)
+    }
+
+    private func makeJob(title: String = "Test Meeting") -> PipelineJob {
+        PipelineJob(
+            meetingTitle: title,
+            appName: "Microsoft Teams",
+            mixPath: URL(fileURLWithPath: "/tmp/mix.wav"),
+            appPath: nil,
+            micPath: nil,
+            micDelay: 0,
+        )
+    }
+
+    func testEnqueueAddsJob() {
+        let job = makeJob()
+        queue.enqueue(job)
+        XCTAssertEqual(queue.jobs.count, 1)
+        XCTAssertEqual(queue.jobs[0].meetingTitle, "Test Meeting")
+    }
+
+    func testEnqueueMultipleJobs() {
+        queue.enqueue(makeJob(title: "Meeting 1"))
+        queue.enqueue(makeJob(title: "Meeting 2"))
+        XCTAssertEqual(queue.jobs.count, 2)
+    }
+
+    func testSnapshotWrittenOnEnqueue() async {
+        queue.enqueue(makeJob())
+        await queue.awaitSnapshotFlush()
+        let snapshotPath = tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: snapshotPath.path))
+    }
+
+    func testSnapshotIsValidJSON() async throws {
+        queue.enqueue(makeJob(title: "Standup"))
+        await queue.awaitSnapshotFlush()
+        let snapshotPath = tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename)
+        let data = try Data(contentsOf: snapshotPath)
+        let jobs = try JSONDecoder().decode([PipelineJob].self, from: data)
+        XCTAssertEqual(jobs.count, 1)
+        XCTAssertEqual(jobs[0].meetingTitle, "Standup")
+    }
+
+    func testSaveSnapshotDoesNotBlockMainActor() async {
+        // Regression guard — if saveSnapshot ever goes synchronous again,
+        // a stalled `replaceItemAt` would freeze the UI / RPC / watch loop.
+        // The save has to return while its own write is still parked.
+        let writer = GatedSnapshotWriter()
+        let testQueue = PipelineQueue(logDir: tmpDir, snapshotWriter: writer.write)
+        testQueue.insertJobForTesting(makeJob())
+
+        testQueue.saveSnapshot()
+        XCTAssertEqual(writer.finished, 0, "saveSnapshot waited for its write to land")
+
+        writer.release()
+        await testQueue.awaitSnapshotFlush()
+        XCTAssertEqual(writer.finished, 1, "the save must still write once released")
+    }
+
+    // MARK: - Terminal job record (durable readback)
+
+    func testTerminalRecordWrittenOnDone() {
+        let store = TerminalJobStore(path: tmpDir.appendingPathComponent("terminal_jobs.json"))
+        let q = PipelineQueue(logDir: tmpDir, terminalJobStore: store)
+        var job = makeJob(title: "Synced Call")
+        job.transcriptPath = URL(fileURLWithPath: "/out/call.txt")
+        job.protocolPath = URL(fileURLWithPath: "/out/call.md")
+        q.insertJobForTesting(job)
+
+        q.updateJobState(id: job.id, to: .done)
+
+        let rec = store.lookup(jobID: job.id)
+        XCTAssertEqual(rec?.state, .done)
+        XCTAssertEqual(rec?.meetingTitle, "Synced Call")
+        XCTAssertEqual(rec?.transcriptPath, "/out/call.txt")
+        XCTAssertEqual(rec?.protocolPath, "/out/call.md")
+    }
+
+    func testTerminalRecordWrittenOnError() {
+        let store = TerminalJobStore(path: tmpDir.appendingPathComponent("terminal_jobs.json"))
+        let q = PipelineQueue(logDir: tmpDir, terminalJobStore: store)
+        let job = makeJob()
+        q.insertJobForTesting(job)
+
+        q.updateJobState(id: job.id, to: .error, error: "Empty transcript")
+
+        let rec = store.lookup(jobID: job.id)
+        XCTAssertEqual(rec?.state, .error)
+        XCTAssertEqual(rec?.error, "Empty transcript")
+    }
+
+    func testErrorAfterProtocolWriteRetainsRawTranscript() throws {
+        let transcriptPath = tmpDir.appendingPathComponent("meeting.txt")
+        let protocolPath = tmpDir.appendingPathComponent("meeting.md")
+        try Data("verbatim meeting content".utf8).write(to: transcriptPath)
+        try Data("# Minutes".utf8).write(to: protocolPath)
+        var job = makeJob()
+        job.state = .generatingProtocol
+        job.transcriptPath = transcriptPath
+        job.protocolPath = protocolPath
+        job.saveRawTranscriptSeparately = false
+        queue.insertJobForTesting(job)
+
+        queue.updateJobState(id: job.id, to: .error, error: "Post-write failure")
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: transcriptPath.path))
+        XCTAssertEqual(queue.jobs.first?.transcriptPath, transcriptPath)
+        XCTAssertTrue(
+            queue.jobs.first?.warnings.contains("Raw transcript retained because the job did not complete") ?? false,
+        )
+    }
+
+    func testNoTerminalRecordForNonTerminalState() {
+        let store = TerminalJobStore(path: tmpDir.appendingPathComponent("terminal_jobs.json"))
+        let q = PipelineQueue(logDir: tmpDir, terminalJobStore: store)
+        let job = makeJob()
+        q.insertJobForTesting(job)
+
+        q.updateJobState(id: job.id, to: .transcribing)
+
+        XCTAssertNil(store.lookup(jobID: job.id), "Only terminal states should be recorded")
+    }
+
+    func testConsecutiveSnapshotsPersistLastStateOnDisk() async throws {
+        // Coalescing: a burst of saves must collapse to a single write of
+        // the final state, never an interleaved earlier snapshot.
+        for i in 1 ... 5 {
+            queue.enqueue(makeJob(title: "Job \(i)"))
+        }
+        await queue.awaitSnapshotFlush()
+
+        let snapshotPath = tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename)
+        let data = try Data(contentsOf: snapshotPath)
+        let jobs = try JSONDecoder().decode([PipelineJob].self, from: data)
+        XCTAssertEqual(jobs.count, 5)
+        XCTAssertEqual(jobs.map(\.meetingTitle), ["Job 1", "Job 2", "Job 3", "Job 4", "Job 5"])
+    }
+
+    func testSnapshotWorkerClearsItselfAfterFlush() async {
+        // Lifecycle guard: a drained writer must clear itself so the next
+        // saveSnapshot starts a fresh one. Without this, a
+        // leak-then-skip bug would silently drop later writes.
+        queue.enqueue(makeJob())
+        XCTAssertTrue(queue.isSnapshotWorkerActive)
+        await queue.awaitSnapshotFlush()
+        XCTAssertFalse(queue.isSnapshotWorkerActive, "worker should clear itself after the queue drains")
+
+        // Second burst spawns a fresh worker — verifies the first didn't
+        // get stuck in a way that prevents re-spawn.
+        queue.enqueue(makeJob(title: "Second"))
+        XCTAssertTrue(queue.isSnapshotWorkerActive)
+        await queue.awaitSnapshotFlush()
+        XCTAssertFalse(queue.isSnapshotWorkerActive)
+    }
+
+    func testCoalescingReducesActualWriteCount() async {
+        // Inject a counting writer to verify the worker collapses many
+        // rapid saves into fewer disk writes. testConsecutive... only
+        // asserts final state matches — this proves coalescing is real.
+        let count = OSAllocatedUnfairLock<Int>(initialState: 0)
+        // swiftlint:disable trailing_closure
+        let testQueue = PipelineQueue(
+            logDir: tmpDir,
+            snapshotWriter: { _, _ in count.withLock { $0 += 1 } },
+        )
+        // swiftlint:enable trailing_closure
+        for i in 1 ... 20 {
+            testQueue.enqueue(makeJob(title: "Job \(i)"))
+        }
+        await testQueue.awaitSnapshotFlush()
+
+        let writes = count.withLock { $0 }
+        XCTAssertGreaterThan(writes, 0, "writer must be called at least once")
+        XCTAssertLessThan(writes, 20, "coalescing should collapse 20 saves to fewer writes (got \(writes))")
+    }
+
+    func testSaveSnapshotReturnsImmediatelyWhileWriterIsWedged() async {
+        // Direct regression test for the original bug: a stalled writer
+        // (modelling `renamex_np` deadlock) must NOT block follow-up
+        // saveSnapshot calls on the main actor. With the synchronous-on-
+        // main implementation, the second call would hang waiting on the
+        // first; with the off-main worker, it returns instantly.
+        let writer = GatedSnapshotWriter()
+        let testQueue = PipelineQueue(logDir: tmpDir, snapshotWriter: writer.write)
+        testQueue.enqueue(makeJob()) // triggers worker → blocks in writer
+        await waitFor(writer.entered == 1, timeout: regressionCeiling)
+        XCTAssertEqual(writer.entered, 1, "precondition: the first write is wedged in the writer")
+
+        testQueue.saveSnapshot() // would deadlock if main-actor were waiting
+        XCTAssertEqual(writer.finished, 0, "saveSnapshot blocked while writer was wedged")
+
+        writer.release() // release the wedged write so the worker can drain
+        await testQueue.awaitSnapshotFlush()
+        XCTAssertEqual(writer.finished, 2, "both the wedged write and the later save must land")
+    }
+
+    func testSnapshotMatchesInMemoryStateAfterStateTransitionBurst() async throws {
+        // Pipeline-shaped load: enqueue several jobs, then drive each
+        // through transcribing → diarizing → generatingProtocol → done.
+        // 12 updateJobState calls + 3 enqueues = 15 saveSnapshot triggers
+        // in rapid succession. The on-disk state must match in-memory at
+        // the end regardless of how many coalesced batches actually ran.
+        let jobs = (1 ... 3).map { makeJob(title: "Job \($0)") }
+        for job in jobs {
+            queue.enqueue(job)
+        }
+        let transitions: [JobState] = [.transcribing, .diarizing, .generatingProtocol, .done]
+        for job in jobs {
+            for next in transitions {
+                queue.updateJobState(id: job.id, to: next)
+            }
+        }
+        await queue.awaitSnapshotFlush()
+
+        let snapshotPath = tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename)
+        let data = try Data(contentsOf: snapshotPath)
+        let onDisk = try JSONDecoder().decode([PipelineJob].self, from: data)
+        XCTAssertEqual(onDisk.count, queue.jobs.count)
+        XCTAssertEqual(onDisk.map(\.id), queue.jobs.map(\.id))
+        XCTAssertEqual(onDisk.map(\.state), queue.jobs.map(\.state))
+    }
+
+    func testLogAppendedOnEnqueue() throws {
+        queue.enqueue(makeJob())
+        let logPath = tmpDir.appendingPathComponent("pipeline_log.jsonl")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: logPath.path))
+        let content = try String(contentsOf: logPath, encoding: .utf8)
+        XCTAssertTrue(content.contains("enqueued"))
+    }
+
+    // MARK: - updateJobState no-op guard
+
+    /// Count non-empty lines in the pipeline log (one JSON entry per line).
+    private func logLineCount(_ url: URL) throws -> Int {
+        guard FileManager.default.fileExists(atPath: url.path) else { return 0 }
+        let content = try String(contentsOf: url, encoding: .utf8)
+        return content.split(separator: "\n", omittingEmptySubsequences: true).count
+    }
+
+    func testUpdateJobStateSameStateIsNoOp() throws {
+        var job = makeJob()
+        job.state = .transcribing
+        queue.enqueue(job)
+
+        let logPath = tmpDir.appendingPathComponent("pipeline_log.jsonl")
+        let baseline = try logLineCount(logPath)
+
+        var callbackCount = 0
+        queue.onJobStateChange = { _, _, _ in callbackCount += 1 }
+
+        queue.updateJobState(id: job.id, to: .transcribing)
+
+        XCTAssertEqual(callbackCount, 0, "same-state update must not fire onJobStateChange")
+        XCTAssertEqual(
+            try logLineCount(logPath), baseline,
+            "same-state update must not append a redundant state_change log line",
+        )
+    }
+
+    func testUpdateJobStateRealTransitionFiresCallbackOnce() {
+        var job = makeJob()
+        job.state = .transcribing
+        queue.enqueue(job)
+
+        var callbackCount = 0
+        var observed: (old: JobState, new: JobState)?
+        queue.onJobStateChange = { _, old, new in
+            callbackCount += 1
+            observed = (old, new)
+        }
+
+        queue.updateJobState(id: job.id, to: .diarizing)
+
+        XCTAssertEqual(callbackCount, 1, "a real transition must fire onJobStateChange exactly once")
+        XCTAssertEqual(observed?.old, .transcribing)
+        XCTAssertEqual(observed?.new, .diarizing)
+    }
+
+    func testUpdateJobStateSameStateWithErrorStillApplies() {
+        var job = makeJob()
+        job.state = .transcribing
+        queue.enqueue(job)
+
+        var callbackCount = 0
+        queue.onJobStateChange = { _, _, _ in callbackCount += 1 }
+
+        queue.updateJobState(id: job.id, to: .transcribing, error: "boom")
+
+        XCTAssertEqual(
+            queue.jobs.first?.error, "boom",
+            "a same-state update carrying an error must still persist it",
+        )
+        XCTAssertEqual(
+            callbackCount, 1,
+            "an error-bearing update must still notify even when the state is unchanged",
+        )
+    }
+
+    func testActiveJobs() {
+        var job1 = makeJob(title: "Active")
+        job1.state = .transcribing
+        queue.enqueue(job1)
+        queue.enqueue(makeJob(title: "Waiting"))
+        XCTAssertEqual(queue.activeJobs.count, 1)
+        XCTAssertEqual(queue.activeJobs[0].meetingTitle, "Active")
+    }
+
+    func testActiveJobsIncludesDiarizingAndGeneratingProtocol() {
+        var j1 = makeJob(title: "Diarizing")
+        j1.state = .diarizing
+        var j2 = makeJob(title: "Protocol")
+        j2.state = .generatingProtocol
+        queue.enqueue(j1)
+        queue.enqueue(j2)
+        XCTAssertEqual(queue.activeJobs.count, 2)
+    }
+
+    func testActiveJobsExcludesTerminalStates() {
+        var done = makeJob(title: "Done")
+        done.state = .done
+        var err = makeJob(title: "Error")
+        err.state = .error
+        queue.enqueue(done)
+        queue.enqueue(err)
+        queue.enqueue(makeJob(title: "Waiting"))
+        XCTAssertTrue(queue.activeJobs.isEmpty)
+    }
+
+    func testPendingJobs() {
+        queue.enqueue(makeJob(title: "Waiting 1"))
+        queue.enqueue(makeJob(title: "Waiting 2"))
+        XCTAssertEqual(queue.pendingJobs.count, 2)
+    }
+
+    func testRemoveCompletedJob() {
+        var job = makeJob()
+        job.state = .done
+        queue.enqueue(job)
+        XCTAssertEqual(queue.jobs.count, 1)
+        queue.removeJob(id: job.id)
+        XCTAssertEqual(queue.jobs.count, 0)
+    }
+
+    // MARK: - Cancel Tests
+
+    func testCancelWaitingJobRemovesIt() {
+        let job = makeJob()
+        queue.enqueue(job)
+        XCTAssertEqual(queue.jobs.count, 1)
+
+        queue.cancelJob(id: job.id)
+        XCTAssertEqual(queue.jobs.count, 0)
+    }
+
+    func testCancelActiveJobRemovesIt() {
+        let job = makeJob()
+        queue.enqueue(job)
+        queue.updateJobState(id: job.id, to: .transcribing)
+
+        queue.cancelJob(id: job.id)
+        XCTAssertEqual(queue.jobs.count, 0)
+    }
+
+    func testCancelDuringSpeakerNamingClearsData() {
+        let job = makeJob()
+        queue.enqueue(job)
+        queue.updateJobState(id: job.id, to: .diarizing)
+        queue.speakerNamingDataByJob[job.id] = PipelineQueue.SpeakerNamingData(
+            jobID: job.id,
+            meetingTitle: "Test",
+            mapping: [:],
+            speakingTimes: [:],
+            embeddings: [:],
+            audioPath: nil,
+            segments: [],
+            participants: [],
+            isDualSource: false,
+        )
+
+        queue.cancelJob(id: job.id)
+
+        XCTAssertNil(queue.pendingSpeakerNaming, "popup data must be cleared on cancel")
+        XCTAssertEqual(queue.jobs.count, 0)
+    }
+
+    func testCancelActiveJobWithoutPendingNamingIsSafe() {
+        let job = makeJob()
+        queue.enqueue(job)
+        queue.updateJobState(id: job.id, to: .diarizing)
+        XCTAssertNil(queue.pendingSpeakerNaming)
+
+        queue.cancelJob(id: job.id)
+
+        XCTAssertNil(queue.pendingSpeakerNaming)
+        XCTAssertEqual(queue.jobs.count, 0)
+    }
+
+    func testCancelDoneJobIsNoOp() {
+        let job = makeJob()
+        queue.enqueue(job)
+        queue.updateJobState(id: job.id, to: .done)
+
+        let countBefore = queue.jobs.count
+        queue.cancelJob(id: job.id)
+        XCTAssertEqual(queue.jobs.count, countBefore)
+    }
+
+    // MARK: - Snapshot Recovery Tests (loadSnapshot)
+
+    func testLoadSnapshotRestoresWaitingJobs() throws {
+        let mixPath = tmpDir.appendingPathComponent("audio_mix.wav")
+        try Data("fake audio".utf8).write(to: mixPath)
+
+        let job = PipelineJob(
+            meetingTitle: "Restored Meeting",
+            appName: "Teams",
+            mixPath: mixPath,
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        let data = try JSONEncoder().encode([job])
+        let snapshotPath = tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename)
+        try data.write(to: snapshotPath)
+
+        let freshQueue = PipelineQueue(logDir: tmpDir)
+        freshQueue.loadSnapshot()
+
+        XCTAssertEqual(freshQueue.jobs.count, 1)
+        XCTAssertEqual(freshQueue.jobs[0].meetingTitle, "Restored Meeting")
+        XCTAssertEqual(freshQueue.jobs[0].state, .waiting)
+    }
+
+    func testLoadSnapshotResetsActiveToWaiting() throws {
+        let mixPath = tmpDir.appendingPathComponent("audio_mix.wav")
+        try Data("fake audio".utf8).write(to: mixPath)
+
+        var job = PipelineJob(
+            meetingTitle: "Active Meeting",
+            appName: "Teams",
+            mixPath: mixPath,
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        job.state = .transcribing
+        let data = try JSONEncoder().encode([job])
+        try data.write(to: tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename))
+
+        let freshQueue = PipelineQueue(logDir: tmpDir)
+        freshQueue.loadSnapshot()
+
+        XCTAssertEqual(freshQueue.jobs.count, 1)
+        XCTAssertEqual(freshQueue.jobs[0].state, .waiting)
+    }
+
+    func testLoadSnapshotDiscardsDoneJobs() throws {
+        let mixPath = tmpDir.appendingPathComponent("audio_mix.wav")
+        try Data("fake audio".utf8).write(to: mixPath)
+
+        var job = PipelineJob(
+            meetingTitle: "Done Meeting",
+            appName: "Teams",
+            mixPath: mixPath,
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        job.state = .done
+        let data = try JSONEncoder().encode([job])
+        try data.write(to: tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename))
+
+        let freshQueue = PipelineQueue(logDir: tmpDir)
+        freshQueue.loadSnapshot()
+
+        XCTAssertEqual(freshQueue.jobs.count, 0)
+    }
+
+    func testLoadSnapshotDiscardsMissingAudio() throws {
+        let job = PipelineJob(
+            meetingTitle: "Ghost Meeting",
+            appName: "Teams",
+            mixPath: URL(fileURLWithPath: "/tmp/nonexistent_\(UUID().uuidString).wav"),
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        let data = try JSONEncoder().encode([job])
+        try data.write(to: tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename))
+
+        let freshQueue = PipelineQueue(logDir: tmpDir)
+        freshQueue.loadSnapshot()
+
+        XCTAssertEqual(freshQueue.jobs.count, 0)
+    }
+
+    func testLoadSnapshotKeepsNamingPendingJobWhenMixAudioMissing() throws {
+        // A .speakerNamingPending job keeps its own slug-based `_16k.wav` sidecar
+        // and doesn't need the original mix.wav. loadSnapshot must NOT discard it
+        // just because mixPath is gone; this guards the
+        // `state != .speakerNamingPending` exception in the missing-audio removeAll.
+        // (testLoadSnapshotDiscardsMissingAudio writes a real mix file, so it can't
+        // catch a regression that drops the naming exception.)
+        // mixPath deliberately points at a file that does NOT exist on disk.
+        var job = PipelineJob(
+            meetingTitle: "Naming Ghost",
+            appName: "App",
+            mixPath: URL(fileURLWithPath: "/tmp/nonexistent_\(UUID().uuidString).wav"),
+            appPath: nil,
+            micPath: nil,
+            micDelay: 0,
+        )
+        job.state = .speakerNamingPending
+        job.namingSlug = "naming_ghost"
+        let snapshotData = try JSONEncoder().encode([job])
+        try snapshotData.write(to: tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename))
+
+        // Sidecar present so the rebuild loop keeps the job in .speakerNamingPending
+        // rather than falling to .done. Content is irrelevant (restore only stashes
+        // it), so use the minimal shape and the same writer loadSnapshot pairs with.
+        let namingData = PipelineQueue.SpeakerNamingData(
+            jobID: job.id,
+            meetingTitle: "Naming Ghost",
+            mapping: [:],
+            speakingTimes: [:],
+            embeddings: [:],
+            audioPath: nil,
+            segments: [],
+            participants: [],
+            isDualSource: false,
+        )
+        try SpeakerNamingStore(outputDir: tmpDir).save(namingData, slug: "naming_ghost")
+
+        let (freshQueue, _) = makeMockProcessingQueue()
+        freshQueue.loadSnapshot()
+
+        // The job survives despite the missing mix, and stays pending.
+        XCTAssertEqual(freshQueue.jobs.count, 1)
+        XCTAssertEqual(freshQueue.jobs.first?.state, .speakerNamingPending)
+    }
+
+    func testLoadSnapshotKeepsPairedImportJobWithNilMixPath() throws {
+        // Paired imports carry a nil mixPath; appPath is the ground-truth source,
+        // checked at processNext time. loadSnapshot must keep them, which guards the
+        // `guard let mixPath = job.mixPath else { return false }` in the
+        // missing-audio removeAll.
+        let appPath = tmpDir.appendingPathComponent("meeting_app.wav")
+        try Data("fake audio".utf8).write(to: appPath)
+
+        let job = PipelineJob(
+            meetingTitle: "Paired Import",
+            appName: "Zoom",
+            mixPath: nil,
+            appPath: appPath,
+            micPath: nil,
+            micDelay: 0,
+        )
+        let data = try JSONEncoder().encode([job])
+        try data.write(to: tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename))
+
+        let freshQueue = PipelineQueue(logDir: tmpDir)
+        freshQueue.loadSnapshot()
+
+        XCTAssertEqual(freshQueue.jobs.count, 1)
+        XCTAssertEqual(freshQueue.jobs.first?.state, .waiting)
+    }
+
+    func testLoadSnapshotNoFileIsNoOp() {
+        let freshQueue = PipelineQueue(logDir: tmpDir)
+        freshQueue.loadSnapshot()
+        XCTAssertTrue(freshQueue.jobs.isEmpty)
+    }
+
+    // MARK: - Processed ledger on unhappy outcomes
+
+    /// Marking a failed recording as processed looks wrong at first glance and
+    /// is deliberate: a recording that fails deterministically, say a silent one
+    /// that yields an empty transcript, would otherwise be re-picked as an
+    /// orphan on every launch and fail again, with a notification each time.
+    /// Re-importing it by hand is the intended retry and never consults this
+    /// list. Pinned because the doc comment used to claim the opposite, which is
+    /// an invitation to "fix" it.
+    func testAFailedRecordingIsMarkedProcessed() {
+        let mixPath = tmpDir.appendingPathComponent("failed_mix.wav")
+        let queue = PipelineQueue(logDir: tmpDir)
+        let job = PipelineJob(
+            meetingTitle: "Silent Meeting", appName: "Teams",
+            mixPath: mixPath, appPath: nil, micPath: nil, micDelay: 0,
+        )
+        queue.insertJobForTesting(job)
+
+        queue.updateJobState(id: job.id, to: .error, error: "Empty transcript")
+
+        XCTAssertTrue(
+            ProcessedRecordingsLedger(logDir: tmpDir).load()
+                .contains(mixPath.standardizedFileURL.path),
+            "a failed recording was left to be re-picked on every launch",
+        )
+    }
+
+    /// The consequence of the above, at the layer the user notices: the failed
+    /// recording does not come back as a recovered orphan.
+    func testOrphanRecoverySkipsARecordingThatAlreadyFailed() async throws {
+        let recDir = tmpDir.appendingPathComponent("recordings")
+        try FileManager.default.createDirectory(at: recDir, withIntermediateDirectories: true)
+        let mixFile = recDir.appendingPathComponent("20260311_100000_mix.wav")
+        try Data(repeating: 0xFF, count: 100).write(to: mixFile)
+
+        let failing = PipelineQueue(logDir: tmpDir)
+        let job = PipelineJob(
+            meetingTitle: "Silent Meeting", appName: "Teams",
+            mixPath: mixFile, appPath: nil, micPath: nil, micDelay: 0,
+        )
+        failing.insertJobForTesting(job)
+        failing.updateJobState(id: job.id, to: .error, error: "Empty transcript")
+
+        let nextLaunch = PipelineQueue(logDir: tmpDir)
+        await nextLaunch.recoverOrphanedRecordings(recordingsDir: recDir)
+
+        XCTAssertTrue(
+            nextLaunch.jobs.isEmpty,
+            "the failed recording came back as an orphan and would fail again",
+        )
+    }
+
+    /// The re-materialization point of issue #558: a queue built while its
+    /// predecessor is still working reads the same snapshot, where the job is
+    /// still recorded as active, resets it to waiting and starts it again.
+    func testLoadSnapshotSkipsAJobThatIsAlreadyRunning() throws {
+        let mixPath = tmpDir.appendingPathComponent("in_flight_mix.wav")
+        try Data("fake audio".utf8).write(to: mixPath)
+
+        var job = PipelineJob(
+            meetingTitle: "Long Call",
+            appName: "Teams",
+            mixPath: mixPath,
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        job.state = .transcribing
+        try JSONEncoder().encode([job])
+            .write(to: tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename))
+
+        let registry = InFlightRunRegistry()
+        XCTAssertEqual(registry.begin(jobID: job.id, mixPath: mixPath), .claimed, "test premise: the claim was free")
+
+        let freshQueue = PipelineQueue(logDir: tmpDir, inFlightRuns: registry)
+        freshQueue.loadSnapshot()
+
+        XCTAssertTrue(
+            freshQueue.jobs.isEmpty,
+            "restored a job another queue is still running",
+        )
+    }
+
+    /// Without the job ID in play, a restored job whose claim is free must still
+    /// come back, or the filter would quietly eat ordinary crash recovery.
+    func testLoadSnapshotStillRestoresAJobNobodyIsRunning() throws {
+        let mixPath = tmpDir.appendingPathComponent("idle_mix.wav")
+        try Data("fake audio".utf8).write(to: mixPath)
+
+        var job = PipelineJob(
+            meetingTitle: "Interrupted Call",
+            appName: "Teams",
+            mixPath: mixPath,
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        job.state = .transcribing
+        try JSONEncoder().encode([job])
+            .write(to: tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename))
+
+        let freshQueue = PipelineQueue(logDir: tmpDir, inFlightRuns: InFlightRunRegistry())
+        freshQueue.loadSnapshot()
+
+        XCTAssertEqual(freshQueue.jobs.count, 1)
+        XCTAssertEqual(freshQueue.jobs.first?.state, .waiting)
+    }
+
+    // MARK: - Dismissing a job awaiting speaker naming
+
+    /// Dismiss is offered for a job still awaiting speaker naming, and it routes
+    /// to `removeJob`, which knew nothing about naming data. Only cancelling
+    /// cleaned it up, and Cancel is not offered in that state, so the sidecars
+    /// were left behind for good: nothing sweeps the output folder for them, and
+    /// the job is gone from the snapshot that would have named them. Each 16 kHz
+    /// sidecar is mono 16-bit at 16 kHz, so a dismissed hour of a two-track
+    /// meeting stranded roughly a third of a gigabyte.
+    func testDismissingAJobAwaitingNamingCleansUpItsSidecars() async throws {
+        let (queue, _, jobID) = try await makeSingleSourceJobAtNamingPending(
+            title: "Dismissed Before Naming",
+            transcriptSegments: [TimestampedSegment(start: 0, end: 5, text: "Never named")],
+        )
+        let slug = try XCTUnwrap(queue.jobs.first { $0.id == jobID }?.namingSlug)
+        let recordingsDir = tmpDir.appendingPathComponent("recordings")
+        let leftovers = SidecarFixture.urls(slug: slug, in: recordingsDir)
+
+        // Premise: naming really did park with data on disk, or the test proves
+        // nothing about cleaning it up.
+        XCTAssertTrue(
+            leftovers.contains { FileManager.default.fileExists(atPath: $0.path) },
+            "no naming data was written, so there is nothing to strand",
+        )
+
+        queue.removeJob(id: jobID)
+
+        assertSidecars(leftovers, exist: false)
+    }
+
+    // MARK: - Cancelling a job
+
+    /// Cancelling is the most explicit "stop this" the app offers, yet the
+    /// recording used to stay eligible for orphan recovery. Since the queue is
+    /// rebuilt whenever watching is switched on, and rebuilding scans for
+    /// orphans, the cancelled recording came back within the same session,
+    /// relabelled as a recovered one so it did not even look like the thing that
+    /// was stopped. Cancelling the copy only re-armed the loop.
+    func testCancellingAJobStopsItComingBackAsAnOrphan() async throws {
+        let recDir = tmpDir.appendingPathComponent("recordings")
+        try FileManager.default.createDirectory(at: recDir, withIntermediateDirectories: true)
+        let mixFile = recDir.appendingPathComponent("20260311_120000_mix.wav")
+        try Data(repeating: 0xFF, count: 100).write(to: mixFile)
+
+        let queue = PipelineQueue(logDir: tmpDir)
+        let job = PipelineJob(
+            meetingTitle: "Stopped By Hand", appName: "Teams",
+            mixPath: mixFile, appPath: nil, micPath: nil, micDelay: 0,
+        )
+        queue.insertJobForTesting(job)
+
+        queue.cancelJob(id: job.id)
+
+        let rebuilt = PipelineQueue(logDir: tmpDir)
+        await rebuilt.recoverOrphanedRecordings(recordingsDir: recDir)
+        XCTAssertTrue(
+            rebuilt.jobs.isEmpty,
+            "the cancelled recording was offered again as a recovered one",
+        )
+    }
+
+    /// Cancelling a job that is mid-run has to settle it the same way. This is
+    /// the expensive case: the recording that comes back is the one that was
+    /// costing minutes of compute when it was stopped.
+    func testCancellingAJobInFlightStopsItComingBackAsAnOrphan() async throws {
+        let recDir = tmpDir.appendingPathComponent("recordings")
+        try FileManager.default.createDirectory(at: recDir, withIntermediateDirectories: true)
+        let mixFile = recDir.appendingPathComponent("20260311_130000_mix.wav")
+        try Data(repeating: 0xFF, count: 100).write(to: mixFile)
+
+        let queue = PipelineQueue(logDir: tmpDir)
+        var job = PipelineJob(
+            meetingTitle: "Stopped Mid Run", appName: "Teams",
+            mixPath: mixFile, appPath: nil, micPath: nil, micDelay: 0,
+        )
+        job.state = .transcribing
+        queue.insertJobForTesting(job)
+
+        queue.cancelJob(id: job.id)
+
+        let rebuilt = PipelineQueue(logDir: tmpDir)
+        await rebuilt.recoverOrphanedRecordings(recordingsDir: recDir)
+        XCTAssertTrue(
+            rebuilt.jobs.isEmpty,
+            "the cancelled recording was offered again as a recovered one",
+        )
+    }
+
+    // MARK: - Orphaned Recording Recovery Tests
+
+    /// The scan reaches the same recording under a fresh job ID, so the audio
+    /// path is the only thing tying it to the run already under way.
+    func testRecoverSkipsARecordingThatIsAlreadyRunning() async throws {
+        let recDir = tmpDir.appendingPathComponent("recordings")
+        try FileManager.default.createDirectory(at: recDir, withIntermediateDirectories: true)
+        let mixFile = recDir.appendingPathComponent("20260311_100000_mix.wav")
+        try Data(repeating: 0xFF, count: 100).write(to: mixFile)
+
+        let registry = InFlightRunRegistry()
+        XCTAssertEqual(registry.begin(jobID: UUID(), mixPath: mixFile), .claimed, "test premise: the claim was free")
+
+        let freshQueue = PipelineQueue(logDir: tmpDir, inFlightRuns: registry)
+        await freshQueue.recoverOrphanedRecordings(recordingsDir: recDir)
+
+        XCTAssertTrue(
+            freshQueue.jobs.isEmpty,
+            "recovered a recording another queue is still running",
+        )
+    }
+
+    func testRecoverFindsUntrackedMixWav() async throws {
+        let recDir = tmpDir.appendingPathComponent("recordings")
+        try FileManager.default.createDirectory(at: recDir, withIntermediateDirectories: true)
+
+        let mixFile = recDir.appendingPathComponent("20260311_100000_mix.wav")
+        try Data(repeating: 0xFF, count: 100).write(to: mixFile)
+
+        let freshQueue = PipelineQueue(logDir: tmpDir)
+        await freshQueue.recoverOrphanedRecordings(recordingsDir: recDir)
+
+        XCTAssertEqual(freshQueue.jobs.count, 1)
+        XCTAssertEqual(freshQueue.jobs[0].meetingTitle, "Recovered Recording (20260311_100000)")
+        XCTAssertEqual(
+            freshQueue.jobs[0].mixPath?.standardizedFileURL,
+            mixFile.standardizedFileURL,
+        )
+    }
+
+    func testRecoveredJobCapturesCurrentTranscriptOutputOptions() async throws {
+        let recDir = tmpDir.appendingPathComponent("recordings")
+        try FileManager.default.createDirectory(at: recDir, withIntermediateDirectories: true)
+        let mixFile = recDir.appendingPathComponent("20260311_100000_mix.wav")
+        try Data(repeating: 0xFF, count: 100).write(to: mixFile)
+        let engine = MockEngine()
+        let freshQueue = PipelineQueue(
+            engine: engine,
+            diarizationFactory: { MockDiarization() },
+            protocolGeneratorFactory: { MockProtocolGen() },
+            outputDir: tmpDir,
+            logDir: tmpDir,
+            // swiftlint:disable:next trailing_closure
+            transcriptOutputOptionsProvider: {
+                TranscriptOutputOptions(
+                    includeFullTranscriptInProtocol: false,
+                    saveRawTranscriptSeparately: false,
+                    useAITitleForFilenames: false,
+                )
+            },
+        )
+
+        await freshQueue.recoverOrphanedRecordings(recordingsDir: recDir)
+
+        let recovered = try XCTUnwrap(freshQueue.jobs.first)
+        XCTAssertFalse(try XCTUnwrap(recovered.includeFullTranscriptInProtocol))
+        XCTAssertFalse(try XCTUnwrap(recovered.saveRawTranscriptSeparately))
+    }
+
+    func testRecoverSkipsTrackedFiles() async throws {
+        let recDir = tmpDir.appendingPathComponent("recordings")
+        try FileManager.default.createDirectory(at: recDir, withIntermediateDirectories: true)
+
+        let mixFile = recDir.appendingPathComponent("20260311_100000_mix.wav")
+        try Data(repeating: 0xFF, count: 100).write(to: mixFile)
+
+        let freshQueue = PipelineQueue(logDir: tmpDir)
+        let existing = PipelineJob(
+            meetingTitle: "Already Tracked",
+            appName: "Teams",
+            mixPath: mixFile,
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        freshQueue.enqueue(existing)
+
+        await freshQueue.recoverOrphanedRecordings(recordingsDir: recDir)
+        XCTAssertEqual(freshQueue.jobs.count, 1)
+        XCTAssertEqual(freshQueue.jobs[0].meetingTitle, "Already Tracked")
+    }
+
+    func testRecoverSkipsTinyFiles() async throws {
+        let recDir = tmpDir.appendingPathComponent("recordings")
+        try FileManager.default.createDirectory(at: recDir, withIntermediateDirectories: true)
+
+        let mixFile = recDir.appendingPathComponent("20260311_100000_mix.wav")
+        try Data(repeating: 0x00, count: 44).write(to: mixFile)
+
+        let freshQueue = PipelineQueue(logDir: tmpDir)
+        await freshQueue.recoverOrphanedRecordings(recordingsDir: recDir)
+
+        XCTAssertEqual(freshQueue.jobs.count, 0)
+    }
+
+    func testRecoverFindsCompanionTracks() async throws {
+        let recDir = tmpDir.appendingPathComponent("recordings")
+        try FileManager.default.createDirectory(at: recDir, withIntermediateDirectories: true)
+
+        let prefix = "20260311_100000"
+        try Data(repeating: 0xFF, count: 100).write(to: recDir.appendingPathComponent("\(prefix)_mix.wav"))
+        try Data(repeating: 0xFF, count: 100).write(to: recDir.appendingPathComponent("\(prefix)_app.wav"))
+        try Data(repeating: 0xFF, count: 100).write(to: recDir.appendingPathComponent("\(prefix)_mic.wav"))
+
+        let freshQueue = PipelineQueue(logDir: tmpDir)
+        await freshQueue.recoverOrphanedRecordings(recordingsDir: recDir)
+
+        XCTAssertEqual(freshQueue.jobs.count, 1)
+        XCTAssertNotNil(freshQueue.jobs[0].appPath)
+        XCTAssertNotNil(freshQueue.jobs[0].micPath)
+    }
+
+    func testRecoverSkipsOldFiles() async throws {
+        let recDir = tmpDir.appendingPathComponent("recordings")
+        try FileManager.default.createDirectory(at: recDir, withIntermediateDirectories: true)
+
+        let mixFile = recDir.appendingPathComponent("20250101_100000_mix.wav")
+        try Data(repeating: 0xFF, count: 100).write(to: mixFile)
+
+        let freshQueue = PipelineQueue(logDir: tmpDir)
+        await freshQueue.recoverOrphanedRecordings(recordingsDir: recDir, maxAge: 0)
+
+        XCTAssertEqual(freshQueue.jobs.count, 0)
+    }
+
+    func testRecoverSkipsProcessedFiles() async throws {
+        let recDir = tmpDir.appendingPathComponent("recordings")
+        try FileManager.default.createDirectory(at: recDir, withIntermediateDirectories: true)
+
+        let mixFile = recDir.appendingPathComponent("20260311_100000_mix.wav")
+        try Data(repeating: 0xFF, count: 100).write(to: mixFile)
+
+        // Mark it as already processed
+        let freshQueue = PipelineQueue(logDir: tmpDir)
+        freshQueue.processedLedger.markProcessed(mixPath: mixFile)
+
+        await freshQueue.recoverOrphanedRecordings(recordingsDir: recDir)
+        XCTAssertEqual(freshQueue.jobs.count, 0)
+    }
+
+    func testErrorJobIsMarkedProcessedSoRecoverySkipsIt() async throws {
+        let recDir = tmpDir.appendingPathComponent("recordings")
+        try FileManager.default.createDirectory(at: recDir, withIntermediateDirectories: true)
+        let mixFile = recDir.appendingPathComponent("20260318_214744_mix.wav")
+        try Data(repeating: 0xFF, count: 100).write(to: mixFile)
+
+        // Enqueue and fail the job (simulates "Empty transcript" scenario)
+        let job = PipelineJob(
+            meetingTitle: "Brave Browser",
+            appName: "Brave Browser",
+            mixPath: mixFile,
+            appPath: nil,
+            micPath: nil,
+            micDelay: 0,
+        )
+        queue.enqueue(job)
+        queue.updateJobState(id: job.id, to: .error, error: "Empty transcript")
+
+        // A fresh queue (simulates pressing Start Watching) must not recover the failed recording
+        let freshQueue = PipelineQueue(logDir: tmpDir)
+        await freshQueue.recoverOrphanedRecordings(recordingsDir: recDir)
+        XCTAssertTrue(freshQueue.jobs.isEmpty, "Failed recording should not be re-queued")
+    }
+
+    func testRecoverEmptyDirIsNoOp() async {
+        let recDir = tmpDir.appendingPathComponent("nonexistent_recordings")
+        let freshQueue = PipelineQueue(logDir: tmpDir)
+        await freshQueue.recoverOrphanedRecordings(recordingsDir: recDir)
+        XCTAssertTrue(freshQueue.jobs.isEmpty)
+    }
+
+    func testRecoverRunsDirScanOffMainActor() async throws {
+        // Smoke test that the scan doesn't starve main-actor work: kick
+        // off recovery with `async let`, do synchronous work concurrently,
+        // verify both complete.
+        let recDir = tmpDir.appendingPathComponent("recordings")
+        try FileManager.default.createDirectory(at: recDir, withIntermediateDirectories: true)
+        for i in 0 ..< 50 {
+            let mixFile = recDir.appendingPathComponent("20260311_10000\(i)_mix.wav")
+            try Data(repeating: 0xFF, count: 100).write(to: mixFile)
+        }
+
+        let freshQueue = PipelineQueue(logDir: tmpDir)
+        async let recovery: Void = freshQueue.recoverOrphanedRecordings(recordingsDir: recDir)
+
+        var counter = 0
+        for _ in 0 ..< 10000 {
+            counter += 1
+        }
+        XCTAssertEqual(counter, 10000)
+
+        await recovery
+        XCTAssertEqual(freshQueue.jobs.count, 50)
+    }
+
+    // MARK: - Processing Tests
+
+    private func makeProcessingQueue() -> PipelineQueue {
+        PipelineQueue(
+            engine: WhisperKitEngine(),
+            diarizationFactory: { MockDiarization() },
+            protocolGeneratorFactory: { MockProtocolGen() },
+            outputDir: tmpDir,
+            logDir: tmpDir,
+            diarizeEnabled: false,
+            micLabel: "Me",
+        )
+    }
+
+    func testProcessNextPicksFirstWaitingJob() async {
+        let pQueue = makeProcessingQueue()
+
+        let job = makeJob()
+        pQueue.enqueue(job)
+        XCTAssertEqual(pQueue.jobs[0].state, .waiting)
+
+        await pQueue.processNext()
+
+        // Job should have been picked up (state != waiting)
+        XCTAssertNotEqual(pQueue.jobs[0].state, .waiting)
+    }
+
+    func testProcessNextSkipsWhenNoWaitingJobs() async {
+        let pQueue = makeProcessingQueue()
+        await pQueue.processNext()
+        XCTAssertTrue(pQueue.jobs.isEmpty)
+    }
+
+    func testAwaitProcessingReturnsImmediatelyWhenIdle() async {
+        let pQueue = makeProcessingQueue()
+        await pQueue.awaitProcessing()
+        XCTAssertFalse(pQueue.isProcessing)
+        XCTAssertTrue(pQueue.pendingJobs.isEmpty)
+    }
+
+    func testAwaitProcessingDrainsSpawnedTask() async {
+        let pQueue = makeProcessingQueue()
+        let job = makeJob()
+        pQueue.enqueue(job)
+        // Spawned task is in flight (or about to be). Without awaitProcessing,
+        // observers race against the spawned Task.
+        await pQueue.awaitProcessing()
+        XCTAssertFalse(pQueue.isProcessing, "queue should be idle after awaitProcessing")
+        XCTAssertTrue(pQueue.pendingJobs.isEmpty, "no jobs should remain in waiting")
+        XCTAssertNotEqual(pQueue.jobs.first?.state, .waiting)
+    }
+
+    func testIsProcessingFlag() {
+        let pQueue = makeProcessingQueue()
+        XCTAssertFalse(pQueue.isProcessing)
+    }
+
+    // MARK: - Auto-Removal Tests
+
+    func testDismissCannotRemoveAJobDuringNotionExport() {
+        var job = makeJob()
+        job.state = .done
+        job.beginNotionExport(speakerNames: [])
+        queue.insertJobForTesting(job)
+
+        queue.removeJob(id: job.id)
+        XCTAssertEqual(queue.jobs.first?.id, job.id)
+
+        if let index = queue.jobs.firstIndex(where: { $0.id == job.id }) {
+            queue.jobs[index].finishNotionExport(succeeded: false)
+        }
+        queue.removeJob(id: job.id)
+        XCTAssertTrue(queue.jobs.isEmpty)
+    }
+
+    func testCompletedJobAutoRemovedAfterDelay() async throws {
+        let queue = PipelineQueue(logDir: tmpDir, completedJobLifetime: 0.2)
+        let job = makeJob()
+        queue.enqueue(job)
+        queue.updateJobState(id: job.id, to: .done)
+        XCTAssertEqual(queue.jobs.count, 1)
+
+        try await Task.sleep(for: .milliseconds(400))
+        XCTAssertEqual(queue.jobs.count, 0, "Done job should be auto-removed")
+    }
+
+    func testFailedNotionExportJobIsRetainedPastCompletedLifetime() async throws {
+        let queue = PipelineQueue(logDir: tmpDir, completedJobLifetime: 0.2)
+        var job = makeJob()
+        job.beginNotionExport(speakerNames: [])
+        job.finishNotionExport(succeeded: false)
+        queue.enqueue(job)
+        queue.updateJobState(id: job.id, to: .done)
+
+        try await Task.sleep(for: .milliseconds(400))
+
+        XCTAssertEqual(queue.jobs.first?.id, job.id)
+        XCTAssertEqual(queue.jobs.first?.notionExportStatus, .failed)
+    }
+
+    func testErrorJobNotAutoRemoved() async throws {
+        let queue = PipelineQueue(logDir: tmpDir, completedJobLifetime: 0.2)
+        let job = makeJob()
+        queue.enqueue(job)
+        queue.updateJobState(id: job.id, to: .error, error: "Test error")
+
+        try await Task.sleep(for: .milliseconds(400))
+        XCTAssertEqual(queue.jobs.count, 1, "Error job should NOT be auto-removed")
+    }
+
+    // MARK: - Mock-Engine Processing Tests
+
+    private func makeMockProcessingQueue(
+        engine: MockEngine? = nil,
+        terminologyNormalizer: @escaping () -> TerminologyNormalizer = { TerminologyNormalizer() },
+        diarizationFactory: @escaping () -> any DiarizationProvider = { MockDiarization() },
+        diarizationFactoryWithMode: ((DiarizerMode) -> any DiarizationProvider)? = nil,
+        diarizeEnabled: Bool = false,
+        numSpeakers: Int = 0,
+    ) -> (PipelineQueue, MockEngine) {
+        let engine = engine ?? MockEngine()
+        let q = PipelineQueue(
+            engine: engine,
+            diarizationFactory: diarizationFactory,
+            diarizationFactoryWithMode: diarizationFactoryWithMode,
+            protocolGeneratorFactory: { MockProtocolGen() },
+            outputDir: tmpDir,
+            logDir: tmpDir,
+            diarizeEnabled: diarizeEnabled,
+            numSpeakers: numSpeakers,
+            micLabel: "Me",
+            terminologyNormalizer: terminologyNormalizer,
+        )
+        return (q, engine)
+    }
+
+    func testProcessNextWithMockEngineTranscribes() async throws {
+        let engine = MockEngine()
+        engine.segmentsToReturn = [
+            TimestampedSegment(start: 0, end: 5, text: "Hello from mock"),
+        ]
+        let (pQueue, _) = makeMockProcessingQueue(engine: engine)
+
+        let audioPath = try createTestAudioFile(in: tmpDir)
+        let job = PipelineJob(
+            meetingTitle: "Mock Test",
+            appName: "Teams",
+            mixPath: audioPath,
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        pQueue.enqueue(job)
+        await pQueue.processNext()
+
+        XCTAssertTrue(engine.transcribeCallCount > 0)
+    }
+
+    func testProcessNextAppliesTerminologyRulesToSavedTranscript() async throws {
+        let engine = MockEngine()
+        engine.segmentsToReturn = [
+            TimestampedSegment(start: 0, end: 5, text: "Astor reviewed northstar."),
+        ]
+        let (queue, _) = makeMockProcessingQueue(engine: engine) {
+            TerminologyNormalizer(rulesText: "Aster => Astor\nNorthstar => northstar")
+        }
+        let audioPath = try createTestAudioFile(in: tmpDir)
+        queue.enqueue(PipelineJob(
+            meetingTitle: "Terminology Test", appName: "File",
+            mixPath: audioPath, appPath: nil, micPath: nil, micDelay: 0,
+        ))
+
+        await queue.processNext()
+
+        let transcriptURL = try XCTUnwrap(queue.jobs.first?.transcriptPath)
+        let transcript = try String(contentsOf: transcriptURL, encoding: .utf8)
+        XCTAssertTrue(transcript.contains("Aster reviewed Northstar."), transcript)
+    }
+
+    /// The rules file is read in the per-job snapshot: an edit between two
+    /// jobs reaches the second one without a relaunch.
+    func testATerminologyRulesFileEditIsPickedUpByTheNextJob() async throws {
+        let suiteName = "PipelineQueueTests-terminology-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(DefaultsSuite.open(suiteName))
+        defer { DefaultsSuite.remove(suiteName) }
+        let settings = AppSettings(defaults: defaults)
+        let rulesFile = tmpDir.appendingPathComponent("terminology.txt")
+        try "Aster => Astor\n".write(to: rulesFile, atomically: true, encoding: .utf8)
+        settings.setTerminologyRulesFile(rulesFile)
+
+        let engine = MockEngine()
+        engine.segmentsToReturn = [
+            TimestampedSegment(start: 0, end: 5, text: "Astor reviewed northstar."),
+        ]
+        let (queue, _) = makeMockProcessingQueue(engine: engine) {
+            settings.terminologyNormalizerForJob()
+        }
+        let audioPath = try createTestAudioFile(in: tmpDir)
+
+        queue.enqueue(PipelineJob(
+            meetingTitle: "First", appName: "File",
+            mixPath: audioPath, appPath: nil, micPath: nil, micDelay: 0,
+        ))
+        await queue.processNext()
+        try "Aster => Astor\nNorthstar => northstar\n".write(to: rulesFile, atomically: true, encoding: .utf8)
+        queue.enqueue(PipelineJob(
+            meetingTitle: "Second", appName: "File",
+            mixPath: audioPath, appPath: nil, micPath: nil, micDelay: 0,
+        ))
+        await queue.processNext()
+
+        let transcripts = try ["First", "Second"].map { title in
+            let job = try XCTUnwrap(queue.jobs.first { $0.meetingTitle == title })
+            return try String(contentsOf: XCTUnwrap(job.transcriptPath), encoding: .utf8)
+        }
+        XCTAssertTrue(transcripts[0].contains("Aster reviewed northstar."), transcripts[0])
+        XCTAssertTrue(transcripts[1].contains("Aster reviewed Northstar."), transcripts[1])
+    }
+
+    // MARK: - Concurrent runs of the same job (issue #558)
+
+    /// A work directory derived from the job ID alone is shared by every run of
+    /// that job, so a second run walks into the first run's intermediate files.
+    /// This pins the collision half: a `pipeline_<jobID>` directory that already
+    /// holds a `mix_16k.wav` must not fail the run that arrives second.
+    /// `AudioMixer.resampleFile` copies when the source is already 16 kHz mono,
+    /// and `copyItem` onto an existing destination throws Cocoa 516.
+    func testRunIsNotFailedByAnotherRunsWorkDirectory() async throws {
+        let engine = MockEngine()
+        engine.segmentsToReturn = [
+            TimestampedSegment(start: 0, end: 5, text: "Second run speaking"),
+        ]
+        let (pQueue, _) = makeMockProcessingQueue(engine: engine)
+
+        let audioPath = try createTestAudioFile(in: tmpDir)
+        let job = PipelineJob(
+            meetingTitle: "Collision",
+            appName: "Teams",
+            mixPath: audioPath,
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+
+        // Stand in for a concurrent run of the same job that already resampled.
+        let otherRunDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pipeline_\(job.id.uuidString)")
+        try FileManager.default.createDirectory(at: otherRunDir, withIntermediateDirectories: true)
+        try Data().write(to: otherRunDir.appendingPathComponent("mix_16k.wav"))
+        defer { try? FileManager.default.removeItem(at: otherRunDir) }
+
+        pQueue.enqueue(job)
+        await pQueue.processNext()
+
+        XCTAssertNotEqual(
+            pQueue.jobs.first?.state, .error,
+            "job failed with: \(pQueue.jobs.first?.error ?? "no error recorded")",
+        )
+        XCTAssertTrue(engine.transcribeCallCount > 0, "transcription never ran")
+    }
+
+    /// A queue wired for the concurrent-run tests: its own log and output
+    /// directory, so the temp working directory is the only thing two of these
+    /// share.
+    private func makeConcurrentRunQueue(
+        engine: any TranscribingEngine, name: String,
+        outputDir: URL? = nil, stagingDir: URL? = nil,
+        inFlightRuns: InFlightRunRegistry? = nil,
+    ) throws -> PipelineQueue {
+        let ownDir = tmpDir.appendingPathComponent(name)
+        try FileManager.default.createDirectory(at: ownDir, withIntermediateDirectories: true)
+        return PipelineQueue(
+            engine: engine,
+            diarizationFactory: { MockDiarization() },
+            diarizationFactoryWithMode: nil,
+            protocolGeneratorFactory: { MockProtocolGen() },
+            outputDir: outputDir ?? ownDir,
+            logDir: ownDir,
+            // Default keeps sources outside staging, i.e. user-picked imports
+            // the pipeline leaves alone; pass one to exercise the relocation.
+            stagingDir: stagingDir ?? tmpDir.appendingPathComponent("unused-staging", isDirectory: true),
+            diarizeEnabled: true,
+            numSpeakers: 0,
+            micLabel: "Me",
+            // A fresh registry per CALL, not per test: the concurrency tests
+            // build two queues that must not see each other's claims, or the
+            // second queue gives its job up and the test passes on an empty
+            // list without exercising anything. Hoisting this into setUp would
+            // gut them silently.
+            inFlightRuns: inFlightRuns ?? InFlightRunRegistry(),
+        )
+    }
+
+    /// The destruction half: with a shared working directory, the run that
+    /// fails first takes the other run's intermediate files down with it via
+    /// its cleanup, and the surviving run then dies reaching for a file that is
+    /// gone, after transcription has already succeeded. That is the hour of
+    /// meeting content issue #558 reports losing.
+    func testConcurrentRunDoesNotDestroyTheOtherRunsWorkingFiles() async throws {
+        let parked = ParkedEngine()
+        parked.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "First run speaking")]
+        let secondEngine = MockEngine()
+        secondEngine.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "Second run speaking")]
+
+        let first = try makeConcurrentRunQueue(engine: parked, name: "first")
+        let second = try makeConcurrentRunQueue(engine: secondEngine, name: "second")
+
+        // The same job value in both queues: a struct copy carries the same id,
+        // which is what a snapshot restore into a replacement queue produces.
+        let audioPath = try createTestAudioFile(in: tmpDir)
+        let job = PipelineJob(
+            meetingTitle: "Long Call",
+            appName: "Teams",
+            mixPath: audioPath,
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        first.insertJobForTesting(job)
+        second.insertJobForTesting(job)
+
+        async let firstRun: Void = first.processNext()
+        await waitFor(parked.isParked, timeout: .seconds(5))
+        // The first run now holds finished intermediate files. Drive the second
+        // run to completion on top of them.
+        await second.processNext()
+        parked.release()
+        await firstRun
+
+        // Pins the premise: if the second run ever stops reaching the point
+        // where it writes into the working directory, this test would go green
+        // without exercising anything.
+        XCTAssertNotEqual(
+            second.jobs.first?.state, .error,
+            "second run failed with: \(second.jobs.first?.error ?? "no error recorded")",
+        )
+        XCTAssertNotEqual(
+            first.jobs.first?.state, .error,
+            "first run failed with: \(first.jobs.first?.error ?? "no error recorded")",
+        )
+    }
+
+    /// Two runs that both reach the end now both try to relocate the same
+    /// staging audio. The relocation deletes an existing destination before
+    /// moving onto it, and the policy that picks `.move` only looks at path
+    /// shape, never at whether the source still exists. So the second finisher
+    /// deletes the recording the first one persisted and then fails its move
+    /// into a swallowed warning, leaving no copy anywhere: staging was emptied
+    /// by the first run, because audio is moved out of it, not copied.
+    func testSecondFinishingRunDoesNotDeleteThePersistedRecording() async throws {
+        let stagingDir = tmpDir.appendingPathComponent("staging")
+        let sharedOutputDir = tmpDir.appendingPathComponent("shared-output")
+        for dir in [stagingDir, sharedOutputDir] {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+
+        let parked = ParkedEngine()
+        parked.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "First run speaking")]
+        let secondEngine = MockEngine()
+        secondEngine.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "Second run speaking")]
+
+        let first = try makeConcurrentRunQueue(
+            engine: parked, name: "first-persist",
+            outputDir: sharedOutputDir, stagingDir: stagingDir,
+        )
+        let second = try makeConcurrentRunQueue(
+            engine: secondEngine, name: "second-persist",
+            outputDir: sharedOutputDir, stagingDir: stagingDir,
+        )
+
+        // Source inside the staging dir, so the persistence policy relocates it.
+        let stagedAudio = stagingDir.appendingPathComponent("meeting_mix.wav")
+        let sourceAudio = try createTestAudioFile(in: tmpDir)
+        try FileManager.default.copyItem(at: sourceAudio, to: stagedAudio)
+        let job = PipelineJob(
+            meetingTitle: "Long Call",
+            appName: "Teams",
+            mixPath: stagedAudio,
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        first.insertJobForTesting(job)
+        second.insertJobForTesting(job)
+
+        async let firstRun: Void = first.processNext()
+        await waitFor(parked.isParked, timeout: .seconds(5))
+        // The second run finishes first and relocates the audio.
+        await second.processNext()
+        let recordingsDir = sharedOutputDir.appendingPathComponent("recordings")
+        let persisted = try FileManager.default
+            .contentsOfDirectory(atPath: recordingsDir.path)
+            .filter { $0.hasSuffix(RecordingFileSuffix.mix) }
+        XCTAssertEqual(persisted.count, 1, "second run did not persist the recording")
+
+        // Now let the first run finish on top of it.
+        parked.release()
+        await firstRun
+
+        let survivors = try FileManager.default
+            .contentsOfDirectory(atPath: recordingsDir.path)
+            .filter { $0.hasSuffix(RecordingFileSuffix.mix) }
+        XCTAssertEqual(
+            survivors, persisted,
+            "the finished run deleted the recording the other run had already persisted",
+        )
+    }
+
+    /// Preparing the mix for diarization sits outside the block that treats a
+    /// diarization failure as a warning, so a file problem there fails the whole
+    /// job instead of costing only the speaker labels. The transcript is already
+    /// finished at that point and stage 3 tolerates a missing mix, so losing it
+    /// buys nothing.
+    ///
+    /// Only a paired source can reach that failure: a single-source job already
+    /// wrote the 16 kHz mix during transcription, so the step returns early. The
+    /// sources are removed once transcription has consumed them, which is the
+    /// state a concurrent run or a user tidying a folder can produce.
+    func testDiarizationLosingItsAudioCostsOnlySpeakerLabels() async throws {
+        let engine = MockEngine()
+        engine.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "Recorded fine")]
+        let job = try makeDualSourceJob(title: "Vanishing Sources")
+
+        // The diarizer is built between transcription and mix preparation, so
+        // building it is where the sources can be taken away: a concurrent run
+        // relocating staged audio, or somebody tidying the folder mid-job.
+        let diar = MockDiarization()
+        let removeEverySource = {
+            for path in [job.appPath, job.micPath, job.mixPath].compactMap(\.self) {
+                try? FileManager.default.removeItem(at: path)
+            }
+        }
+        let queue = makeCapturingQueue(
+            engine: engine,
+            diar: diar,
+            protocolGen: MockProtocolGen(),
+            beforeDiarizing: removeEverySource,
+        )
+
+        queue.insertJobForTesting(job)
+        await queue.processNext()
+
+        let finished = queue.jobs.first { $0.id == job.id }
+        XCTAssertEqual(
+            finished?.state, .done,
+            "job ended in \(String(describing: finished?.state)): \(finished?.error ?? "no error recorded")",
+        )
+        XCTAssertTrue(
+            finished?.warnings.contains { $0.contains("Diarization") } ?? false,
+            "the lost diarization was not reported as a warning",
+        )
+        // The point of the whole change: the finished transcript is kept.
+        let transcript = finished?.transcriptPath
+        XCTAssertNotNil(transcript, "no transcript was written")
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: transcript?.path ?? ""),
+            "the transcript was recorded but not saved",
+        )
+    }
+
+    /// A replacement queue restores the same job from the shared snapshot while
+    /// the queue it replaced is still working on it. Nothing in either instance
+    /// can see the other, so both would run it. The claim they share is what
+    /// stops the second one before it starts.
+    func testSecondQueueDoesNotRunAJobTheFirstIsAlreadyRunning() async throws {
+        let registry = InFlightRunRegistry()
+        let parked = ParkedEngine()
+        parked.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "First run speaking")]
+        let secondEngine = MockEngine()
+        secondEngine.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "Second run speaking")]
+
+        let first = try makeConcurrentRunQueue(engine: parked, name: "first", inFlightRuns: registry)
+        let second = try makeConcurrentRunQueue(engine: secondEngine, name: "second", inFlightRuns: registry)
+
+        let audioPath = try createTestAudioFile(in: tmpDir)
+        let job = PipelineJob(
+            meetingTitle: "Long Call",
+            appName: "Teams",
+            mixPath: audioPath,
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        first.insertJobForTesting(job)
+        second.insertJobForTesting(job)
+
+        async let firstRun: Void = first.processNext()
+        await waitFor(parked.isParked, timeout: .seconds(5))
+        await second.processNext()
+
+        XCTAssertEqual(
+            secondEngine.transcribeCallCount, 0,
+            "the second queue transcribed a job the first one was already running",
+        )
+
+        parked.release()
+        await firstRun
+        XCTAssertNotEqual(
+            first.jobs.first?.state, .error,
+            "first run failed with: \(first.jobs.first?.error ?? "no error recorded")",
+        )
+    }
+
+    /// The claim has to be released when the run ends, or the job could never be
+    /// re-run: a late re-diarization, a retry, or simply the next launch.
+    func testAFinishedRunReleasesItsClaim() async throws {
+        let registry = InFlightRunRegistry()
+        let engine = MockEngine()
+        engine.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "Hello")]
+        let queue = try makeConcurrentRunQueue(engine: engine, name: "single", inFlightRuns: registry)
+
+        let audioPath = try createTestAudioFile(in: tmpDir)
+        let job = PipelineJob(
+            meetingTitle: "Short Call",
+            appName: "Teams",
+            mixPath: audioPath,
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        queue.insertJobForTesting(job)
+        await queue.processNext()
+
+        XCTAssertFalse(registry.isInFlight(jobID: job.id), "claim on the job ID outlived the run")
+        XCTAssertFalse(registry.isInFlight(mixPath: audioPath), "claim on the audio outlived the run")
+    }
+
+    /// An errored run must release its claim too, otherwise one failure locks
+    /// the recording out of every later attempt for the rest of the session.
+    func testAFailedRunReleasesItsClaim() async throws {
+        let registry = InFlightRunRegistry()
+        let engine = MockEngine()
+        engine.shouldThrow = true
+        let queue = try makeConcurrentRunQueue(engine: engine, name: "failing", inFlightRuns: registry)
+
+        let audioPath = try createTestAudioFile(in: tmpDir)
+        let job = PipelineJob(
+            meetingTitle: "Doomed Call",
+            appName: "Teams",
+            mixPath: audioPath,
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        queue.insertJobForTesting(job)
+        await queue.processNext()
+
+        XCTAssertEqual(queue.jobs.first?.state, .error, "test premise: the run was supposed to fail")
+        XCTAssertFalse(registry.isInFlight(jobID: job.id), "claim survived a failed run")
+        XCTAssertFalse(registry.isInFlight(mixPath: audioPath), "claim survived a failed run")
+    }
+
+    /// Cancellation is the exit that is easiest to get wrong, because it does
+    /// not come back through the normal path. A claim left behind here would
+    /// lock the recording out of every later attempt for the rest of the
+    /// session, which is worse than the double run it prevents. Enqueued rather
+    /// than driven directly, so a real `Task` cancellation is what tears the run
+    /// down.
+    func testACancelledRunReleasesItsClaim() async throws {
+        let registry = InFlightRunRegistry()
+        let parked = ParkedEngine()
+        parked.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "Interrupted")]
+        let queue = try makeConcurrentRunQueue(engine: parked, name: "cancelled", inFlightRuns: registry)
+
+        let audioPath = try createTestAudioFile(in: tmpDir)
+        let job = PipelineJob(
+            meetingTitle: "Abandoned Call",
+            appName: "Teams",
+            mixPath: audioPath,
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        queue.enqueue(job)
+        await waitFor(parked.isParked, timeout: .seconds(5))
+        XCTAssertTrue(registry.isInFlight(jobID: job.id), "test premise: the run had claimed")
+
+        queue.cancelJob(id: job.id)
+        parked.release()
+        await waitFor(self.queueIsIdle(queue), timeout: .seconds(5))
+
+        XCTAssertFalse(registry.isInFlight(jobID: job.id), "claim survived a cancelled run")
+        XCTAssertFalse(registry.isInFlight(mixPath: audioPath), "claim survived a cancelled run")
+    }
+
+    /// True once nothing is running and nothing is left waiting.
+    private func queueIsIdle(_ queue: PipelineQueue) -> Bool {
+        !queue.isProcessing && !queue.jobs.contains { $0.state == .waiting }
+    }
+
+    /// Giving up a job someone else owns must not stall the rest of the queue.
+    /// Without the re-trigger on the refusal path, everything behind the dropped
+    /// job waits for whatever happens to poke the queue next.
+    func testARefusedJobIsDroppedAndTheQueueKeepsDraining() async throws {
+        let registry = InFlightRunRegistry()
+        let engine = MockEngine()
+        engine.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "Mine to run")]
+        let queue = try makeConcurrentRunQueue(engine: engine, name: "draining", inFlightRuns: registry)
+
+        let ownedElsewherePath = try createTestAudioFile(in: tmpDir)
+        let ownJobPath = try createTestAudioFile(in: tmpDir)
+        let ownedElsewhere = PipelineJob(
+            meetingTitle: "Someone Else's Call", appName: "Teams",
+            mixPath: ownedElsewherePath, appPath: nil, micPath: nil, micDelay: 0,
+        )
+        let ours = PipelineJob(
+            meetingTitle: "Our Call", appName: "Teams",
+            mixPath: ownJobPath, appPath: nil, micPath: nil, micDelay: 0,
+        )
+        XCTAssertEqual(
+            registry.begin(jobID: ownedElsewhere.id, mixPath: ownedElsewherePath), .claimed,
+            "test premise: the claim was free",
+        )
+
+        queue.insertJobForTesting(ownedElsewhere)
+        queue.insertJobForTesting(ours)
+        queue.triggerProcessing()
+        // Bounded rather than `awaitProcessing()`: the behaviour under test is
+        // exactly the one whose absence leaves a job waiting forever, and an
+        // unbounded wait would hang the suite instead of failing it.
+        await waitFor(self.queueIsIdle(queue), timeout: .seconds(5))
+
+        XCTAssertFalse(
+            queue.jobs.contains { $0.id == ownedElsewhere.id },
+            "the copy of a job owned elsewhere was kept",
+        )
+        XCTAssertEqual(engine.transcribeCallCount, 1, "the job behind the dropped one never ran")
+        let ourState = queue.jobs.first { $0.id == ours.id }?.state
+        XCTAssertNotEqual(ourState, .waiting)
+    }
+
+    /// The claim is released as the run unwinds, after the queue has already
+    /// armed the next one. That only works because the next run cannot begin
+    /// until this one has returned. If it ever could, a second job over the same
+    /// audio would be refused and silently dropped, so this pins the ordering.
+    func testTwoRunsOverTheSameAudioSucceedOneAfterTheOther() async throws {
+        let registry = InFlightRunRegistry()
+        let engine = MockEngine()
+        engine.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "Same file twice")]
+        let queue = try makeConcurrentRunQueue(engine: engine, name: "sequential", inFlightRuns: registry)
+
+        let audioPath = try createTestAudioFile(in: tmpDir)
+        for title in ["First Import", "Second Import"] {
+            queue.insertJobForTesting(PipelineJob(
+                meetingTitle: title, appName: "Teams",
+                mixPath: audioPath, appPath: nil, micPath: nil, micDelay: 0,
+            ))
+        }
+        queue.triggerProcessing()
+        await waitFor(engine.transcribeCallCount == 2, timeout: .seconds(5))
+
+        XCTAssertEqual(engine.transcribeCallCount, 2, "the second run over the same audio was refused")
+    }
+
+    /// A job parked at speaker naming is waiting on the user, not executing, so
+    /// its claim is long released. Filtering it on a path some other run happens
+    /// to hold would silently discard naming the user still owes an answer to.
+    func testLoadSnapshotKeepsAPendingNamingJobWhoseAudioIsClaimed() throws {
+        let mixPath = tmpDir.appendingPathComponent("parked_mix.wav")
+        try Data("fake audio".utf8).write(to: mixPath)
+
+        var job = PipelineJob(
+            meetingTitle: "Awaiting Names", appName: "Teams",
+            mixPath: mixPath, appPath: nil, micPath: nil, micDelay: 0,
+        )
+        job.state = .speakerNamingPending
+        try JSONEncoder().encode([job])
+            .write(to: tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename))
+
+        let registry = InFlightRunRegistry()
+        XCTAssertEqual(registry.begin(jobID: UUID(), mixPath: mixPath), .claimed, "test premise: the claim was free")
+
+        let freshQueue = PipelineQueue(logDir: tmpDir, inFlightRuns: registry)
+        freshQueue.loadSnapshot()
+
+        XCTAssertEqual(freshQueue.jobs.count, 1, "dropped a job that was only waiting for the user")
+    }
+
+    /// Dropping a duplicate without a trace is only right when the run that
+    /// owns it will answer under the same job ID. Submitting the same file
+    /// twice through the automation API mints a fresh ID, so nothing would ever
+    /// answer for the second one: its status lookup would keep reporting
+    /// nothing found, and a blocking submit would run to its deadline. That
+    /// job needs a terminal state instead.
+    func testAJobRefusedOverAnotherJobsAudioEndsInError() async throws {
+        let registry = InFlightRunRegistry()
+        let engine = MockEngine()
+        engine.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "Never runs")]
+        let queue = try makeConcurrentRunQueue(engine: engine, name: "pathduplicate", inFlightRuns: registry)
+
+        let audioPath = try createTestAudioFile(in: tmpDir)
+        XCTAssertEqual(
+            registry.begin(jobID: UUID(), mixPath: audioPath), .claimed,
+            "test premise: a different job took the audio first",
+        )
+
+        let job = PipelineJob(
+            meetingTitle: "Same File Again", appName: "Teams",
+            mixPath: audioPath, appPath: nil, micPath: nil, micDelay: 0,
+        )
+        queue.insertJobForTesting(job)
+        queue.triggerProcessing()
+        await waitFor(self.queueIsIdle(queue), timeout: .seconds(5))
+
+        let refusedState = queue.jobs.first { $0.id == job.id }?.state
+        XCTAssertEqual(
+            refusedState, .error,
+            "the job vanished instead of reporting why it did not run",
+        )
+        XCTAssertEqual(engine.transcribeCallCount, 0, "it must not run either")
+    }
+
+    /// A job given up to another queue leaves this one without a word in the
+    /// event log, and that log is how the double run in issue #558 was found in
+    /// the first place: two `waiting -> transcribing` entries under one job ID.
+    /// A story that simply stops there is exactly the gap that made the bug hard
+    /// to see, so the hand-off is recorded. Both queues append to the same file,
+    /// so the drop reads in order against the owner's entries.
+    func testGivingUpADuplicateIsRecordedInTheEventLog() async throws {
+        let registry = InFlightRunRegistry()
+        let parked = ParkedEngine()
+        parked.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "First run speaking")]
+        let first = try makeConcurrentRunQueue(engine: parked, name: "owner", inFlightRuns: registry)
+        let second = try makeConcurrentRunQueue(engine: MockEngine(), name: "loser", inFlightRuns: registry)
+
+        let audioPath = try createTestAudioFile(in: tmpDir)
+        let job = PipelineJob(
+            meetingTitle: "Long Call", appName: "Teams",
+            mixPath: audioPath, appPath: nil, micPath: nil, micDelay: 0,
+        )
+        first.insertJobForTesting(job)
+        second.insertJobForTesting(job)
+
+        async let firstRun: Void = first.processNext()
+        await waitFor(parked.isParked, timeout: .seconds(5))
+        await second.processNext()
+        parked.release()
+        await firstRun
+
+        let log = (try? String(
+            contentsOf: tmpDir.appendingPathComponent("loser/pipeline_log.jsonl"), encoding: .utf8,
+        )) ?? ""
+        XCTAssertTrue(
+            log.contains(job.id.uuidString) && log.contains("duplicate_dropped"),
+            "the hand-off left no trace in the event log: \(log.isEmpty ? "<no log at all>" : log)",
+        )
+    }
+
+    /// The transcript reaches disk before the diarization stage begins, rather
+    /// than only after it. Asked at the moment the diarizer is built, which is
+    /// that stage's first act: nothing later in it touches this directory, so
+    /// present at entry means present throughout.
+    func testTheTranscriptIsOnDiskBeforeDiarizationBegins() async throws {
+        let engine = MockEngine()
+        engine.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "Readable early")]
+        let protocolsDir = tmpDir.appendingPathComponent("protocols")
+
+        var draftsAtDiarizationEntry: [String] = []
+        let queue = PipelineQueue(
+            engine: engine,
+            diarizationFactory: {
+                let names = (try? FileManager.default
+                    .contentsOfDirectory(atPath: protocolsDir.path)) ?? []
+                draftsAtDiarizationEntry = names.compactMap { name in
+                    try? String(contentsOf: protocolsDir.appendingPathComponent(name), encoding: .utf8)
+                }
+                return MockDiarization()
+            },
+            diarizationFactoryWithMode: nil,
+            protocolGeneratorFactory: { MockProtocolGen() },
+            outputDir: tmpDir,
+            logDir: tmpDir,
+            diarizeEnabled: true,
+            numSpeakers: 0,
+            micLabel: "Me",
+        )
+
+        let audioPath = try createTestAudioFile(in: tmpDir)
+        let job = PipelineJob(
+            meetingTitle: "Long Meeting", appName: "Teams",
+            mixPath: audioPath, appPath: nil, micPath: nil, micDelay: 0,
+        )
+        queue.insertJobForTesting(job)
+        await queue.processNext()
+
+        // Reading the content, not just the name: an implementation writing an
+        // empty or placeholder file would satisfy a presence check and save
+        // nothing.
+        XCTAssertTrue(
+            draftsAtDiarizationEntry.contains { $0.contains("Readable early") },
+            "the spoken text was not on disk when diarization began: \(draftsAtDiarizationEntry)",
+        )
+    }
+
+    /// The early write puts the unlabelled transcript on disk. Stage 3 has to
+    /// replace it with the labelled one, or the change would trade a readable
+    /// intermediate for a permanently worse result.
+    func testTheFinishedTranscriptIsTheLabelledOneNotTheEarlyDraft() async throws {
+        let engine = MockEngine()
+        engine.segmentsToReturn = [
+            TimestampedSegment(start: 0, end: 5, text: "First line"),
+            TimestampedSegment(start: 5, end: 10, text: "Second line"),
+        ]
+        let queue = makeCapturingQueue(
+            engine: engine, diar: MockDiarization(), protocolGen: MockProtocolGen(),
+        )
+
+        let audioPath = try createTestAudioFile(in: tmpDir)
+        let job = PipelineJob(
+            meetingTitle: "Labelled Result", appName: "Teams",
+            mixPath: audioPath, appPath: nil, micPath: nil, micDelay: 0,
+        )
+        queue.insertJobForTesting(job)
+        await queue.processNext()
+
+        let protocolsDir = tmpDir.appendingPathComponent("protocols")
+        let transcripts = try FileManager.default
+            .contentsOfDirectory(atPath: protocolsDir.path)
+            .filter { $0.hasSuffix(".txt") }
+        XCTAssertEqual(transcripts.count, 1, "the early draft was left behind as a second file")
+        let saved = try String(contentsOf: protocolsDir.appendingPathComponent(transcripts[0]), encoding: .utf8)
+        // The label is the mock diarizer's; what matters is that some label is
+        // there at all, since the early draft carries none.
+        XCTAssertTrue(
+            saved.contains("SPEAKER_"),
+            "the file kept the unlabelled draft instead of the diarized transcript: \(saved)",
+        )
+        XCTAssertFalse(saved.isEmpty)
+    }
+
+    func testProcessNextEmptyTranscriptSetsError() async throws {
+        let engine = MockEngine()
+        engine.segmentsToReturn = [] // empty = no speech
+        let (pQueue, _) = makeMockProcessingQueue(engine: engine)
+
+        let audioPath = try createTestAudioFile(in: tmpDir)
+        let job = PipelineJob(
+            meetingTitle: "Silent Meeting",
+            appName: "Teams",
+            mixPath: audioPath,
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        pQueue.enqueue(job)
+        await pQueue.processNext()
+
+        XCTAssertEqual(pQueue.jobs.first?.state, .error)
+        XCTAssertEqual(pQueue.jobs.first?.error, "Empty transcript")
+    }
+
+    func testProcessNextDualSourceTranscribesBothTracks() async throws {
+        let engine = MockEngine()
+        engine.segmentsToReturn = [
+            TimestampedSegment(start: 0, end: 5, text: "Track content"),
+        ]
+        let (pQueue, _) = makeMockProcessingQueue(engine: engine)
+
+        try pQueue.enqueue(makeDualSourceJob(title: "Dual Source"))
+        await pQueue.processNext()
+
+        // Dual source: transcribes app + mic = 2 calls
+        XCTAssertEqual(engine.transcribeCallCount, 2)
+    }
+
+    // MARK: - diarize() assign-phase characterization
+
+    //
+    // These pin the final speaker-labeled transcript that diarize() hands to
+    // protocol generation, for each of its three assignment topologies
+    // (single-source / dual-track-both / dual-track-mic-fail). They guard the
+    // extraction of the assignment logic into DiarizationProcess: the
+    // observable output must stay identical across the refactor. `embeddings:
+    // nil` short-circuits the matcher + naming dialog so the job flows straight
+    // through to the assignment branch.
+
+    private func makeCapturingQueue(
+        engine: MockEngine,
+        diar: MockDiarization,
+        protocolGen: MockProtocolGen?,
+        micLabel: String = "Me",
+        stagingDir: URL? = nil,
+        useAITitleForFilenames: Bool = false,
+        beforeDiarizing: (() -> Void)? = nil,
+    ) -> PipelineQueue {
+        PipelineQueue(
+            engine: engine,
+            diarizationFactory: {
+                beforeDiarizing?()
+                return diar
+            },
+            diarizationFactoryWithMode: nil,
+            protocolGeneratorFactory: { protocolGen },
+            outputDir: tmpDir,
+            logDir: tmpDir,
+            // Default keeps sources outside staging, i.e. they count as
+            // user-picked imports; pass tmpDir to exercise the hand-off instead.
+            stagingDir: stagingDir ?? tmpDir.appendingPathComponent("unused-staging", isDirectory: true),
+            diarizeEnabled: true,
+            numSpeakers: 0,
+            micLabel: micLabel,
+            useAITitleForFilenames: useAITitleForFilenames,
+        )
+    }
+
+    private func makeDualSourceJob(title: String, micDelay: TimeInterval = 0) throws -> PipelineJob {
+        let audioPath = try createTestAudioFile(in: tmpDir)
+        let appPath = tmpDir.appendingPathComponent("app_audio.wav")
+        let micPath = tmpDir.appendingPathComponent("mic_audio.wav")
+        try? FileManager.default.removeItem(at: appPath)
+        try? FileManager.default.removeItem(at: micPath)
+        try FileManager.default.copyItem(at: audioPath, to: appPath)
+        try FileManager.default.copyItem(at: audioPath, to: micPath)
+        return PipelineJob(
+            meetingTitle: title, appName: "Teams",
+            mixPath: audioPath, appPath: appPath, micPath: micPath, micDelay: micDelay,
+        )
+    }
+
+    /// Drive a single-source job through the pipeline to `.speakerNamingPending`
+    /// with a one-speaker initial diarization, returning the queue, the mock
+    /// diarizer (set `resultToReturn` to a multi-speaker result for the re-run),
+    /// and the job id. Shared setup for the late-rerun re-segmentation tests.
+    private func makeSingleSourceJobAtNamingPending(
+        title: String, transcriptSegments: [TimestampedSegment],
+    ) async throws -> (PipelineQueue, MockDiarization, UUID) {
+        let engine = MockEngine()
+        engine.segmentsToReturn = transcriptSegments
+        let mockDiar = MockDiarization()
+        let span = transcriptSegments.last?.end ?? 0
+        // Initial diarization collapses everything onto one speaker.
+        mockDiar.resultToReturn = DiarizationResult(
+            segments: [.init(start: transcriptSegments.first?.start ?? 0, end: span, speaker: "SPEAKER_0")],
+            speakingTimes: ["SPEAKER_0": span],
+            autoNames: [:],
+            embeddings: ["SPEAKER_0": [1, 0, 0]],
+        )
+        let (pQueue, _) = makeMockProcessingQueue(
+            engine: engine, diarizationFactory: { mockDiar }, diarizeEnabled: true,
+        )
+        let job = try PipelineJob(
+            meetingTitle: title, appName: "Teams",
+            mixPath: createTestAudioFile(in: tmpDir), appPath: nil, micPath: nil, micDelay: 0,
+        )
+        pQueue.enqueue(job)
+        let pending = XCTestExpectation(description: "speakerNamingPending")
+        pQueue.onJobStateChange = { _, _, newState in
+            if newState == .speakerNamingPending { pending.fulfill() }
+        }
+        await pQueue.processNext()
+        await fulfillment(of: [pending], timeout: 10)
+        return (pQueue, mockDiar, job.id)
+    }
+
+    func testDiarizeSingleSourceLabelsTranscriptWithAutoNames() async throws {
+        let engine = MockEngine()
+        engine.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "Hello world")]
+        let diar = MockDiarization()
+        diar.resultToReturn = DiarizationResult(
+            segments: [.init(start: 0, end: 5, speaker: "SPEAKER_0")],
+            speakingTimes: ["SPEAKER_0": 5],
+            autoNames: ["SPEAKER_0": "Alice"],
+            embeddings: nil,
+        )
+        let protocolGen = MockProtocolGen()
+        let q = makeCapturingQueue(engine: engine, diar: diar, protocolGen: protocolGen)
+
+        let audioPath = try createTestAudioFile(in: tmpDir)
+        q.enqueue(PipelineJob(
+            meetingTitle: "Single", appName: "Teams",
+            mixPath: audioPath, appPath: nil, micPath: nil, micDelay: 0,
+        ))
+        await q.processNext()
+
+        let transcript = try XCTUnwrap(protocolGen.capturedTranscript)
+        XCTAssertTrue(
+            transcript.contains("Alice: Hello world"),
+            "single-source: SPEAKER_0 should map to Alice — got: \(transcript)",
+        )
+    }
+
+    // MARK: - One meeting-start-anchored basename per job
+
+    private func makeStraightThroughQueue(
+        stagingDir: URL? = nil, useAITitleForFilenames: Bool = false,
+    ) -> (PipelineQueue, MockProtocolGen) {
+        let engine = MockEngine()
+        engine.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "Hello world")]
+        let diar = MockDiarization()
+        diar.resultToReturn = DiarizationResult(
+            segments: [.init(start: 0, end: 5, speaker: "SPEAKER_0")],
+            speakingTimes: ["SPEAKER_0": 5],
+            autoNames: [:],
+            embeddings: nil, // no matcher/naming pause → job runs straight to .done
+        )
+        let protocolGen = MockProtocolGen()
+        return (
+            makeCapturingQueue(
+                engine: engine, diar: diar, protocolGen: protocolGen, stagingDir: stagingDir,
+                useAITitleForFilenames: useAITitleForFilenames,
+            ),
+            protocolGen,
+        )
+    }
+
+    /// A file the user picked for import lives in their own folder, and the app
+    /// has no business relocating it. Only the app's own staging recordings get
+    /// moved into the output dir.
+    func testImportedSourceFileStaysWhereTheUserPutIt() async throws {
+        let (q, _) = makeStraightThroughQueue()
+        let audioPath = try createTestAudioFile(in: tmpDir)
+        q.enqueue(PipelineJob(
+            meetingTitle: "Voice Memo", appName: "File",
+            mixPath: audioPath, appPath: nil, micPath: nil, micDelay: 0,
+        ))
+        await q.processNext()
+
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: audioPath.path),
+            "import must not move the user's file out of its folder",
+        )
+        XCTAssertEqual(
+            q.jobs.first?.mixPath?.standardizedFileURL, audioPath.standardizedFileURL,
+            "an import is never relocated, so its path on the job must not be rewritten",
+        )
+    }
+
+    // MARK: - Relocated Audio Paths (#726)
+
+    /// After stage 3 hands the audio to the output folder, the job has to name
+    /// the files where they now are. Otherwise every later reader, the restore
+    /// discard rule above all, judges the job by a staging path that was emptied
+    /// the moment the move succeeded.
+    func testFinishedJobCarriesTheRelocatedAudioPaths() async throws {
+        let (q, _) = makeStraightThroughQueue(stagingDir: tmpDir)
+        let job = try makeDualSourceJob(title: "Relocated Paths")
+        q.enqueue(job)
+        await q.processNext()
+
+        let recordingsDir = tmpDir.appendingPathComponent("recordings")
+        let stem = try XCTUnwrap(q.jobs.first?.namingSlug)
+        let finished = try XCTUnwrap(q.jobs.first)
+        // All three slots, not just the mix: a re-run of a dual-source job reads
+        // appPath and micPath too, so a forgotten slot turns the fix into an error.
+        for (actual, suffix) in [
+            (finished.mixPath, RecordingFileSuffix.mix),
+            (finished.appPath, RecordingFileSuffix.app),
+            (finished.micPath, RecordingFileSuffix.mic),
+        ] {
+            let expected = recordingsDir.appendingPathComponent("\(stem)\(suffix)")
+            XCTAssertEqual(actual?.standardizedFileURL, expected.standardizedFileURL)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: expected.path))
+        }
+    }
+
+    /// The issue #726 repro: the app is quit while the LLM call runs, and the
+    /// job is gone after the next launch.
+    ///
+    /// The fixture is the production run's own output rather than a hand-written
+    /// path, because a hand-written one cannot tell the fix from its absence: it
+    /// would name the relocated file either way. Here the job is taken as stage 3
+    /// left it and only its state is wound back to the interrupted one, so
+    /// without the write-back it still carries the emptied staging path and the
+    /// restore drops it.
+    func testRestoreKeepsAJobInterruptedDuringProtocolGeneration() async throws {
+        let (q, _) = makeStraightThroughQueue(stagingDir: tmpDir)
+        try q.enqueue(makeDualSourceJob(title: "Interrupted By Quit"))
+        await q.processNext()
+
+        // The snapshot worker is detached, so without this the `.done` snapshot
+        // can land on top of the one written below and the test fails for a
+        // reason that has nothing to do with #726.
+        await q.awaitSnapshotFlush()
+
+        var interrupted = try XCTUnwrap(q.jobs.first)
+        interrupted.state = .generatingProtocol
+        try JSONEncoder().encode([interrupted])
+            .write(to: tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename))
+
+        // Own registry: the shared one would drop the job as in-flight and the
+        // test would go red for a reason that has nothing to do with #726.
+        let restored = PipelineQueue(
+            engine: MockEngine(),
+            diarizationFactory: { MockDiarization() },
+            protocolGeneratorFactory: { nil },
+            outputDir: tmpDir,
+            logDir: tmpDir,
+            stagingDir: tmpDir,
+            inFlightRuns: InFlightRunRegistry(),
+        )
+        restored.loadSnapshot()
+
+        XCTAssertEqual(restored.jobs.count, 1, "the interrupted job must survive the restore")
+        let mixPath = try XCTUnwrap(restored.jobs.first?.mixPath)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: mixPath.path))
+
+        // The restore starts the surviving job; let it finish rather than
+        // leaving a run writing into tmpDir while tearDown deletes it.
+        await restored.awaitProcessing()
+    }
+
+    /// The persistence cannot ride on the next state transition, because with
+    /// no protocol generator configured there is none: `generateProtocol`
+    /// returns before its own transition. The relocation has to write the
+    /// snapshot itself.
+    func testRelocatedPathsSurviveARestoreWithoutAProtocolGenerator() async throws {
+        let engine = MockEngine()
+        engine.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "Hello world")]
+        let q = PipelineQueue(
+            engine: engine,
+            diarizationFactory: { MockDiarization() },
+            protocolGeneratorFactory: { nil },
+            outputDir: tmpDir,
+            logDir: tmpDir,
+            stagingDir: tmpDir,
+            inFlightRuns: InFlightRunRegistry(),
+        )
+        try q.enqueue(makeDualSourceJob(title: "No Protocol Provider"))
+        await q.processNext()
+        await q.awaitSnapshotFlush()
+
+        let onDisk = try XCTUnwrap(PipelineSnapshot.load(from: tmpDir))
+        let mixPath = try XCTUnwrap(onDisk.first?.mixPath)
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: mixPath.path),
+            "the snapshot must name the relocated audio even with no protocol generator",
+        )
+    }
+
+    /// The relocation has to persist itself rather than lean on a later state
+    /// transition, because there is not always one: `generateProtocol` returns
+    /// before its own transition when no protocol generator is configured, and
+    /// a quit in the window after the move would then leave a snapshot still
+    /// naming the emptied staging path.
+    func testRecordingRelocatedAudioWritesTheSnapshotItself() async {
+        let writes = OSAllocatedUnfairLock<Int>(initialState: 0)
+        // swiftlint:disable trailing_closure
+        let q = PipelineQueue(
+            logDir: tmpDir,
+            snapshotWriter: { _, _ in writes.withLock { $0 += 1 } },
+        )
+        // swiftlint:enable trailing_closure
+        let job = makeJob(title: "Persist On Relocation")
+        q.enqueue(job)
+        await q.awaitSnapshotFlush()
+        let before = writes.withLock { $0 }
+
+        q.recordRelocatedAudio(jobID: job.id, RelocatedAudioPaths(
+            mix: tmpDir.appendingPathComponent("recordings/moved_mix.wav"), app: nil, mic: nil,
+        ))
+        await q.awaitSnapshotFlush()
+
+        XCTAssertGreaterThan(
+            writes.withLock { $0 }, before,
+            "recording the relocation must reach disk on its own",
+        )
+        XCTAssertEqual(
+            q.jobs.first?.mixPath?.lastPathComponent, "moved_mix.wav",
+            "and it must be what the job carries afterwards",
+        )
+    }
+
+    /// Reconstruct the snapshot of a job killed inside the protocol call: the
+    /// transcript is on disk, the protocol is not, and the state still names
+    /// the stage. Taken from a production run rather than hand-built, so the
+    /// paths are the ones the pipeline really writes.
+    private func snapshotOfJobInterruptedInProtocolGeneration(
+        _ queue: PipelineQueue, jobID: UUID,
+    ) throws -> PipelineJob {
+        var interrupted = try XCTUnwrap(queue.jobs.first { $0.id == jobID })
+        interrupted.state = .generatingProtocol
+        interrupted.protocolPath = nil
+        try JSONEncoder().encode([interrupted])
+            .write(to: tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename))
+        return interrupted
+    }
+
+    private func makeResumeQueue(
+        engine: MockEngine, protocolGen: MockProtocolGen,
+        notionExportConfiguration: NotionExportConfiguration? = nil,
+    ) -> PipelineQueue {
+        PipelineQueue(
+            engine: engine,
+            diarizationFactory: { MockDiarization() },
+            protocolGeneratorFactory: { protocolGen },
+            outputDir: tmpDir,
+            logDir: tmpDir,
+            stagingDir: tmpDir,
+            diarizeEnabled: true,
+            notionExportConfigurationProvider: { notionExportConfiguration.map(NotionExportResolution.ready) ?? .disabled },
+            inFlightRuns: InFlightRunRegistry(),
+        )
+    }
+
+    /// The transcript and the diarization are already on disk, so the restore
+    /// has no business paying for them again.
+    func testRestoreResumesProtocolGenerationWithoutRetranscribing() async throws {
+        let (q, _) = makeStraightThroughQueue(stagingDir: tmpDir)
+        let job = try makeDualSourceJob(title: "Resume Without Retranscribing")
+        q.enqueue(job)
+        await q.processNext()
+        await q.awaitSnapshotFlush()
+        _ = try snapshotOfJobInterruptedInProtocolGeneration(q, jobID: job.id)
+
+        let engine = MockEngine()
+        let protocolGen = MockProtocolGen()
+        let restored = makeResumeQueue(engine: engine, protocolGen: protocolGen)
+        restored.loadSnapshot()
+        await restored.awaitProcessing()
+
+        XCTAssertEqual(engine.transcribeCallCount, 0, "the transcript was already on disk")
+        XCTAssertTrue(protocolGen.generateCalled)
+        XCTAssertEqual(restored.jobs.first?.state, .done)
+        XCTAssertNotNil(restored.jobs.first?.protocolPath)
+    }
+
+    func testExportInterruptedAfterLocalSaveOffersRetryWithoutRegenerating() async throws {
+        let (queue, _) = makeStraightThroughQueue(stagingDir: tmpDir)
+        let job = try makeDualSourceJob(title: "Interrupted After Local Save")
+        queue.enqueue(job)
+        await queue.processNext()
+        await queue.awaitSnapshotFlush()
+
+        var interrupted = try XCTUnwrap(queue.jobs.first)
+        XCTAssertNotNil(interrupted.protocolPath)
+        interrupted.state = .generatingProtocol
+        interrupted.beginNotionExport(speakerNames: [], localBackupSaved: true)
+        try JSONEncoder().encode([interrupted])
+            .write(to: tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename))
+
+        let protocolGen = MockProtocolGen()
+        let restored = makeResumeQueue(engine: MockEngine(), protocolGen: protocolGen)
+        restored.loadSnapshot()
+        await restored.awaitProcessing()
+
+        XCTAssertFalse(protocolGen.generateCalled, "the Markdown on disk is this run's output")
+        let finished = try XCTUnwrap(restored.jobs.first)
+        XCTAssertEqual(finished.state, .done)
+        XCTAssertEqual(finished.notionExportStatus, .failed)
+        XCTAssertTrue(finished.warnings.contains { $0.hasPrefix("Notion export failed (interrupted") })
+    }
+
+    func testInterruptedNotionExportRegeneratesOldProtocolFromSavedTranscript() async throws {
+        let (queue, _) = makeStraightThroughQueue(stagingDir: tmpDir)
+        let job = try makeDualSourceJob(title: "Interrupted Notion Export")
+        queue.enqueue(job)
+        await queue.processNext()
+        await queue.awaitSnapshotFlush()
+
+        var interrupted = try XCTUnwrap(queue.jobs.first)
+        let oldProtocolPath = try XCTUnwrap(interrupted.protocolPath)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: oldProtocolPath.path))
+        let transcriptPath = try XCTUnwrap(interrupted.transcriptPath)
+        let correctedTranscript = "[00:00] Alice: Corrected meeting text"
+        try correctedTranscript.write(to: transcriptPath, atomically: true, encoding: .utf8)
+        interrupted.state = .generatingProtocol
+        interrupted.beginNotionExport(speakerNames: ["Alice"])
+        try JSONEncoder().encode([interrupted])
+            .write(to: tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename))
+
+        let engine = MockEngine()
+        let protocolGen = MockProtocolGen()
+        let exporter = TagCapturingNotionExporter()
+        let restored = makeResumeQueue(
+            engine: engine, protocolGen: protocolGen,
+            notionExportConfiguration: NotionExportConfiguration(
+                exporter: exporter, databaseID: "database-1", speakerTagsEnabled: true,
+            ),
+        )
+        restored.loadSnapshot()
+        await restored.awaitProcessing()
+
+        XCTAssertEqual(engine.transcribeCallCount, 0)
+        XCTAssertTrue(protocolGen.generateCalled, "The old local protocol must not finish the interrupted export")
+        XCTAssertEqual(protocolGen.capturedTranscript, correctedTranscript)
+        let receivedTags = await exporter.receivedTags
+        XCTAssertEqual(receivedTags, ["Alice"])
+    }
+
+    /// The case that makes the resume worth building rather than merely cheap.
+    /// A late confirm transits `.generatingProtocol` too, and a full run there
+    /// re-diarizes, discards the names the user just confirmed, and parks the
+    /// job back in the dialog they just closed.
+    func testRestoreAfterALateConfirmKeepsTheConfirmedNames() async throws {
+        let (queue, _, jobID) = try await makeSingleSourceJobAtNamingPending(
+            title: "Confirmed Then Quit",
+            transcriptSegments: [TimestampedSegment(start: 0, end: 5, text: "Hello")],
+        )
+        let confirmed = expectation(description: "the confirm reached its terminal state")
+        queue.onJobStateChange = { job, _, new in
+            if job.id == jobID, new == .done { confirmed.fulfill() }
+        }
+        queue.completeSpeakerNaming(
+            jobID: jobID, result: .confirmed(["SPEAKER_0": "Speaker A"]), source: .dialog,
+        )
+        await fulfillment(of: [confirmed], timeout: 5)
+        queue.onJobStateChange = nil
+        await queue.awaitSnapshotFlush()
+        _ = try snapshotOfJobInterruptedInProtocolGeneration(queue, jobID: jobID)
+
+        let engine = MockEngine()
+        let protocolGen = MockProtocolGen()
+        let restored = makeResumeQueue(engine: engine, protocolGen: protocolGen)
+        restored.speakerNamingHandler = { _ in
+            XCTFail("the restore asked for names the user had already confirmed")
+            return .skipped
+        }
+        restored.loadSnapshot()
+        await restored.awaitProcessing()
+
+        let transcript = try XCTUnwrap(protocolGen.capturedTranscript)
+        XCTAssertTrue(transcript.contains("Speaker A"), "the confirmed name must survive the restore")
+        XCTAssertFalse(transcript.contains("SPEAKER_0"))
+        XCTAssertEqual(engine.transcribeCallCount, 0)
+    }
+
+    /// The window the state alone cannot see. A confirm enters
+    /// `.generatingProtocol` synchronously and only then rewrites the
+    /// transcript, so a quit in between leaves a finished-looking state over a
+    /// transcript that still carries the auto-names. Resuming there would
+    /// publish them and drop what the user confirmed; running in full asks
+    /// again, which is what happened before the resume existed.
+    func testRestoreDuringAnUnfinishedConfirmAsksAgainRatherThanPublishingAutoNames() async throws {
+        let (queue, _, jobID) = try await makeSingleSourceJobAtNamingPending(
+            title: "Quit Mid Confirm",
+            transcriptSegments: [TimestampedSegment(start: 0, end: 5, text: "Hello")],
+        )
+        await queue.awaitSnapshotFlush()
+
+        // Taken before any confirm runs: the naming sidecar is on disk and the
+        // transcript is the auto-named one, which is exactly the state the
+        // synchronous hop into `.generatingProtocol` leaves behind.
+        var interrupted = try XCTUnwrap(queue.jobs.first { $0.id == jobID })
+        interrupted.state = .generatingProtocol
+        interrupted.protocolPath = nil
+        try JSONEncoder().encode([interrupted])
+            .write(to: tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename))
+
+        let engine = MockEngine()
+        engine.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "Hello")]
+        let restored = makeResumeQueue(engine: engine, protocolGen: MockProtocolGen())
+        restored.loadSnapshot()
+        await restored.awaitProcessing()
+
+        XCTAssertEqual(engine.transcribeCallCount, 1, "the unfinished confirm must be run again, not resumed")
+        let log = (try? String(contentsOf: restored.eventLog.path, encoding: .utf8)) ?? ""
+        XCTAssertFalse(log.contains("resumed_protocol_only"))
+    }
+
+    /// A crash mid-write leaves a truncated or empty transcript. Spending an
+    /// LLM call on it would publish whatever came back as the meeting protocol.
+    func testAnEmptyTranscriptFallsBackToTheFullRun() async throws {
+        let (q, _) = makeStraightThroughQueue(stagingDir: tmpDir)
+        let job = try makeDualSourceJob(title: "Truncated Transcript")
+        q.enqueue(job)
+        await q.processNext()
+        await q.awaitSnapshotFlush()
+        let interrupted = try snapshotOfJobInterruptedInProtocolGeneration(q, jobID: job.id)
+        try Data().write(to: XCTUnwrap(interrupted.transcriptPath))
+
+        let engine = MockEngine()
+        engine.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "Recovered")]
+        let protocolGen = MockProtocolGen()
+        let restored = makeResumeQueue(engine: engine, protocolGen: protocolGen)
+        restored.loadSnapshot()
+        await restored.awaitProcessing()
+
+        XCTAssertGreaterThan(engine.transcribeCallCount, 0, "an empty transcript must not be resumed from")
+        XCTAssertEqual(protocolGen.capturedTranscript?.isEmpty, false)
+    }
+
+    /// A job interrupted during a late re-diarization is exposed the same way,
+    /// because that run puts an already relocated job back into `.diarizing`.
+    func testRestoreKeepsAJobInterruptedDuringLateRediarization() async throws {
+        let (queue, _, jobID) = try await makeSingleSourceJobAtNamingPending(
+            title: "Interrupted Re-diarization",
+            transcriptSegments: [TimestampedSegment(start: 0, end: 5, text: "Hello")],
+        )
+        await queue.awaitSnapshotFlush()
+
+        var interrupted = try XCTUnwrap(queue.jobs.first { $0.id == jobID })
+        interrupted.state = .diarizing
+        try JSONEncoder().encode([interrupted])
+            .write(to: tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename))
+
+        let engine = MockEngine()
+        let restored = PipelineQueue(
+            engine: engine,
+            diarizationFactory: { MockDiarization() },
+            protocolGeneratorFactory: { nil },
+            outputDir: tmpDir,
+            logDir: tmpDir,
+            stagingDir: tmpDir,
+            inFlightRuns: InFlightRunRegistry(),
+        )
+        restored.loadSnapshot()
+
+        XCTAssertEqual(restored.jobs.count, 1)
+        await restored.awaitProcessing()
+
+        // And it must run in full. The transcript on disk is the segmentation
+        // the user asked to redo, so resuming from it would hand back exactly
+        // what they rejected.
+        XCTAssertEqual(engine.transcribeCallCount, 1, "a re-diarization must not resume from the old transcript")
+        let log = (try? String(contentsOf: restored.eventLog.path, encoding: .utf8)) ?? ""
+        XCTAssertFalse(log.contains("resumed_protocol_only"))
+    }
+
+    /// Losing a job has to leave a trace. The restore used to drop a job whose
+    /// audio it could not find without a single line anywhere, so the one case
+    /// that still reaches that rule after the write-back has to be readable
+    /// after the fact.
+    func testLoadSnapshotLogsJobsDiscardedForMissingAudio() async throws {
+        var job = PipelineJob(
+            meetingTitle: "Vanished Audio", appName: "App",
+            mixPath: tmpDir.appendingPathComponent("gone_\(UUID().uuidString).wav"),
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        job.state = .generatingProtocol
+        try JSONEncoder().encode([job])
+            .write(to: tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename))
+
+        let queue = PipelineQueue(logDir: tmpDir)
+        queue.loadSnapshot()
+
+        XCTAssertEqual(queue.jobs.count, 0)
+        let log = try String(contentsOf: queue.eventLog.path, encoding: .utf8)
+        XCTAssertTrue(
+            log.contains("discarded_missing_audio") && log.contains(job.id.uuidString),
+            "the discard left no trace in the event log",
+        )
+        XCTAssertTrue(
+            log.contains("\"from\":\"generatingProtocol\""),
+            "the record must name the stage the job was interrupted in, not the reset state",
+        )
+
+        // Re-reading the same dead entry on every launch would bury the one
+        // record of the loss under copies of itself. The rewrite goes through
+        // the detached snapshot writer, so order it before the next launch.
+        await queue.awaitSnapshotFlush()
+        let second = PipelineQueue(logDir: tmpDir)
+        second.loadSnapshot()
+        let occurrences = try String(contentsOf: queue.eventLog.path, encoding: .utf8)
+            .components(separatedBy: "discarded_missing_audio").count - 1
+        XCTAssertEqual(occurrences, 1, "the discard must not repeat on the next launch")
+    }
+
+    /// A move that fails must leave the job naming the file that is still there.
+    /// Writing the intended destination unconditionally would put a path on the
+    /// job that nothing can open, and would record it in the processed ledger
+    /// while the real file sits in staging waiting to be re-picked as an orphan.
+    func testFailedRelocationKeepsTheStagingPathOnTheJob() async throws {
+        let (q, _) = makeStraightThroughQueue(stagingDir: tmpDir)
+        // A regular file where the recordings folder belongs makes both the
+        // createDirectory and the move fail, deterministically and without
+        // touching permissions.
+        try Data([0]).write(to: tmpDir.appendingPathComponent("recordings"))
+        let job = try makeDualSourceJob(title: "Move Fails")
+        let stagedMix = try XCTUnwrap(job.mixPath)
+        q.enqueue(job)
+        await q.processNext()
+
+        XCTAssertEqual(q.jobs.first?.mixPath?.standardizedFileURL, stagedMix.standardizedFileURL)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: stagedMix.path))
+        XCTAssertTrue(
+            ProcessedRecordingsLedger(logDir: tmpDir).load()
+                .contains(stagedMix.standardizedFileURL.path),
+            "the ledger must record where the file actually is",
+        )
+    }
+
+    /// Transcript, protocol, and both audio artifacts of one job must all land on
+    /// the identical stem, stamped with the meeting-start time and carrying the
+    /// job shortID. Fails against the old code, which stamped each save with a
+    /// fresh `Date()` (processing time) and omitted the shortID from the
+    /// transcript/protocol/mix names.
+    func testAllArtifactsShareOneMeetingStartAnchoredBasename() async throws {
+        // Staging == tmpDir, so the fixture counts as audio the app produced and
+        // the hand-off into the output dir runs. That is what pins the shared
+        // stem on the moved `_mix.wav`, and it is the suite's only coverage of
+        // the move branch.
+        let (q, protocolGen) = makeStraightThroughQueue(stagingDir: tmpDir)
+        let start = try localDate(2026, 3, 4, 9, 15)
+        let audioPath = try createTestAudioFile(in: tmpDir)
+        let job = PipelineJob(
+            meetingTitle: "Weekly Sync", appName: "Teams",
+            mixPath: audioPath, appPath: nil, micPath: nil, micDelay: 0,
+            meetingStartTime: start,
+        )
+        q.enqueue(job)
+        await q.processNext()
+
+        let stem = "20260304_0915_weekly_sync_\(job.shortID)"
+        let protocolsDir = tmpDir.appendingPathComponent("protocols")
+        let recordingsDir = tmpDir.appendingPathComponent("recordings")
+        let fm = FileManager.default
+        XCTAssertTrue(
+            fm.fileExists(atPath: protocolsDir.appendingPathComponent("\(stem).txt").path),
+            "transcript must use the meeting-start + shortID basename",
+        )
+        XCTAssertTrue(
+            fm.fileExists(atPath: protocolsDir.appendingPathComponent("\(stem).md").path),
+            "protocol must share the same basename",
+        )
+        XCTAssertTrue(
+            fm.fileExists(atPath: recordingsDir.appendingPathComponent("\(stem)_mix.wav").path),
+            "mix audio must share the same basename",
+        )
+        XCTAssertTrue(
+            fm.fileExists(atPath: recordingsDir.appendingPathComponent("\(stem)_16k.wav").path),
+            "16k audio must share the same basename",
+        )
+        XCTAssertEqual(protocolGen.capturedMeetingStartTime, start)
+    }
+
+    /// A job with no recorded meeting-start (reimport / orphan recovery) must
+    /// fall back to the enqueue time for the stamp and still produce a valid,
+    /// shortID-carrying basename — never an empty stamp or a crash.
+    func testBasenameFallsBackToEnqueuedAtWhenNoMeetingStart() async throws {
+        let (q, protocolGen) = makeStraightThroughQueue()
+        let audioPath = try createTestAudioFile(in: tmpDir)
+        let job = PipelineJob(
+            meetingTitle: "Reimport Test", appName: "Teams",
+            mixPath: audioPath, appPath: nil, micPath: nil, micDelay: 0,
+            meetingStartTime: nil,
+        )
+        q.enqueue(job)
+        await q.processNext()
+
+        // enqueuedAt is captured in init, so the expected stem is deterministic.
+        let expectedStem = PipelineQueue.namingSlug(
+            title: "Reimport Test", jobID: job.id, startTime: job.enqueuedAt,
+        )
+        let txt = tmpDir.appendingPathComponent("protocols").appendingPathComponent("\(expectedStem).txt")
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: txt.path),
+            "reimport job must stamp with enqueuedAt and keep the shortID, got stem: \(expectedStem)",
+        )
+        XCTAssertNil(protocolGen.capturedMeetingStartTime)
+    }
+
+    // MARK: - AI meeting title for filenames
+
+    private var protocolsDir: URL {
+        tmpDir.appendingPathComponent("protocols")
+    }
+
+    private var recordingsDir: URL {
+        tmpDir.appendingPathComponent("recordings")
+    }
+
+    private func names(in dir: URL) -> [String] {
+        ((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []).sorted()
+    }
+
+    private func write(_ text: String, to url: URL) throws {
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true,
+        )
+        try Data(text.utf8).write(to: url)
+    }
+
+    /// A dual-source job whose audio sits in the staging dir, so every artifact
+    /// kind (protocol, transcript, mix/app/mic, the three 16 kHz sidecars)
+    /// is produced and later renamed. `stamped: false` is a job that was never
+    /// stamped with the setting, i.e. the default naming.
+    private func makeAITitleJob(title: String = "Google Chrome", stamped: Bool = true) throws -> PipelineJob {
+        var job = try makeDualSourceJob(title: title)
+        if stamped { job.useAITitleForFilenames = true }
+        return job
+    }
+
+    func testAITitleRenamesEveryArtifactAndRepointsTheJob() async throws {
+        let (q, gen) = makeStraightThroughQueue(stagingDir: tmpDir)
+        gen.headingTitle = "Sprint Planning"
+        try q.enqueue(makeAITitleJob())
+        await q.processNext()
+        await q.awaitSnapshotFlush()
+
+        XCTAssertEqual(names(in: protocolsDir), ["sprint_planning.md", "sprint_planning.txt"])
+        let recordings = names(in: recordingsDir)
+        XCTAssertFalse(recordings.isEmpty)
+        for suffix in ["_mix.wav", "_app.wav", "_mic.wav", "_16k.wav", "_app_16k.wav", "_mic_16k.wav"] {
+            XCTAssertTrue(recordings.contains("sprint_planning\(suffix)"), "missing sprint_planning\(suffix) in \(recordings)")
+        }
+        XCTAssertTrue(
+            recordings.allSatisfy { $0.hasPrefix("sprint_planning_") },
+            "nothing may keep the old stem: \(recordings)",
+        )
+
+        let job = try XCTUnwrap(q.jobs.first)
+        XCTAssertEqual(job.namingSlug, "sprint_planning")
+        XCTAssertEqual(job.meetingTitle, "Google Chrome", "the caller's title is read back through /state and /v1/jobs")
+        for path in [job.transcriptPath, job.protocolPath, job.mixPath, job.appPath, job.micPath] {
+            let url = try XCTUnwrap(path)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: url.path), "job points at a missing file: \(url.lastPathComponent)")
+            XCTAssertTrue(url.lastPathComponent.hasPrefix("sprint_planning"), url.lastPathComponent)
+        }
+
+        // A quit between the rename and the `.done` transition restores from this.
+        let onDisk = try XCTUnwrap(PipelineSnapshot.load(from: tmpDir)?.first)
+        XCTAssertEqual(onDisk.namingSlug, "sprint_planning")
+        XCTAssertEqual(onDisk.mixPath?.lastPathComponent, "sprint_planning_mix.wav")
+    }
+
+    func testWithTheToggleOffTheModelsTitleRenamesNothing() async throws {
+        let (q, gen) = makeStraightThroughQueue(stagingDir: tmpDir)
+        gen.headingTitle = "Sprint Planning"
+        let job = try makeAITitleJob(stamped: false)
+        q.enqueue(job)
+        await q.processNext()
+
+        let slug = try XCTUnwrap(q.jobs.first?.namingSlug)
+        XCTAssertTrue(slug.hasSuffix(job.shortID), "the default naming carries the short id: \(slug)")
+        XCTAssertEqual(names(in: protocolsDir), ["\(slug).md", "\(slug).txt"])
+        XCTAssertTrue(names(in: recordingsDir).allSatisfy { $0.hasPrefix(slug) })
+    }
+
+    func testATitleThatYieldsNoSlugKeepsTheTimestampedNames() async throws {
+        for heading in ["[Titel der Besprechung]", "Untitled", "🚀🎉"] {
+            let (q, gen) = makeStraightThroughQueue(stagingDir: tmpDir)
+            gen.headingTitle = heading
+            try q.enqueue(makeAITitleJob())
+            await q.processNext()
+
+            let slug = try XCTUnwrap(q.jobs.first?.namingSlug)
+            XCTAssertNotEqual(slug, "meeting", heading)
+            XCTAssertTrue(
+                names(in: protocolsDir).contains("\(slug).md"),
+                "heading \(heading) must leave the job on its own stem, got \(slug)",
+            )
+            try? FileManager.default.removeItem(at: protocolsDir)
+            try? FileManager.default.removeItem(at: recordingsDir)
+        }
+    }
+
+    func testAITitleWithoutAProtocolGeneratorKeepsTheTimestampedNames() async throws {
+        let engine = MockEngine()
+        engine.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "Hello")]
+        let diar = MockDiarization()
+        diar.resultToReturn = DiarizationResult(
+            segments: [.init(start: 0, end: 5, speaker: "SPEAKER_0")],
+            speakingTimes: ["SPEAKER_0": 5],
+            autoNames: [:],
+            embeddings: nil,
+        )
+        let q = makeCapturingQueue(engine: engine, diar: diar, protocolGen: nil, stagingDir: tmpDir)
+        let job = try makeAITitleJob(title: "Weekly Sync")
+        q.enqueue(job)
+        await q.processNext()
+
+        XCTAssertTrue(
+            names(in: protocolsDir).contains { $0.hasSuffix("\(job.shortID).txt") },
+            "without a protocol there is no title to name files after: \(names(in: protocolsDir))",
+        )
+    }
+
+    /// The earlier meeting's protocol may be gone (moved to a notes app, deleted)
+    /// while its audio is still here. Taking its name would delete that audio.
+    func testAITitleNeverReplacesAnEarlierMeetingsAudio() async throws {
+        try write("earlier meeting", to: recordingsDir.appendingPathComponent("sprint_planning_mix.wav"))
+        try write("earlier sidecar", to: recordingsDir.appendingPathComponent("sprint_planning_16k.wav"))
+        let (q, gen) = makeStraightThroughQueue(stagingDir: tmpDir)
+        gen.headingTitle = "Sprint Planning"
+        let job = try makeAITitleJob()
+        q.enqueue(job)
+        await q.processNext()
+
+        XCTAssertEqual(
+            try String(contentsOf: recordingsDir.appendingPathComponent("sprint_planning_mix.wav"), encoding: .utf8),
+            "earlier meeting",
+        )
+        XCTAssertEqual(
+            try String(contentsOf: recordingsDir.appendingPathComponent("sprint_planning_16k.wav"), encoding: .utf8),
+            "earlier sidecar",
+        )
+        let stem = "sprint_planning_\(job.shortID)"
+        XCTAssertEqual(q.jobs.first?.namingSlug, stem)
+        XCTAssertEqual(q.jobs.first?.mixPath?.lastPathComponent, "\(stem)_mix.wav")
+        XCTAssertTrue(names(in: protocolsDir).contains("\(stem).md"))
+    }
+
+    func testAITitleSuffixesTheShortIDWhenAnEarlierProtocolHasTheName() async throws {
+        try write("earlier protocol", to: protocolsDir.appendingPathComponent("sprint_planning.md"))
+        let (q, gen) = makeStraightThroughQueue(stagingDir: tmpDir)
+        gen.headingTitle = "Sprint Planning"
+        let job = try makeAITitleJob()
+        q.enqueue(job)
+        await q.processNext()
+
+        XCTAssertEqual(
+            try String(contentsOf: protocolsDir.appendingPathComponent("sprint_planning.md"), encoding: .utf8),
+            "earlier protocol",
+        )
+        XCTAssertTrue(names(in: protocolsDir).contains("sprint_planning_\(job.shortID).md"))
+        XCTAssertTrue(names(in: protocolsDir).contains("sprint_planning_\(job.shortID).txt"))
+    }
+
+    /// A job that regenerates its protocol (late naming, protocol-only resume)
+    /// has a bare-title stem by then. Another job's files that merely start
+    /// with that title are not its files.
+    func testASecondProtocolRunRenamesOnlyThisJobsFiles() async throws {
+        let (q, gen) = makeStraightThroughQueue(stagingDir: tmpDir)
+        gen.headingTitle = "Sprint Planning"
+        let job = try makeAITitleJob()
+        q.enqueue(job)
+        await q.processNext()
+        XCTAssertEqual(q.jobs.first?.namingSlug, "sprint_planning")
+
+        let siblings = [
+            "sprint_planning_abcd1234_mix.wav", "sprint_planning_retro_mix.wav", "sprint_planning_retro_16k.wav",
+        ]
+        for name in siblings {
+            try write("sibling \(name)", to: recordingsDir.appendingPathComponent(name))
+        }
+        try write("sibling protocol", to: protocolsDir.appendingPathComponent("sprint_planning_retro.md"))
+
+        gen.headingTitle = "Sprint Review"
+        try await q.generateProtocol(jobID: job.id, transcript: "Hello world", title: "Google Chrome", protocolsDir: protocolsDir)
+
+        for name in siblings {
+            XCTAssertEqual(
+                try String(contentsOf: recordingsDir.appendingPathComponent(name), encoding: .utf8),
+                "sibling \(name)", "\(name) belongs to another job",
+            )
+        }
+        XCTAssertEqual(
+            try String(contentsOf: protocolsDir.appendingPathComponent("sprint_planning_retro.md"), encoding: .utf8),
+            "sibling protocol",
+        )
+        let renamed = try XCTUnwrap(q.jobs.first)
+        XCTAssertEqual(renamed.namingSlug, "sprint_review")
+        XCTAssertEqual(renamed.mixPath?.lastPathComponent, "sprint_review_mix.wav")
+        XCTAssertTrue(try FileManager.default.fileExists(atPath: XCTUnwrap(renamed.mixPath).path))
+        XCTAssertEqual(
+            names(in: protocolsDir).filter { $0.hasPrefix("sprint_planning.") || $0.hasPrefix("sprint_review.") },
+            ["sprint_review.md", "sprint_review.txt"],
+            "the previous protocol moves with the job rather than staying behind as an orphan",
+        )
+    }
+
+    /// A quit between the rename and the protocol save restores from the
+    /// snapshot, so the rename has to write one itself. The `.done` snapshot
+    /// that follows a full run would hide a rename that forgot to.
+    func testRenamePersistsTheSnapshotItself() async throws {
+        let (q, gen) = makeStraightThroughQueue(stagingDir: tmpDir)
+        gen.headingTitle = "Sprint Planning"
+        let job = try makeAITitleJob(stamped: false)
+        q.enqueue(job)
+        await q.processNext()
+        let oldSlug = try XCTUnwrap(q.jobs.first?.namingSlug)
+
+        let renamed = q.renameJobArtifacts(
+            jobID: job.id, from: oldSlug, titleSlug: "sprint_planning", protocolsDir: protocolsDir,
+        )
+        await q.awaitSnapshotFlush()
+
+        XCTAssertEqual(renamed, "sprint_planning")
+        let onDisk = try XCTUnwrap(PipelineSnapshot.load(from: tmpDir)?.first)
+        XCTAssertEqual(onDisk.namingSlug, "sprint_planning")
+        XCTAssertEqual(onDisk.transcriptPath?.lastPathComponent, "sprint_planning.txt")
+        XCTAssertEqual(onDisk.mixPath?.lastPathComponent, "sprint_planning_mix.wav")
+    }
+
+    /// The protocol of an earlier run moves with the job, so a protocol that
+    /// then fails to save must not leave `protocolPath` naming a vanished file.
+    func testRenameRepointsTheProtocolPathToo() async throws {
+        let (q, gen) = makeStraightThroughQueue(stagingDir: tmpDir)
+        gen.headingTitle = "Sprint Planning"
+        let job = try makeAITitleJob(stamped: false)
+        q.enqueue(job)
+        await q.processNext()
+        let oldSlug = try XCTUnwrap(q.jobs.first?.namingSlug)
+        XCTAssertEqual(q.jobs.first?.protocolPath?.lastPathComponent, "\(oldSlug).md")
+
+        q.renameJobArtifacts(jobID: job.id, from: oldSlug, titleSlug: "sprint_planning", protocolsDir: protocolsDir)
+
+        let protocolPath = try XCTUnwrap(q.jobs.first?.protocolPath)
+        XCTAssertEqual(protocolPath.lastPathComponent, "sprint_planning.md")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: protocolPath.path))
+    }
+
+    /// A job cancelled while the model is still writing is gone from the queue,
+    /// and a cancelled job writes nothing further: its files are not renamed
+    /// behind its back, and the protocol the model then returns is not saved.
+    func testAJobCancelledDuringProtocolGenerationIsNotRenamedOrGivenAProtocol() async throws {
+        // The queue-wide setting is on, so a rename would happen if anything
+        // after the model call still ran for the vanished job: a vanished job's
+        // options fall back to it.
+        let (q, gen) = makeStraightThroughQueue(stagingDir: tmpDir, useAITitleForFilenames: true)
+        gen.headingTitle = "Sprint Planning"
+        let job = try makeAITitleJob()
+        gen.onGenerate = { q.cancelJob(id: job.id) }
+        q.enqueue(job)
+        await q.processNext()
+
+        XCTAssertNil(q.jobs.first { $0.id == job.id }, "precondition: the job was cancelled")
+        XCTAssertFalse(names(in: protocolsDir).contains { $0.hasPrefix("sprint_planning") }, "\(names(in: protocolsDir))")
+        XCTAssertFalse(names(in: recordingsDir).contains { $0.hasPrefix("sprint_planning") }, "\(names(in: recordingsDir))")
+        XCTAssertFalse(names(in: protocolsDir).contains { $0.hasSuffix(".md") }, "\(names(in: protocolsDir))")
+    }
+
+    /// The user's own file, picked for import, is neither moved nor repointed;
+    /// the transcript and protocol still take the title.
+    func testAnImportLeftInPlaceIsNeitherRenamedNorRepointed() async throws {
+        let (q, gen) = makeStraightThroughQueue()
+        gen.headingTitle = "Sprint Planning"
+        let audio = try createTestAudioFile(in: tmpDir)
+        var job = PipelineJob(
+            meetingTitle: "Voice Memo", appName: "File",
+            mixPath: audio, appPath: nil, micPath: nil, micDelay: 0,
+        )
+        job.useAITitleForFilenames = true
+        q.enqueue(job)
+        await q.processNext()
+
+        XCTAssertEqual(q.jobs.first?.mixPath?.standardizedFileURL, audio.standardizedFileURL)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: audio.path))
+        XCTAssertEqual(names(in: protocolsDir), ["sprint_planning.md", "sprint_planning.txt"])
+    }
+
+    /// Half a rename is worse than none: the transcript under one name and the
+    /// audio under another, with the job pointing at files that are not there.
+    func testAFailedRenameIsUndoneAndTheJobKeepsItsOriginalNames() async throws {
+        let (q, gen) = makeStraightThroughQueue(stagingDir: tmpDir)
+        gen.headingTitle = "Sprint Planning"
+        let recordings = recordingsDir
+        // The transcript moves first and succeeds; moving the audio then fails
+        // because the recordings folder cannot be written to.
+        gen.onGenerate = {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: recordings.path)
+        }
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: recordings.path) }
+        try q.enqueue(makeAITitleJob())
+        await q.processNext()
+
+        let job = try XCTUnwrap(q.jobs.first)
+        let slug = try XCTUnwrap(job.namingSlug)
+        XCTAssertNotEqual(slug, "sprint_planning")
+        XCTAssertEqual(names(in: protocolsDir), ["\(slug).md", "\(slug).txt"], "transcript was rolled back, protocol follows the old stem")
+        XCTAssertTrue(names(in: recordings).allSatisfy { $0.hasPrefix(slug) }, "audio never moved")
+        for path in [job.transcriptPath, job.protocolPath, job.mixPath, job.appPath, job.micPath] {
+            let url = try XCTUnwrap(path)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: url.path), "job points at a missing file: \(url.lastPathComponent)")
+        }
+        XCTAssertTrue(job.warnings.contains { $0.contains("AI meeting title") }, "\(job.warnings)")
+    }
+
+    /// The slug of an unbounded model heading must fit in a file name, so the
+    /// rename succeeds instead of half-failing on a 255-byte limit.
+    func testAVeryLongTitleStillRenamesEverything() async throws {
+        let (q, gen) = makeStraightThroughQueue(stagingDir: tmpDir)
+        gen.headingTitle = String(repeating: "Größe der Änderung ", count: 40)
+        try q.enqueue(makeAITitleJob())
+        await q.processNext()
+
+        let slug = try XCTUnwrap(q.jobs.first?.namingSlug)
+        XCTAssertTrue(slug.hasPrefix("größe_der_änderung"), slug)
+        XCTAssertTrue(names(in: protocolsDir).contains("\(slug).md"))
+        XCTAssertTrue(names(in: recordingsDir).allSatisfy { $0.hasPrefix(slug) })
+        XCTAssertNotNil(q.jobs.first?.mixPath.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil })
+    }
+
+    /// An engine that doesn't produce per-utterance timestamps (emitting one
+    /// segment for the whole recording) must skip diarization entirely — running
+    /// it would collapse the meeting onto a single speaker — and warn the user.
+    func testDiarizeSkippedWhenEngineLacksTimestamps() async throws {
+        let engine = MockEngine()
+        engine.providesTimestamps = false
+        engine.segmentsToReturn = [TimestampedSegment(start: 0, end: 30, text: "Whole meeting in one segment")]
+        let diar = MockDiarization()
+        let protocolGen = MockProtocolGen()
+        let q = makeCapturingQueue(engine: engine, diar: diar, protocolGen: protocolGen)
+
+        let audioPath = try createTestAudioFile(in: tmpDir)
+        q.enqueue(PipelineJob(
+            meetingTitle: "NoTimestamps", appName: "Teams",
+            mixPath: audioPath, appPath: nil, micPath: nil, micDelay: 0,
+        ))
+        await q.processNext()
+
+        XCTAssertEqual(diar.runCount, 0, "diarization must not run for a timestamp-less engine")
+        let transcript = try XCTUnwrap(protocolGen.capturedTranscript)
+        XCTAssertTrue(
+            transcript.contains("Whole meeting in one segment"),
+            "transcript should pass through unlabeled — got: \(transcript)",
+        )
+        let warnings = q.jobs.first?.warnings ?? []
+        XCTAssertTrue(
+            warnings.contains { $0.contains("per-utterance timestamps") },
+            "expected a timestamp-capability warning — got: \(warnings)",
+        )
+    }
+
+    func testDiarizeDualTrackLabelsBothTracks() async throws {
+        let engine = MockEngine()
+        engine.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "Hello")]
+        let diar = MockDiarization()
+        diar.resultToReturn = DiarizationResult(
+            segments: [.init(start: 0, end: 5, speaker: "SPEAKER_0")],
+            speakingTimes: ["SPEAKER_0": 5],
+            autoNames: ["SPEAKER_0": "Alice"],
+            embeddings: nil,
+        )
+        let protocolGen = MockProtocolGen()
+        let q = makeCapturingQueue(engine: engine, diar: diar, protocolGen: protocolGen)
+
+        try q.enqueue(makeDualSourceJob(title: "Dual"))
+        await q.processNext()
+
+        let transcript = try XCTUnwrap(protocolGen.capturedTranscript)
+        // Both tracks' segments are assigned via their (R_/M_-unprefixed) diarization → Alice.
+        XCTAssertTrue(transcript.contains("Alice:"), "dual-track: speakers should be named — got: \(transcript)")
+        XCTAssertFalse(transcript.contains("Remote:"), "dual-track: raw 'Remote' app label should be replaced")
+        XCTAssertFalse(
+            transcript.contains("] Me:"),
+            "dual-track: raw 'Me' mic label should be replaced when mic diarization succeeds — got: \(transcript)",
+        )
+    }
+
+    func testDiarizeDualTrackMicFailKeepsRawMicLabel() async throws {
+        let engine = MockEngine()
+        engine.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "Hello")]
+        let diar = MockDiarization()
+        diar.throwOnPathSuffix = "mic_16k.wav" // mic diarization fails → app-only fallback
+        diar.resultToReturn = DiarizationResult(
+            segments: [.init(start: 0, end: 5, speaker: "SPEAKER_0")],
+            speakingTimes: ["SPEAKER_0": 5],
+            autoNames: ["SPEAKER_0": "Alice"],
+            embeddings: nil,
+        )
+        let protocolGen = MockProtocolGen()
+        let q = makeCapturingQueue(engine: engine, diar: diar, protocolGen: protocolGen)
+
+        try q.enqueue(makeDualSourceJob(title: "Dual MicFail"))
+        await q.processNext()
+
+        let transcript = try XCTUnwrap(protocolGen.capturedTranscript)
+        // App-only fallback: mic segments keep their raw 'Me' label (not force-matched).
+        XCTAssertTrue(
+            transcript.contains("] Me:"),
+            "mic-fail fallback: mic segments keep raw mic label — got: \(transcript)",
+        )
+        // The app track is still diarized + named: its segment gets the matched
+        // name "Alice", not the raw diarizer ID and not the pre-assignment
+        // "Remote" tag. (This is the bug fix — the app-only fallback used to
+        // drop app-track names by unprefixing already-unprefixed keys.)
+        XCTAssertTrue(
+            transcript.contains("Alice:"),
+            "mic-fail fallback: app segments keep their matched name — got: \(transcript)",
+        )
+        XCTAssertFalse(
+            transcript.contains("SPEAKER_0:"),
+            "mic-fail fallback: app segments must not surface the raw diarizer ID — got: \(transcript)",
+        )
+        XCTAssertFalse(
+            transcript.contains("Remote:"),
+            "mic-fail fallback: app segments must lose their raw 'Remote' tag — got: \(transcript)",
+        )
+        let warnings = try XCTUnwrap(q.jobs.first?.warnings)
+        XCTAssertTrue(
+            warnings.contains { $0.contains("Mic track diarization failed") },
+            "mic-fail fallback should add a warning — got: \(warnings)",
+        )
+    }
+
+    func testDiarizeDualTrackAppFailFallsBackToMicOnly() async throws {
+        // Symmetric to the mic-fail fallback: when the app (remote) track
+        // diarization fails — e.g. a silent remote side in a solo meeting, where
+        // the app audio is at the noise floor while the mic has real speech — the
+        // stage must fall back to mic-only instead of aborting the whole
+        // diarization with "speakers not identified".
+        let engine = MockEngine()
+        engine.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "Hello")]
+        let diar = MockDiarization()
+        diar.throwOnPathSuffix = "app_16k.wav" // app diarization fails → mic-only fallback
+        diar.resultToReturn = DiarizationResult(
+            segments: [.init(start: 0, end: 5, speaker: "SPEAKER_0")],
+            speakingTimes: ["SPEAKER_0": 5],
+            autoNames: ["SPEAKER_0": "Bob"],
+            embeddings: nil,
+        )
+        let protocolGen = MockProtocolGen()
+        let q = makeCapturingQueue(engine: engine, diar: diar, protocolGen: protocolGen)
+
+        try q.enqueue(makeDualSourceJob(title: "Dual AppFail"))
+        await q.processNext()
+
+        let warnings = try XCTUnwrap(q.jobs.first?.warnings)
+        XCTAssertTrue(
+            warnings.contains { $0.contains("App track diarization failed") },
+            "app-fail should fall back to mic-only with a warning — got: \(warnings)",
+        )
+        XCTAssertFalse(
+            warnings.contains { $0.contains("speakers not identified") },
+            "app-fail must NOT surface a total diarization failure when the mic track is fine — got: \(warnings)",
+        )
+
+        // Mirror of the mic-fail content assertions: the mic track is still
+        // diarized + named, and the app segments keep their raw 'Remote' tag
+        // (not force-matched) rather than surfacing the raw diarizer ID.
+        let transcript = try XCTUnwrap(protocolGen.capturedTranscript)
+        XCTAssertTrue(
+            transcript.contains("Bob:"),
+            "mic-only fallback: mic segments keep their matched name; got: \(transcript)",
+        )
+        XCTAssertTrue(
+            transcript.contains("] Remote:"),
+            "mic-only fallback: app segments keep their raw 'Remote' tag; got: \(transcript)",
+        )
+        XCTAssertFalse(
+            transcript.contains("] Me:"),
+            "mic-only fallback: mic segments must be diarized, not keep the raw mic label; got: \(transcript)",
+        )
+        XCTAssertFalse(
+            transcript.contains("SPEAKER_0:"),
+            "mic-only fallback: mic segments must not surface the raw diarizer ID; got: \(transcript)",
+        )
+    }
+
+    /// Dual-track diarization must shift the mic track's diarization by
+    /// `micDelay` so it lands on the same (app/canonical) timeline as the mic
+    /// transcript segments — which `mergeDualSourceSegments` already shifted by
+    /// `+micDelay`. Without the shift, the diarization and transcript are offset
+    /// by `micDelay` and `assignSpeakers` overlaps the wrong diarization segment,
+    /// mislabeling mic-side speakers (only visible with ≥2 mic speakers; a single
+    /// mic speaker is masked by the nearest-gap fallback).
+    func testDiarizeDualTrackShiftsMicDiarizationByMicDelay() async throws {
+        let engine = MockEngine()
+        engine.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "MICWORD")]
+        let diar = MockDiarization()
+        // Mic-timeline diarization: the utterance's true speaker is SPEAKER_0
+        // (Bob), who speaks at raw [0,5]. SPEAKER_1 (Carol) speaks later at
+        // [100,105]. The pipeline shifts the mic transcript by +micDelay (100s)
+        // to [100,105]; the mic diarization must be shifted to match, else
+        // [100,105] overlaps SPEAKER_1 and the utterance is mislabeled Carol.
+        diar.resultToReturn = DiarizationResult(
+            segments: [
+                .init(start: 0, end: 5, speaker: "SPEAKER_0"),
+                .init(start: 100, end: 105, speaker: "SPEAKER_1"),
+            ],
+            speakingTimes: ["SPEAKER_0": 5, "SPEAKER_1": 5],
+            autoNames: ["SPEAKER_0": "Bob", "SPEAKER_1": "Carol"],
+            embeddings: nil,
+        )
+        let protocolGen = MockProtocolGen()
+        let q = makeCapturingQueue(engine: engine, diar: diar, protocolGen: protocolGen)
+
+        try q.enqueue(makeDualSourceJob(title: "MicDelay", micDelay: 100))
+        await q.processNext()
+
+        let transcript = try XCTUnwrap(protocolGen.capturedTranscript)
+        // The mic utterance's true speaker is Bob; Carol only surfaces if the
+        // mic diarization wasn't shifted to match the +micDelay transcript shift.
+        XCTAssertFalse(
+            transcript.contains("Carol"),
+            "mic diarization must be shifted by micDelay to align with the shifted mic transcript — got: \(transcript)",
+        )
+        XCTAssertTrue(transcript.contains("Bob"), "mic utterance should be labeled Bob — got: \(transcript)")
+    }
+
+    /// A user can set the Mic Speaker Name to "Remote" — the same literal used
+    /// as the reserved app/remote routing tag (`DiarizationProcess.remoteSpeakerLabel`).
+    /// Without sanitization, `mergeDualSourceSegments` tags both tracks "Remote"
+    /// and `labelSegments`' per-track filters both match every segment, so each
+    /// utterance is emitted once per track filter → app audio double-counted.
+    /// PipelineQueue must fall the colliding mic label back to a distinct one.
+    func testDiarizeDualTrackMicLabelRemoteDoesNotDoubleCount() async throws {
+        let engine = MockEngine()
+        engine.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "ZZWORD")]
+        let diar = MockDiarization()
+        // Both tracks diarize successfully (no mic-fail) → dual-track topology.
+        diar.resultToReturn = DiarizationResult(
+            segments: [.init(start: 0, end: 5, speaker: "SPEAKER_0")],
+            speakingTimes: ["SPEAKER_0": 5],
+            autoNames: [:],
+            embeddings: nil,
+        )
+        let protocolGen = MockProtocolGen()
+        let q = makeCapturingQueue(engine: engine, diar: diar, protocolGen: protocolGen, micLabel: "Remote")
+
+        try q.enqueue(makeDualSourceJob(title: "Remote MicLabel"))
+        await q.processNext()
+
+        let transcript = try XCTUnwrap(protocolGen.capturedTranscript)
+        // Dual-source mock transcribes both tracks → "ZZWORD" twice (once per
+        // real track). The double-count bug routes every segment through BOTH
+        // filters → four. Pin two.
+        let occurrences = transcript.components(separatedBy: "ZZWORD").count - 1
+        XCTAssertEqual(
+            occurrences, 2,
+            "app/mic audio must not be double-counted when micName == 'Remote' — got: \(transcript)",
+        )
+    }
+
+    func testSpeakerNamingHandlerCalled() async throws {
+        let engine = MockEngine()
+        engine.segmentsToReturn = [
+            TimestampedSegment(start: 0, end: 5, text: "Hello"),
+        ]
+        let mockDiar = MockDiarization()
+        mockDiar.resultToReturn = DiarizationResult(
+            segments: [.init(start: 0, end: 5, speaker: "SPEAKER_0")],
+            speakingTimes: ["SPEAKER_0": 5],
+            autoNames: [:],
+            embeddings: ["SPEAKER_0": [1, 0, 0]],
+        )
+        let (pQueue, _) = makeMockProcessingQueue(
+            engine: engine,
+            diarizationFactory: { mockDiar },
+            diarizeEnabled: true,
+        )
+
+        var handlerCalled = false
+        pQueue.speakerNamingHandler = { _ in
+            handlerCalled = true
+            return .skipped
+        }
+
+        // The handler now runs after the job reaches `.speakerNamingPending`
+        // (the production flow), in a detached Task that outlives
+        // `processNext()`, so wait for the terminal state before asserting.
+        let done = XCTestExpectation(description: "job reaches done")
+        pQueue.onJobStateChange = { _, _, newState in
+            if newState == .done { done.fulfill() }
+        }
+
+        let audioPath = try createTestAudioFile(in: tmpDir)
+        let job = PipelineJob(
+            meetingTitle: "Naming Test",
+            appName: "Teams",
+            mixPath: audioPath,
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        pQueue.enqueue(job)
+        await pQueue.processNext()
+        await fulfillment(of: [done], timeout: 10)
+
+        XCTAssertTrue(handlerCalled)
+    }
+
+    func testSpeakerNamingSkippedUsesAutoNames() async throws {
+        let engine = MockEngine()
+        engine.segmentsToReturn = [
+            TimestampedSegment(start: 0, end: 5, text: "Hello"),
+        ]
+        let mockDiar = MockDiarization()
+        mockDiar.resultToReturn = DiarizationResult(
+            segments: [.init(start: 0, end: 5, speaker: "SPEAKER_0")],
+            speakingTimes: ["SPEAKER_0": 5],
+            autoNames: [:],
+            embeddings: ["SPEAKER_0": [1, 0, 0]],
+        )
+        let (pQueue, _) = makeMockProcessingQueue(
+            engine: engine,
+            diarizationFactory: { mockDiar },
+            diarizeEnabled: true,
+        )
+
+        pQueue.speakerNamingHandler = { _ in .skipped }
+
+        let done = XCTestExpectation(description: "job reaches a terminal state")
+        pQueue.onJobStateChange = { _, _, newState in
+            if newState == .done || newState == .error { done.fulfill() }
+        }
+
+        let audioPath = try createTestAudioFile(in: tmpDir)
+        let job = PipelineJob(
+            meetingTitle: "Skip Test",
+            appName: "Teams",
+            mixPath: audioPath,
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        pQueue.enqueue(job)
+        await pQueue.processNext()
+        await fulfillment(of: [done], timeout: 10)
+
+        // Should complete without error (auto names used)
+        let finalState = pQueue.jobs.first?.state
+        XCTAssertTrue(finalState == .done || finalState == .error)
+    }
+
+    func testSpeakerNamingRerunCallsDiarizationAgain() async throws {
+        let engine = MockEngine()
+        engine.segmentsToReturn = [
+            TimestampedSegment(start: 0, end: 5, text: "Hello"),
+        ]
+        let mockDiar = MockDiarization()
+        mockDiar.resultToReturn = DiarizationResult(
+            segments: [.init(start: 0, end: 5, speaker: "SPEAKER_0")],
+            speakingTimes: ["SPEAKER_0": 5],
+            autoNames: [:],
+            embeddings: ["SPEAKER_0": [1, 0, 0]],
+        )
+        let (pQueue, _) = makeMockProcessingQueue(
+            engine: engine,
+            diarizationFactory: { mockDiar },
+            diarizeEnabled: true,
+        )
+
+        var callCount = 0
+        pQueue.speakerNamingHandler = { _ in
+            callCount += 1
+            if callCount == 1 {
+                return .rerun(3)
+            }
+            return .skipped
+        }
+
+        // First handler call (`.rerun`) drives a late re-diarization; the second
+        // (`.skipped`) finishes the job. All of that runs in detached Tasks after
+        // `processNext()` returns, so wait for the terminal state.
+        let done = XCTestExpectation(description: "job done after rerun")
+        pQueue.onJobStateChange = { _, _, newState in
+            if newState == .done { done.fulfill() }
+        }
+
+        let audioPath = try createTestAudioFile(in: tmpDir)
+        let job = PipelineJob(
+            meetingTitle: "Rerun Test",
+            appName: "Teams",
+            mixPath: audioPath,
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        pQueue.enqueue(job)
+        await pQueue.processNext()
+        await fulfillment(of: [done], timeout: 60)
+
+        // Handler should be called twice (first returns rerun, second returns skipped)
+        XCTAssertEqual(callCount, 2)
+        // The re-run must actually re-diarize with the new speaker count: first
+        // run uses the default (nil → auto), second uses the rerun's count (3).
+        XCTAssertEqual(mockDiar.runCount, 2)
+        XCTAssertEqual(mockDiar.receivedNumSpeakers, [nil, 3])
+    }
+
+    /// The batch pipeline reaches `.speakerNamingPending`, then the injected
+    /// naming handler returns `.rerunWithMode`. The mode override must be
+    /// honoured end-to-end: routed through the mode-aware factory and written
+    /// back onto the job's `usedDiarizerMode`. The now-deleted in-line handler
+    /// path silently downgraded this to a same-mode re-run and had zero
+    /// coverage; converging both paths onto `completeSpeakerNaming` fixes it.
+    func testSpeakerNamingRerunWithModeThroughHandlerHonorsMode() async throws {
+        let engine = MockEngine()
+        engine.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "Hello")]
+        let offlineDiar = makeModeOverrideDiar(.offline)
+        let sortformerDiar = makeModeOverrideDiar(.sortformer)
+        let modeOverrideCalls = OSAllocatedUnfairLock<[DiarizerMode]>(initialState: [])
+        let (pQueue, _) = makeMockProcessingQueue(
+            engine: engine,
+            diarizationFactory: { offlineDiar },
+            diarizationFactoryWithMode: { mode in
+                modeOverrideCalls.withLock { $0.append(mode) }
+                return mode == .sortformer ? sortformerDiar : offlineDiar
+            },
+            diarizeEnabled: true,
+        )
+
+        var callCount = 0
+        pQueue.speakerNamingHandler = { _ in
+            callCount += 1
+            // First presentation: ask to re-run in Sortformer mode. Second
+            // presentation (after the mode-override re-diarization): accept.
+            return callCount == 1 ? .rerunWithMode(.sortformer, 4) : .confirmed([:])
+        }
+
+        let done = XCTestExpectation(description: "job done after mode-override rerun")
+        pQueue.onJobStateChange = { _, _, newState in
+            if newState == .done { done.fulfill() }
+        }
+
+        let audioPath = try createTestAudioFile(in: tmpDir)
+        let job = PipelineJob(
+            meetingTitle: "Handler Mode Override", appName: "TestApp",
+            mixPath: audioPath, appPath: nil, micPath: nil, micDelay: 0,
+        )
+        pQueue.enqueue(job)
+        await pQueue.processNext()
+        await fulfillment(of: [done], timeout: 60)
+
+        XCTAssertEqual(callCount, 2, "handler is re-invoked after the mode-override re-diarization")
+        XCTAssertEqual(
+            modeOverrideCalls.withLock(\.self), [.sortformer],
+            "the handler's mode override must route through the mode-aware factory",
+        )
+        XCTAssertEqual(
+            pQueue.jobs.first?.usedDiarizerMode, .sortformer,
+            "the honoured mode must be recorded on the job",
+        )
+        XCTAssertEqual(pQueue.jobs.first?.state, .done)
+    }
+
+    func testCompleteSpeakerNamingDoubleResumeIsNoOp() {
+        // completeSpeakerNaming should not crash when called twice
+        let queue = PipelineQueue(logDir: tmpDir)
+        queue.completeSpeakerNaming(result: .skipped)
+        queue.completeSpeakerNaming(result: .skipped) // should not crash
+    }
+
+    func testOnJobStateChangeCallbackFired() {
+        var transitions: [(UUID, JobState, JobState)] = []
+        queue.onJobStateChange = { job, old, new in
+            transitions.append((job.id, old, new))
+        }
+
+        let job = makeJob()
+        queue.enqueue(job)
+        queue.updateJobState(id: job.id, to: .transcribing)
+
+        XCTAssertEqual(transitions.count, 1)
+        XCTAssertEqual(transitions[0].1, .waiting)
+        XCTAssertEqual(transitions[0].2, .transcribing)
+    }
+
+    func testLoadSnapshotResetsDiarizingToWaiting() throws {
+        let mixPath = tmpDir.appendingPathComponent("audio_diar.wav")
+        try Data("fake audio".utf8).write(to: mixPath)
+
+        var job = PipelineJob(
+            meetingTitle: "Diarizing Meeting",
+            appName: "Teams",
+            mixPath: mixPath,
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        job.state = .diarizing
+        let data = try JSONEncoder().encode([job])
+        try data.write(to: tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename))
+
+        let freshQueue = PipelineQueue(logDir: tmpDir)
+        freshQueue.loadSnapshot()
+
+        XCTAssertEqual(freshQueue.jobs.count, 1)
+        XCTAssertEqual(freshQueue.jobs[0].state, .waiting)
+    }
+
+    func testLoadSnapshotResetsGeneratingProtocolToWaiting() throws {
+        let mixPath = tmpDir.appendingPathComponent("audio_proto.wav")
+        try Data("fake audio".utf8).write(to: mixPath)
+
+        var job = PipelineJob(
+            meetingTitle: "Protocol Meeting",
+            appName: "Teams",
+            mixPath: mixPath,
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        job.state = .generatingProtocol
+        let data = try JSONEncoder().encode([job])
+        try data.write(to: tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename))
+
+        let freshQueue = PipelineQueue(logDir: tmpDir)
+        freshQueue.loadSnapshot()
+
+        XCTAssertEqual(freshQueue.jobs.count, 1)
+        XCTAssertEqual(freshQueue.jobs[0].state, .waiting)
+    }
+
+    // MARK: - addWarning
+
+    func testAddWarningAppendsToJob() {
+        let queue = PipelineQueue(logDir: tmpDir)
+        let job = PipelineJob(
+            meetingTitle: "Warn Test",
+            appName: "Teams",
+            mixPath: URL(fileURLWithPath: "/tmp/mix.wav"),
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        queue.enqueue(job)
+        queue.addWarning(id: job.id, "Test warning")
+        XCTAssertEqual(queue.jobs[0].warnings, ["Test warning"])
+    }
+
+    func testAddWarningDeduplicates() {
+        let queue = PipelineQueue(logDir: tmpDir)
+        let job = PipelineJob(
+            meetingTitle: "Dedup Test",
+            appName: "Teams",
+            mixPath: URL(fileURLWithPath: "/tmp/mix.wav"),
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        queue.enqueue(job)
+        queue.addWarning(id: job.id, "Same warning")
+        queue.addWarning(id: job.id, "Same warning")
+        XCTAssertEqual(queue.jobs[0].warnings.count, 1)
+    }
+
+    func testAddWarningIgnoresInvalidJobID() {
+        let queue = PipelineQueue(logDir: tmpDir)
+        // Should not crash with non-existent job ID
+        queue.addWarning(id: UUID(), "Orphan warning")
+        XCTAssertTrue(queue.jobs.isEmpty)
+    }
+
+    func testAddWarningMultipleDistinct() {
+        let queue = PipelineQueue(logDir: tmpDir)
+        let job = PipelineJob(
+            meetingTitle: "Multi Test",
+            appName: "Teams",
+            mixPath: URL(fileURLWithPath: "/tmp/mix.wav"),
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        queue.enqueue(job)
+        queue.addWarning(id: job.id, "Warning A")
+        queue.addWarning(id: job.id, "Warning B")
+        XCTAssertEqual(queue.jobs[0].warnings, ["Warning A", "Warning B"])
+    }
+
+    // MARK: - State Machine Edge Cases
+
+    func testCompletedJobsFilter() {
+        var doneJob = makeJob(title: "Done Meeting")
+        doneJob.state = .done
+        queue.enqueue(doneJob)
+        queue.enqueue(makeJob(title: "Waiting Meeting"))
+
+        XCTAssertEqual(queue.completedJobs.count, 1)
+        XCTAssertEqual(queue.completedJobs[0].meetingTitle, "Done Meeting")
+    }
+
+    func testCancelNonexistentJobIsNoOp() {
+        queue.enqueue(makeJob())
+        let countBefore = queue.jobs.count
+        queue.cancelJob(id: UUID())
+        XCTAssertEqual(queue.jobs.count, countBefore)
+    }
+
+    func testUpdateJobStateNonexistentJobIsNoOp() {
+        queue.enqueue(makeJob())
+        let countBefore = queue.jobs.count
+        queue.updateJobState(id: UUID(), to: .transcribing)
+        XCTAssertEqual(queue.jobs.count, countBefore)
+        // All existing jobs should remain in their original state
+        XCTAssertEqual(queue.jobs[0].state, .waiting)
+    }
+
+    func testUpdateJobStateSetsError() {
+        let job = makeJob()
+        queue.enqueue(job)
+        queue.updateJobState(id: job.id, to: .error, error: "Something went wrong")
+
+        XCTAssertEqual(queue.jobs[0].state, .error)
+        XCTAssertEqual(queue.jobs[0].error, "Something went wrong")
+    }
+
+    func testLoadSnapshotCorruptJSONIsNoOp() throws {
+        let snapshotPath = tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename)
+        try Data("{{not valid json".utf8).write(to: snapshotPath)
+
+        let freshQueue = PipelineQueue(logDir: tmpDir)
+        freshQueue.loadSnapshot()
+
+        XCTAssertTrue(freshQueue.jobs.isEmpty)
+    }
+
+    // MARK: - Crash-Recovery E2E
+
+    func testCrashRecoveryResumesAndCompletesJob() async throws {
+        let engine = MockEngine()
+        engine.segmentsToReturn = [
+            TimestampedSegment(start: 0, end: 5, text: "Recovery test"),
+        ]
+        let protocolGen = MockProtocolGen()
+        let audioPath = try createTestAudioFile(in: tmpDir)
+
+        let queue1 = PipelineQueue(
+            engine: engine,
+            diarizationFactory: { MockDiarization() },
+            protocolGeneratorFactory: { protocolGen },
+            outputDir: tmpDir,
+            logDir: tmpDir,
+        )
+
+        let job = PipelineJob(
+            meetingTitle: "Crash Test",
+            appName: "Test",
+            mixPath: audioPath,
+            appPath: nil,
+            micPath: nil,
+            micDelay: 0,
+        )
+        queue1.enqueue(job)
+        queue1.updateJobState(id: job.id, to: .transcribing)
+        queue1.saveSnapshot()
+        await queue1.awaitSnapshotFlush()
+
+        let snapshotPath = tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: snapshotPath.path))
+
+        // "Crash" — create fresh queue from snapshot
+        let engine2 = MockEngine()
+        engine2.segmentsToReturn = [
+            TimestampedSegment(start: 0, end: 5, text: "Recovery works"),
+        ]
+        let protocolGen2 = MockProtocolGen()
+
+        let queue2 = PipelineQueue(
+            engine: engine2,
+            diarizationFactory: { MockDiarization() },
+            protocolGeneratorFactory: { protocolGen2 },
+            outputDir: tmpDir,
+            logDir: tmpDir,
+        )
+
+        queue2.loadSnapshot()
+        XCTAssertEqual(queue2.jobs.count, 1)
+        XCTAssertEqual(queue2.jobs.first?.state, .waiting)
+        XCTAssertEqual(queue2.jobs.first?.meetingTitle, "Crash Test")
+
+        await queue2.processNext()
+
+        XCTAssertEqual(queue2.jobs.first?.state, .done)
+        XCTAssertEqual(engine2.transcribeCallCount, 1)
+        XCTAssertTrue(protocolGen2.generateCalled)
+        XCTAssertNotNil(queue2.jobs.first?.protocolPath)
+    }
+
+    func testCrashRecoveryDuringDiarizingResumes() async throws {
+        let engine = MockEngine()
+        engine.segmentsToReturn = [
+            TimestampedSegment(start: 0, end: 5, text: "Diarize recovery"),
+        ]
+        let audioPath = try createTestAudioFile(in: tmpDir)
+
+        let queue1 = PipelineQueue(
+            engine: engine,
+            diarizationFactory: { MockDiarization() },
+            protocolGeneratorFactory: { MockProtocolGen() },
+            outputDir: tmpDir,
+            logDir: tmpDir,
+            diarizeEnabled: true,
+        )
+
+        let job = PipelineJob(
+            meetingTitle: "Diarize Crash",
+            appName: "Test",
+            mixPath: audioPath,
+            appPath: nil,
+            micPath: nil,
+            micDelay: 0,
+        )
+        queue1.enqueue(job)
+        queue1.updateJobState(id: job.id, to: .diarizing)
+        queue1.saveSnapshot()
+        await queue1.awaitSnapshotFlush()
+
+        let engine2 = MockEngine()
+        engine2.segmentsToReturn = [
+            TimestampedSegment(start: 0, end: 5, text: "Recovered"),
+        ]
+        let protocolGen2 = MockProtocolGen()
+
+        let queue2 = PipelineQueue(
+            engine: engine2,
+            diarizationFactory: { MockDiarization() },
+            protocolGeneratorFactory: { protocolGen2 },
+            outputDir: tmpDir,
+            logDir: tmpDir,
+            diarizeEnabled: true,
+        )
+        queue2.speakerNamingHandler = { _ in .skipped }
+
+        queue2.loadSnapshot()
+        XCTAssertEqual(queue2.jobs.first?.state, .waiting)
+
+        await queue2.processNext()
+        XCTAssertEqual(queue2.jobs.first?.state, .done)
+    }
+
+    func testJobStateSpeakerNamingPendingLabel() {
+        XCTAssertEqual(JobState.speakerNamingPending.label, "Waiting for speaker names")
+    }
+
+    func testJobStateSpeakerNamingPendingIsCodable() throws {
+        let state = JobState.speakerNamingPending
+        let data = try JSONEncoder().encode(state)
+        let decoded = try JSONDecoder().decode(JobState.self, from: data)
+        XCTAssertEqual(decoded, state)
+    }
+
+    // MARK: - SpeakerNamingData Codable
+
+    func testSpeakerNamingDataRoundTripsThroughJSON() throws {
+        let data = PipelineQueue.SpeakerNamingData(
+            jobID: UUID(),
+            meetingTitle: "Test Meeting",
+            mapping: ["SPEAKER_0": "Alice", "SPEAKER_1": "Speaker C"],
+            speakingTimes: ["SPEAKER_0": 120.5, "SPEAKER_1": 85.3],
+            embeddings: ["SPEAKER_0": [0.1, 0.2], "SPEAKER_1": [0.3, 0.4]],
+            audioPath: URL(fileURLWithPath: "/tmp/test_16k.wav"),
+            segments: [
+                .init(start: 0.0, end: 5.0, speaker: "SPEAKER_0"),
+                .init(start: 5.0, end: 10.0, speaker: "SPEAKER_1"),
+            ],
+            participants: ["Alice", "Speaker C", "Speaker D"],
+            isDualSource: false,
+        )
+
+        let encoded = try JSONEncoder().encode(data)
+        let decoded = try JSONDecoder().decode(PipelineQueue.SpeakerNamingData.self, from: encoded)
+
+        XCTAssertEqual(decoded.jobID, data.jobID)
+        XCTAssertEqual(decoded.meetingTitle, data.meetingTitle)
+        XCTAssertEqual(decoded.mapping, data.mapping)
+        XCTAssertEqual(decoded.participants, data.participants)
+        XCTAssertFalse(decoded.isDualSource)
+        XCTAssertEqual(decoded.segments.count, 2)
+    }
+
+    /// Regression: each `SpeakerNamingData` instance must carry a unique
+    /// `revision` so that SwiftUI `.onChange(of: data.revision)` fires on
+    /// every late-diarization re-render — even when the resulting mapping
+    /// happens to be byte-identical to the previous run. Without this,
+    /// the SpeakerNamingView's per-presentation `@State` reset never runs
+    /// and consecutive Re-run clicks are silently swallowed.
+    func test_speakerNamingData_revisionDiffersBetweenInstancesWithIdenticalContent() {
+        let jobID = UUID()
+        let mapping = ["SPEAKER_0": "Alice"]
+        let speakingTimes: [String: TimeInterval] = ["SPEAKER_0": 60]
+        let embeddings: [String: [Float]] = ["SPEAKER_0": [0.1, 0.2]]
+
+        let first = PipelineQueue.SpeakerNamingData(
+            jobID: jobID, meetingTitle: "Standup",
+            mapping: mapping, speakingTimes: speakingTimes,
+            embeddings: embeddings, audioPath: nil,
+            segments: [], participants: [], isDualSource: false,
+        )
+        let second = PipelineQueue.SpeakerNamingData(
+            jobID: jobID, meetingTitle: "Standup",
+            mapping: mapping, speakingTimes: speakingTimes,
+            embeddings: embeddings, audioPath: nil,
+            segments: [], participants: [], isDualSource: false,
+        )
+
+        XCTAssertNotEqual(first.revision, second.revision)
+    }
+
+    /// `revision` is a presentation-only marker and must not survive the
+    /// JSON sidecar round-trip — encoding leaves it out, decoding regenerates
+    /// it. Otherwise reloading the sidecar from disk would freeze the
+    /// revision and re-introduce the stuck-button bug after app restart.
+    func test_speakerNamingData_revisionRegeneratesOnJSONRoundTrip() throws {
+        let original = PipelineQueue.SpeakerNamingData(
+            jobID: UUID(), meetingTitle: "Standup",
+            mapping: ["S": "Alice"], speakingTimes: ["S": 60],
+            embeddings: ["S": [0.1]], audioPath: nil,
+            segments: [], participants: [], isDualSource: false,
+        )
+
+        let encoded = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(PipelineQueue.SpeakerNamingData.self, from: encoded)
+
+        XCTAssertNotEqual(original.revision, decoded.revision)
+        // JSON payload must not contain the field name.
+        let json = try XCTUnwrap(String(data: encoded, encoding: .utf8))
+        XCTAssertFalse(json.contains("revision"))
+    }
+
+    func testPendingSpeakerNamingJobsReturnsNamingPendingJobs() {
+        let queue = PipelineQueue(logDir: tmpDir)
+        XCTAssertTrue(queue.pendingSpeakerNamingJobs.isEmpty)
+    }
+
+    // MARK: - Pipeline Timeout → speakerNamingPending
+
+    func testPipelineSetsSpeakerNamingPendingAfterTimeout() async throws {
+        let engine = MockEngine()
+        engine.segmentsToReturn = [
+            TimestampedSegment(start: 0, end: 5, text: "Hello"),
+        ]
+        let mockDiar = MockDiarization()
+        mockDiar.resultToReturn = DiarizationResult(
+            segments: [.init(start: 0, end: 5, speaker: "SPEAKER_0")],
+            speakingTimes: ["SPEAKER_0": 5],
+            autoNames: [:],
+            embeddings: ["SPEAKER_0": [1, 0, 0]],
+        )
+        let (pQueue, _) = makeMockProcessingQueue(
+            engine: engine,
+            diarizationFactory: { mockDiar },
+            diarizeEnabled: true,
+        )
+        // Don't set speakerNamingHandler — pipeline proceeds with auto-names immediately
+
+        let audioPath = try createTestAudioFile(in: tmpDir)
+        let job = PipelineJob(
+            meetingTitle: "Timeout Test",
+            appName: "TestApp",
+            mixPath: audioPath,
+            appPath: nil,
+            micPath: nil,
+            micDelay: 0,
+        )
+        pQueue.enqueue(job)
+
+        let expectation = XCTestExpectation(description: "Pipeline completes")
+        pQueue.onJobStateChange = { _, _, newState in
+            if newState == .speakerNamingPending {
+                expectation.fulfill()
+            }
+        }
+
+        await pQueue.processNext()
+
+        await fulfillment(of: [expectation], timeout: 10)
+
+        let finalJob = pQueue.jobs.first
+        XCTAssertEqual(
+            finalJob?.state, .speakerNamingPending,
+            "Job should be speakerNamingPending when naming was not confirmed",
+        )
+        XCTAssertNotNil(
+            pQueue.speakerNamingDataByJob[job.id],
+            "Naming data should still be available",
+        )
+    }
+
+    func testPipelineSetsDoneWhenNamingConfirmed() async throws {
+        let engine = MockEngine()
+        engine.segmentsToReturn = [
+            TimestampedSegment(start: 0, end: 5, text: "Hello"),
+        ]
+        let mockDiar = MockDiarization()
+        mockDiar.resultToReturn = DiarizationResult(
+            segments: [.init(start: 0, end: 5, speaker: "SPEAKER_0")],
+            speakingTimes: ["SPEAKER_0": 5],
+            autoNames: [:],
+            embeddings: ["SPEAKER_0": [1, 0, 0]],
+        )
+        let (pQueue, _) = makeMockProcessingQueue(
+            engine: engine,
+            diarizationFactory: { mockDiar },
+            diarizeEnabled: true,
+        )
+
+        pQueue.speakerNamingHandler = { _ in .confirmed(["SPEAKER_0": "Alice"]) }
+
+        // Confirm runs after `.speakerNamingPending`, in a detached Task that
+        // outlives `processNext()`, so wait for the terminal state.
+        let done = XCTestExpectation(description: "job done after confirm")
+        pQueue.onJobStateChange = { _, _, newState in
+            if newState == .done { done.fulfill() }
+        }
+
+        let audioPath = try createTestAudioFile(in: tmpDir)
+        let job = PipelineJob(
+            meetingTitle: "Confirm Test",
+            appName: "Teams",
+            mixPath: audioPath,
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        pQueue.enqueue(job)
+        await pQueue.processNext()
+        await fulfillment(of: [done], timeout: 60)
+
+        let finalState = pQueue.jobs.first?.state
+        XCTAssertEqual(finalState, .done, "Confirmed naming should end as .done")
+    }
+
+    func testPipelineAutoSkipsNamingForHeadlessJob() async throws {
+        let engine = MockEngine()
+        engine.segmentsToReturn = [
+            TimestampedSegment(start: 0, end: 5, text: "Hello"),
+        ]
+        let mockDiar = MockDiarization()
+        mockDiar.resultToReturn = DiarizationResult(
+            segments: [.init(start: 0, end: 5, speaker: "SPEAKER_0")],
+            speakingTimes: ["SPEAKER_0": 5],
+            autoNames: [:],
+            embeddings: ["SPEAKER_0": [1, 0, 0]],
+        )
+        let (pQueue, _) = makeMockProcessingQueue(
+            engine: engine,
+            diarizationFactory: { mockDiar },
+            diarizeEnabled: true,
+        )
+        // No speakerNamingHandler — the production/headless path. autoSkipNaming
+        // must make the job finish on its own instead of parking at
+        // .speakerNamingPending (which would wedge a headless blocking call).
+
+        let audioPath = try createTestAudioFile(in: tmpDir)
+        var job = PipelineJob(
+            meetingTitle: "Headless Test",
+            appName: "TestApp",
+            mixPath: audioPath,
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        job.autoSkipNaming = true
+        pQueue.enqueue(job)
+        await pQueue.processNext()
+
+        XCTAssertEqual(
+            pQueue.jobs.first?.state, .done,
+            "autoSkipNaming job must complete without parking at .speakerNamingPending",
+        )
+        XCTAssertNil(
+            pQueue.speakerNamingDataByJob[job.id],
+            "Auto-skipped job should not stash naming data awaiting resolution",
+        )
+    }
+
+    func testCompleteSpeakerNamingLateConfirmedTransitionsToDone() async {
+        let queue = PipelineQueue(logDir: tmpDir)
+        var job = PipelineJob(
+            meetingTitle: "Late Naming",
+            appName: "Teams",
+            mixPath: URL(fileURLWithPath: "/tmp/mix.wav"),
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        job.state = .speakerNamingPending
+        queue.enqueue(job)
+
+        // Simulate naming data still present
+        let namingData = PipelineQueue.SpeakerNamingData(
+            jobID: job.id,
+            meetingTitle: "Late Naming",
+            mapping: [:],
+            speakingTimes: [:],
+            embeddings: [:],
+            audioPath: nil,
+            segments: [],
+            participants: [],
+            isDualSource: false,
+        )
+        queue.speakerNamingDataByJob[job.id] = namingData
+
+        let doneExpectation = XCTestExpectation(description: "Job transitions to done")
+        queue.onJobStateChange = { _, _, newState in
+            if newState == .done {
+                doneExpectation.fulfill()
+            }
+        }
+
+        // Late completion: no continuation, pipeline done → spawns async re-apply
+        queue.completeSpeakerNaming(jobID: job.id, result: .confirmed([:]))
+
+        await fulfillment(of: [doneExpectation], timeout: 5)
+
+        XCTAssertEqual(queue.jobs.first?.state, .done)
+        XCTAssertNil(queue.speakerNamingDataByJob[job.id])
+    }
+
+    func testCompleteSpeakerNamingLateSkipTransitionsToDone() {
+        let queue = PipelineQueue(logDir: tmpDir)
+        var job = PipelineJob(
+            meetingTitle: "Late Skip",
+            appName: "Teams",
+            mixPath: URL(fileURLWithPath: "/tmp/mix.wav"),
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        job.state = .speakerNamingPending
+        queue.enqueue(job)
+
+        let namingData = PipelineQueue.SpeakerNamingData(
+            jobID: job.id,
+            meetingTitle: "Late Skip",
+            mapping: [:],
+            speakingTimes: [:],
+            embeddings: [:],
+            audioPath: nil,
+            segments: [],
+            participants: [],
+            isDualSource: false,
+        )
+        queue.speakerNamingDataByJob[job.id] = namingData
+
+        // Late skip: synchronous cleanup
+        queue.completeSpeakerNaming(jobID: job.id, result: .skipped)
+
+        XCTAssertEqual(queue.jobs.first?.state, .done)
+        XCTAssertNil(queue.speakerNamingDataByJob[job.id])
+    }
+
+    func testSkipTransitionsToDoneWhenProtocolFactoryReturnsNil() async throws {
+        // Regression: when AppSettings.protocolProvider == .none, the
+        // factory closure exists but returns nil. Earlier acceptAutoNames
+        // checked closure-existence (always true here), took the Task
+        // path, and that Task fizzled in generateProtocol's guard —
+        // leaving the job stuck in .speakerNamingPending. The fix
+        // probes the closure's output, so skip falls through to .done.
+        let outputDir = tmpDir.appendingPathComponent("output")
+        try FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true)
+        let mixPath = tmpDir.appendingPathComponent("mix.wav")
+        try Data([0]).write(to: mixPath)
+        let transcriptPath = tmpDir.appendingPathComponent("transcript.txt")
+        try "[00:00] SPEAKER_0: Hello".write(to: transcriptPath, atomically: true, encoding: .utf8)
+
+        let queue = PipelineQueue(
+            engine: MockEngine(),
+            diarizationFactory: { MockDiarization() },
+            protocolGeneratorFactory: { nil },
+            outputDir: outputDir,
+            logDir: tmpDir,
+            diarizeEnabled: true,
+        )
+
+        var job = PipelineJob(
+            meetingTitle: "Provider None Skip",
+            appName: "Teams",
+            mixPath: mixPath,
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        job.state = .speakerNamingPending
+        job.transcriptPath = transcriptPath
+        queue.enqueue(job)
+
+        queue.speakerNamingDataByJob[job.id] = PipelineQueue.SpeakerNamingData(
+            jobID: job.id,
+            meetingTitle: "Provider None Skip",
+            mapping: [:], speakingTimes: [:], embeddings: [:],
+            audioPath: nil, segments: [], participants: [],
+            isDualSource: false,
+        )
+
+        let doneExpectation = XCTestExpectation(description: "Job transitions to done after skip")
+        queue.onJobStateChange = { _, _, newState in
+            if newState == .done {
+                doneExpectation.fulfill()
+            }
+        }
+
+        queue.completeSpeakerNaming(jobID: job.id, result: .skipped)
+
+        await fulfillment(of: [doneExpectation], timeout: 2)
+
+        XCTAssertEqual(
+            queue.jobs.first?.state, .done,
+            "Skip with provider=.none must transition to .done, not stay in .speakerNamingPending",
+        )
+        XCTAssertNil(queue.speakerNamingDataByJob[job.id])
+    }
+
+    // MARK: - Late Re-apply Speaker Names
+
+    func testLateConfirmationRewritesTranscript() async throws {
+        // Create a transcript file with speaker labels
+        let protocolsDir = tmpDir.appendingPathComponent("protocols")
+        try FileManager.default.createDirectory(at: protocolsDir, withIntermediateDirectories: true)
+        let transcriptPath = protocolsDir.appendingPathComponent("test_transcript.txt")
+        let originalTranscript = "[00:00] SPEAKER_0: Hello world\n[00:05] SPEAKER_1: Hi there"
+        try originalTranscript.write(to: transcriptPath, atomically: true, encoding: .utf8)
+
+        let queue = PipelineQueue(logDir: tmpDir)
+        var job = PipelineJob(
+            meetingTitle: "Rewrite Test",
+            appName: "Teams",
+            mixPath: URL(fileURLWithPath: "/tmp/mix.wav"),
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        job.state = .speakerNamingPending
+        job.transcriptPath = transcriptPath
+        queue.enqueue(job)
+
+        let namingData = PipelineQueue.SpeakerNamingData(
+            jobID: job.id,
+            meetingTitle: "Rewrite Test",
+            mapping: ["SPEAKER_0": "SPEAKER_0", "SPEAKER_1": "SPEAKER_1"],
+            speakingTimes: ["SPEAKER_0": 5, "SPEAKER_1": 5],
+            embeddings: ["SPEAKER_0": [1, 0], "SPEAKER_1": [0, 1]],
+            audioPath: nil,
+            segments: [],
+            participants: [],
+            isDualSource: false,
+        )
+        queue.speakerNamingDataByJob[job.id] = namingData
+
+        let doneExpectation = XCTestExpectation(description: "Job transitions to done")
+        queue.onJobStateChange = { _, _, newState in
+            if newState == .done {
+                doneExpectation.fulfill()
+            }
+        }
+
+        queue.completeSpeakerNaming(jobID: job.id, result: .confirmed(["SPEAKER_0": "Alice", "SPEAKER_1": "Speaker C"]))
+
+        await fulfillment(of: [doneExpectation], timeout: 5)
+
+        XCTAssertEqual(queue.jobs.first?.state, .done)
+        XCTAssertNil(queue.speakerNamingDataByJob[job.id])
+
+        // Verify transcript was rewritten with user-provided names
+        let rewritten = try String(contentsOf: transcriptPath, encoding: .utf8)
+        XCTAssertTrue(rewritten.contains("] Alice: Hello world"), "Transcript should contain user-provided name Alice in formattedLine format")
+        XCTAssertTrue(rewritten.contains("] Speaker C: Hi there"), "Transcript should contain user-provided name Speaker C in formattedLine format")
+        XCTAssertFalse(rewritten.contains("SPEAKER_0:"), "Generic label should be replaced")
+        XCTAssertFalse(rewritten.contains("SPEAKER_1:"), "Generic label should be replaced")
+    }
+
+    /// Regression test for dual-source `R_`/`M_` prefixed labels (the format
+    /// actually produced by `assignSpeakersDualTrack`). These never had
+    /// brackets around the speaker name in the saved transcript, so the
+    /// pre-fix `replacingOccurrences(of: "[\(label)]", ...)` logic silently
+    /// did nothing and Confirm appeared to do nothing in the .txt.
+    func testLateConfirmationRewritesDualSourceLabels() async throws {
+        let protocolsDir = tmpDir.appendingPathComponent("protocols")
+        try FileManager.default.createDirectory(at: protocolsDir, withIntermediateDirectories: true)
+        let transcriptPath = protocolsDir.appendingPathComponent("dualsource_transcript.txt")
+        let originalTranscript = "[00:00] Roman Passler: Morgen.\n[00:30] R_S2: Hallo\n[00:42] R_S3: Hi\n[09:55] M_S0: Da kenne ich mich nicht aus."
+        try originalTranscript.write(to: transcriptPath, atomically: true, encoding: .utf8)
+
+        let queue = PipelineQueue(logDir: tmpDir)
+        var job = PipelineJob(
+            meetingTitle: "Dual Source Test",
+            appName: "Teams",
+            mixPath: URL(fileURLWithPath: "/tmp/mix.wav"),
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        job.state = .speakerNamingPending
+        job.transcriptPath = transcriptPath
+        queue.enqueue(job)
+
+        let namingData = PipelineQueue.SpeakerNamingData(
+            jobID: job.id,
+            meetingTitle: "Dual Source Test",
+            mapping: ["R_S2": "R_S2", "R_S3": "R_S3", "M_S0": "Roman Passler"],
+            speakingTimes: ["R_S2": 5, "R_S3": 5, "M_S0": 5],
+            embeddings: ["R_S2": [1, 0], "R_S3": [0, 1], "M_S0": [0, 0]],
+            audioPath: nil,
+            segments: [],
+            participants: [],
+            isDualSource: true,
+        )
+        queue.speakerNamingDataByJob[job.id] = namingData
+
+        let doneExpectation = XCTestExpectation(description: "Job transitions to done")
+        queue.onJobStateChange = { _, _, newState in
+            if newState == .done {
+                doneExpectation.fulfill()
+            }
+        }
+
+        queue.completeSpeakerNaming(jobID: job.id, result: .confirmed([
+            "R_S2": "Lennart",
+            "R_S3": "Diana",
+        ]))
+
+        await fulfillment(of: [doneExpectation], timeout: 5)
+
+        let rewritten = try String(contentsOf: transcriptPath, encoding: .utf8)
+        XCTAssertTrue(rewritten.contains("] Lennart: Hallo"), "R_S2 should be renamed to Lennart")
+        XCTAssertTrue(rewritten.contains("] Diana: Hi"), "R_S3 should be renamed to Diana")
+        XCTAssertTrue(rewritten.contains("] Roman Passler: Morgen."), "Already-named speaker should be untouched")
+        XCTAssertFalse(rewritten.contains("R_S2:"), "R_S2 label should be gone")
+        XCTAssertFalse(rewritten.contains("R_S3:"), "R_S3 label should be gone")
+    }
+
+    func testLateConfirmationReplacesAutoMatchedNames() async throws {
+        // Test that auto-matched names (from SpeakerMatcher) are also replaced
+        let protocolsDir = tmpDir.appendingPathComponent("protocols")
+        try FileManager.default.createDirectory(at: protocolsDir, withIntermediateDirectories: true)
+        let transcriptPath = protocolsDir.appendingPathComponent("auto_match_transcript.txt")
+        // Transcript already has auto-matched name "John" for SPEAKER_0
+        let originalTranscript = "[00:00] John: Hello world"
+        try originalTranscript.write(to: transcriptPath, atomically: true, encoding: .utf8)
+
+        let queue = PipelineQueue(logDir: tmpDir)
+        var job = PipelineJob(
+            meetingTitle: "Auto Match Test",
+            appName: "Teams",
+            mixPath: URL(fileURLWithPath: "/tmp/mix.wav"),
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        job.state = .speakerNamingPending
+        job.transcriptPath = transcriptPath
+        queue.enqueue(job)
+
+        let namingData = PipelineQueue.SpeakerNamingData(
+            jobID: job.id,
+            meetingTitle: "Auto Match Test",
+            mapping: ["SPEAKER_0": "John"], // auto-matched to John
+            speakingTimes: ["SPEAKER_0": 5],
+            embeddings: ["SPEAKER_0": [1, 0]],
+            audioPath: nil,
+            segments: [],
+            participants: [],
+            isDualSource: false,
+        )
+        queue.speakerNamingDataByJob[job.id] = namingData
+
+        let doneExpectation = XCTestExpectation(description: "done")
+        queue.onJobStateChange = { _, _, newState in
+            if newState == .done {
+                doneExpectation.fulfill()
+            }
+        }
+
+        // User corrects John → Jonathan
+        queue.completeSpeakerNaming(jobID: job.id, result: .confirmed(["SPEAKER_0": "Jonathan"]))
+
+        await fulfillment(of: [doneExpectation], timeout: 5)
+
+        let rewritten = try String(contentsOf: transcriptPath, encoding: .utf8)
+        XCTAssertTrue(rewritten.contains("] Jonathan: Hello world"), "Auto-matched name should be replaced with user correction")
+        XCTAssertFalse(rewritten.contains("John:"), "Old auto-matched name should be gone")
+    }
+
+    // MARK: - Late Re-diarization
+
+    func testLateRerunDiarizesFromPersistedAudio() async throws {
+        let engine = MockEngine()
+        engine.segmentsToReturn = [
+            TimestampedSegment(start: 0, end: 5, text: "Hello"),
+        ]
+        let mockDiar = MockDiarization()
+        mockDiar.resultToReturn = DiarizationResult(
+            segments: [.init(start: 0, end: 5, speaker: "SPEAKER_0")],
+            speakingTimes: ["SPEAKER_0": 5],
+            autoNames: [:],
+            embeddings: ["SPEAKER_0": [1, 0, 0]],
+        )
+        let (pQueue, _) = makeMockProcessingQueue(
+            engine: engine,
+            diarizationFactory: { mockDiar },
+            diarizeEnabled: true,
+        )
+        // No handler → pipeline proceeds immediately with auto-names
+
+        let audioPath = try createTestAudioFile(in: tmpDir)
+        let job = PipelineJob(
+            meetingTitle: "Late Rerun Test",
+            appName: "TestApp",
+            mixPath: audioPath,
+            appPath: nil,
+            micPath: nil,
+            micDelay: 0,
+        )
+        pQueue.enqueue(job)
+
+        // Wait for speakerNamingPending (timeout path leaves naming data intact)
+        let pendingExpectation = XCTestExpectation(description: "speakerNamingPending")
+        pQueue.onJobStateChange = { _, _, newState in
+            if newState == .speakerNamingPending {
+                pendingExpectation.fulfill()
+            }
+        }
+        await pQueue.processNext()
+        await fulfillment(of: [pendingExpectation], timeout: 10)
+
+        XCTAssertEqual(pQueue.jobs.first?.state, .speakerNamingPending)
+        XCTAssertNotNil(pQueue.speakerNamingDataByJob[job.id])
+
+        // Now set handler to confirm after re-run
+        var rerunHandlerCalled = false
+        pQueue.speakerNamingHandler = { _ in
+            rerunHandlerCalled = true
+            return .confirmed([:])
+        }
+
+        // Request re-run with 3 speakers
+        let doneExpectation = XCTestExpectation(description: "done after rerun")
+        pQueue.onJobStateChange = { _, _, newState in
+            if newState == .done {
+                doneExpectation.fulfill()
+            }
+        }
+
+        pQueue.completeSpeakerNaming(jobID: job.id, result: .rerun(3))
+        await fulfillment(of: [doneExpectation], timeout: 60)
+
+        XCTAssertTrue(rerunHandlerCalled, "Handler should be called with new diarization results")
+        XCTAssertEqual(pQueue.jobs.first?.state, .done)
+    }
+
+    /// Regression: a late re-run that detects MORE speakers than the initial
+    /// diarization must re-segment the saved transcript, not just rename the
+    /// labels that already exist in it. The original bug: the initial mix
+    /// diarization collapsed to one speaker, the re-run correctly found three
+    /// (shown in the dialog), but Confirm only string-replaced the single label
+    /// present in the saved transcript — so the .txt still had one speaker.
+    func testLateRerunConfirmRebuildsTranscriptWithNewSpeakers() async throws {
+        let (pQueue, mockDiar, jobID) = try await makeSingleSourceJobAtNamingPending(
+            title: "Rerun Rebuild Test",
+            transcriptSegments: [
+                TimestampedSegment(start: 0, end: 5, text: "Hello"),
+                TimestampedSegment(start: 5, end: 10, text: "How are you"),
+                TimestampedSegment(start: 10, end: 15, text: "Goodbye"),
+            ],
+        )
+
+        // Sanity: the initial transcript really did collapse to one speaker.
+        let initialPath = try XCTUnwrap(pQueue.jobs.first?.transcriptPath)
+        let initialTranscript = try String(contentsOf: initialPath, encoding: .utf8)
+        XCTAssertFalse(initialTranscript.contains("SPEAKER_1:"), "Setup precondition: initial diarization is single-speaker")
+
+        // The re-run now detects three distinct speakers across the timeline.
+        mockDiar.resultToReturn = DiarizationResult(
+            segments: [
+                .init(start: 0, end: 5, speaker: "SPEAKER_0"),
+                .init(start: 5, end: 10, speaker: "SPEAKER_1"),
+                .init(start: 10, end: 15, speaker: "SPEAKER_2"),
+            ],
+            speakingTimes: ["SPEAKER_0": 5, "SPEAKER_1": 5, "SPEAKER_2": 5],
+            autoNames: [:],
+            embeddings: ["SPEAKER_0": [1, 0, 0], "SPEAKER_1": [0, 1, 0], "SPEAKER_2": [0, 0, 1]],
+        )
+
+        pQueue.speakerNamingHandler = { _ in
+            .confirmed(["SPEAKER_0": "Alice", "SPEAKER_1": "Bob", "SPEAKER_2": "Carol"])
+        }
+
+        let doneExpectation = XCTestExpectation(description: "done after rerun")
+        pQueue.onJobStateChange = { _, _, newState in
+            if newState == .done { doneExpectation.fulfill() }
+        }
+        pQueue.completeSpeakerNaming(jobID: jobID, result: .rerun(3))
+        await fulfillment(of: [doneExpectation], timeout: 60)
+
+        let finalPath = try XCTUnwrap(pQueue.jobs.first?.transcriptPath)
+        let finalTranscript = try String(contentsOf: finalPath, encoding: .utf8)
+        XCTAssertTrue(finalTranscript.contains("] Alice: Hello"), "First speaker should appear after re-run confirm")
+        XCTAssertTrue(finalTranscript.contains("] Bob: How are you"), "Second speaker must survive into the transcript")
+        XCTAssertTrue(finalTranscript.contains("] Carol: Goodbye"), "Third speaker must survive into the transcript")
+    }
+
+    /// Dual-source variant of the re-segment regression: a late re-run that
+    /// splits the remote/app track into more speakers must re-segment the saved
+    /// dual-track transcript, not just rename the labels already in it.
+    func testLateRerunConfirmRebuildsDualSourceTranscript() async throws {
+        let engine = MockEngine()
+        engine.segmentsToReturn = [
+            TimestampedSegment(start: 0, end: 5, text: "First"),
+            TimestampedSegment(start: 5, end: 10, text: "Second"),
+        ]
+        let mockDiar = MockDiarization()
+        // Initial: one speaker per track → one remote speaker in the transcript.
+        mockDiar.resultToReturn = DiarizationResult(
+            segments: [.init(start: 0, end: 10, speaker: "SPEAKER_0")],
+            speakingTimes: ["SPEAKER_0": 10],
+            autoNames: [:],
+            embeddings: ["SPEAKER_0": [1, 0, 0]],
+        )
+        let (pQueue, _) = makeMockProcessingQueue(
+            engine: engine,
+            diarizationFactory: { mockDiar },
+            diarizeEnabled: true,
+        )
+
+        try pQueue.enqueue(makeDualSourceJob(title: "Dual Rerun Rebuild"))
+        let jobID = try XCTUnwrap(pQueue.jobs.first?.id)
+        let pending = XCTestExpectation(description: "speakerNamingPending")
+        pQueue.onJobStateChange = { _, _, newState in
+            if newState == .speakerNamingPending { pending.fulfill() }
+        }
+        await pQueue.processNext()
+        await fulfillment(of: [pending], timeout: 10)
+
+        let initialPath = try XCTUnwrap(pQueue.jobs.first?.transcriptPath)
+        let initialTranscript = try String(contentsOf: initialPath, encoding: .utf8)
+        XCTAssertFalse(initialTranscript.contains("R_SPEAKER_1:"), "Setup precondition: one remote speaker initially")
+
+        // Re-run splits the remote/app track into two speakers across the timeline.
+        mockDiar.resultToReturn = DiarizationResult(
+            segments: [
+                .init(start: 0, end: 5, speaker: "SPEAKER_0"),
+                .init(start: 5, end: 10, speaker: "SPEAKER_1"),
+            ],
+            speakingTimes: ["SPEAKER_0": 5, "SPEAKER_1": 5],
+            autoNames: [:],
+            embeddings: ["SPEAKER_0": [1, 0, 0], "SPEAKER_1": [0, 1, 0]],
+        )
+        pQueue.speakerNamingHandler = { _ in
+            .confirmed(["R_SPEAKER_0": "Alice", "R_SPEAKER_1": "Bob"])
+        }
+        let done = XCTestExpectation(description: "done after dual rerun")
+        pQueue.onJobStateChange = { _, _, newState in
+            if newState == .done { done.fulfill() }
+        }
+        pQueue.completeSpeakerNaming(jobID: jobID, result: .rerun(2))
+        await fulfillment(of: [done], timeout: 60)
+
+        let finalPath = try XCTUnwrap(pQueue.jobs.first?.transcriptPath)
+        let finalTranscript = try String(contentsOf: finalPath, encoding: .utf8)
+        XCTAssertTrue(finalTranscript.contains("] Alice: First"), "First remote speaker should appear after re-run confirm")
+        XCTAssertTrue(finalTranscript.contains("] Bob: Second"), "Second remote speaker must survive into the transcript")
+    }
+
+    /// The re-run rewrite happens before the dialog result is known, so a
+    /// re-run followed by SKIP (accept auto-names) must also carry the new
+    /// segmentation into the saved transcript — the rewrite must not depend on
+    /// a confirm mapping.
+    func testLateRerunSkipKeepsRebuiltSegmentation() async throws {
+        let (pQueue, mockDiar, jobID) = try await makeSingleSourceJobAtNamingPending(
+            title: "Rerun Skip Test",
+            transcriptSegments: [
+                TimestampedSegment(start: 0, end: 5, text: "Hello"),
+                TimestampedSegment(start: 5, end: 10, text: "How are you"),
+                TimestampedSegment(start: 10, end: 15, text: "Goodbye"),
+            ],
+        )
+
+        mockDiar.resultToReturn = DiarizationResult(
+            segments: [
+                .init(start: 0, end: 5, speaker: "SPEAKER_0"),
+                .init(start: 5, end: 10, speaker: "SPEAKER_1"),
+                .init(start: 10, end: 15, speaker: "SPEAKER_2"),
+            ],
+            speakingTimes: ["SPEAKER_0": 5, "SPEAKER_1": 5, "SPEAKER_2": 5], autoNames: [:],
+            embeddings: ["SPEAKER_0": [1, 0, 0], "SPEAKER_1": [0, 1, 0], "SPEAKER_2": [0, 0, 1]],
+        )
+        pQueue.speakerNamingHandler = { _ in .skipped }
+        let done = XCTestExpectation(description: "done after rerun skip")
+        pQueue.onJobStateChange = { _, _, newState in
+            if newState == .done { done.fulfill() }
+        }
+        pQueue.completeSpeakerNaming(jobID: jobID, result: .rerun(3))
+        await fulfillment(of: [done], timeout: 60)
+
+        let finalTranscript = try String(contentsOf: XCTUnwrap(pQueue.jobs.first?.transcriptPath), encoding: .utf8)
+        XCTAssertTrue(finalTranscript.contains("SPEAKER_1:"), "Skip must keep the re-run's added speakers (auto-named)")
+        XCTAssertTrue(finalTranscript.contains("SPEAKER_2:"), "Skip must keep all re-run speakers")
+    }
+
+    /// When the persisted transcript segments are absent (older recordings
+    /// predating segment persistence), the re-run rewrite degrades gracefully:
+    /// it does NOT wipe the transcript, and surfaces a warning so the user
+    /// isn't silently misled into thinking the new speakers were applied.
+    func testLateRerunWithoutPersistedSegmentsWarnsAndKeepsTranscript() async throws {
+        let (pQueue, mockDiar, jobID) = try await makeSingleSourceJobAtNamingPending(
+            title: "No Segments Test",
+            transcriptSegments: [
+                TimestampedSegment(start: 0, end: 5, text: "Hello"),
+                TimestampedSegment(start: 5, end: 10, text: "World"),
+            ],
+        )
+
+        let transcriptPath = try XCTUnwrap(pQueue.jobs.first?.transcriptPath)
+        let before = try String(contentsOf: transcriptPath, encoding: .utf8)
+        // Simulate an older recording: remove the persisted transcript segments.
+        let slug = try XCTUnwrap(pQueue.jobs.first?.namingSlug)
+        try FileManager.default.removeItem(
+            at: tmpDir.appendingPathComponent("recordings").appendingPathComponent("\(slug)_segments.json"),
+        )
+
+        mockDiar.resultToReturn = DiarizationResult(
+            segments: [
+                .init(start: 0, end: 5, speaker: "SPEAKER_0"),
+                .init(start: 5, end: 10, speaker: "SPEAKER_1"),
+            ],
+            speakingTimes: ["SPEAKER_0": 5, "SPEAKER_1": 5], autoNames: [:],
+            embeddings: ["SPEAKER_0": [1, 0, 0], "SPEAKER_1": [0, 1, 0]],
+        )
+        pQueue.speakerNamingHandler = { _ in .skipped }
+        let done = XCTestExpectation(description: "done")
+        pQueue.onJobStateChange = { _, _, newState in
+            if newState == .done { done.fulfill() }
+        }
+        pQueue.completeSpeakerNaming(jobID: jobID, result: .rerun(2))
+        await fulfillment(of: [done], timeout: 60)
+
+        let after = try String(contentsOf: transcriptPath, encoding: .utf8)
+        XCTAssertEqual(after, before, "Missing segments must not wipe or alter the saved transcript")
+        let warnings = try XCTUnwrap(pQueue.jobs.first?.warnings)
+        XCTAssertTrue(
+            warnings.contains { $0.contains("no saved transcript segments") },
+            "User should be warned the re-run could not re-segment — got: \(warnings)",
+        )
+    }
+
+    /// A transcript-write failure during the re-run rewrite (e.g. the output
+    /// directory vanished) must degrade gracefully: the rewrite's catch swallows
+    /// it and the job still reaches a terminal state rather than wedging.
+    func testLateRerunTranscriptWriteFailureIsNonFatal() async throws {
+        let (pQueue, mockDiar, jobID) = try await makeSingleSourceJobAtNamingPending(
+            title: "Write Fail Test",
+            transcriptSegments: [
+                TimestampedSegment(start: 0, end: 5, text: "Hello"),
+                TimestampedSegment(start: 5, end: 10, text: "World"),
+            ],
+        )
+
+        // Force the rewrite's write to fail: delete the protocols directory so
+        // the atomic write to the job's transcriptPath has no parent. The
+        // persisted segments live in recordings/, so loadCachedSegments still
+        // succeeds and the failure lands in the write (not the no-segments early
+        // return). Confirm (not skip) so the job still reaches .done despite the
+        // now-missing transcript file.
+        try FileManager.default.removeItem(at: tmpDir.appendingPathComponent("protocols"))
+
+        mockDiar.resultToReturn = DiarizationResult(
+            segments: [
+                .init(start: 0, end: 5, speaker: "SPEAKER_0"),
+                .init(start: 5, end: 10, speaker: "SPEAKER_1"),
+            ],
+            speakingTimes: ["SPEAKER_0": 5, "SPEAKER_1": 5], autoNames: [:],
+            embeddings: ["SPEAKER_0": [1, 0, 0], "SPEAKER_1": [0, 1, 0]],
+        )
+        pQueue.speakerNamingHandler = { _ in .confirmed([:]) }
+        let done = XCTestExpectation(description: "done despite write failure")
+        pQueue.onJobStateChange = { _, _, newState in
+            if newState == .done { done.fulfill() }
+        }
+        let transcriptPath = try XCTUnwrap(pQueue.jobs.first?.transcriptPath)
+        pQueue.completeSpeakerNaming(jobID: jobID, result: .rerun(2))
+        await fulfillment(of: [done], timeout: 60)
+
+        XCTAssertEqual(pQueue.jobs.first?.state, .done, "Write failure during re-segmentation must not wedge the job")
+        // Proves the write genuinely failed (exercising the rewrite's catch):
+        // the atomic write can't recreate the deleted parent directory, so no
+        // transcript file exists afterwards.
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: transcriptPath.path),
+            "The rewrite write must have failed (no parent dir), exercising the catch path",
+        )
+    }
+
+    /// Factory helper for the mode-override integration tests. Returns a
+    /// `MockDiarization` with `.mode` set + a small fixture result keyed off
+    /// the mode, so the two test bodies can verify which provider was used.
+    private func makeModeOverrideDiar(_ mode: DiarizerMode) -> MockDiarization {
+        let mock = MockDiarization()
+        mock.mode = mode
+        mock.resultToReturn = DiarizationResult(
+            segments: [
+                .init(start: 0, end: 2, speaker: "SPEAKER_0"),
+                .init(start: 2, end: 5, speaker: "SPEAKER_1"),
+            ],
+            speakingTimes: ["SPEAKER_0": 2, "SPEAKER_1": 3],
+            autoNames: [:],
+            embeddings: ["SPEAKER_0": [1, 0, 0], "SPEAKER_1": [0, 1, 0]],
+        )
+        return mock
+    }
+
+    /// `.rerunWithMode(.sortformer, _)` swaps the `DiarizationProvider`
+    /// through the mode-aware factory and writes the new mode back onto
+    /// `PipelineJob.usedDiarizerMode`. Regression gate for the mode↔count
+    /// coupling: a missing wire-through here means the picker in
+    /// `SpeakerNamingView` becomes ghost UI in Sortformer mode.
+    func testLateRerunWithModeOverrideSwapsProviderAndRecordsMode() async throws {
+        let engine = MockEngine()
+        engine.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "Hello")]
+        let offlineDiar = makeModeOverrideDiar(.offline)
+        let sortformerDiar = makeModeOverrideDiar(.sortformer)
+        let modeOverrideCalls = OSAllocatedUnfairLock<[DiarizerMode]>(initialState: [])
+        let (pQueue, _) = makeMockProcessingQueue(
+            engine: engine,
+            diarizationFactory: { offlineDiar },
+            diarizationFactoryWithMode: { mode in
+                modeOverrideCalls.withLock { $0.append(mode) }
+                return mode == .sortformer ? sortformerDiar : offlineDiar
+            },
+            diarizeEnabled: true,
+        )
+
+        let audioPath = try createTestAudioFile(in: tmpDir)
+        let job = PipelineJob(
+            meetingTitle: "Mode Override Test", appName: "TestApp",
+            mixPath: audioPath, appPath: nil, micPath: nil, micDelay: 0,
+        )
+        pQueue.enqueue(job)
+        let pendingExpectation = XCTestExpectation(description: "speakerNamingPending")
+        pQueue.onJobStateChange = { _, _, newState in
+            if newState == .speakerNamingPending { pendingExpectation.fulfill() }
+        }
+        await pQueue.processNext()
+        await fulfillment(of: [pendingExpectation], timeout: 10)
+        XCTAssertEqual(pQueue.jobs.first?.usedDiarizerMode, .offline)
+
+        pQueue.speakerNamingHandler = { _ in .confirmed([:]) }
+        let doneExpectation = XCTestExpectation(description: "done after mode override")
+        pQueue.onJobStateChange = { _, _, newState in
+            if newState == .done { doneExpectation.fulfill() }
+        }
+        pQueue.completeSpeakerNaming(jobID: job.id, result: .rerunWithMode(.sortformer, 2))
+        await fulfillment(of: [doneExpectation], timeout: 60)
+
+        XCTAssertEqual(modeOverrideCalls.withLock(\.self), [.sortformer])
+        XCTAssertEqual(pQueue.jobs.first?.usedDiarizerMode, .sortformer)
+        XCTAssertEqual(pQueue.jobs.first?.state, .done)
+    }
+
+    /// `.rerunWithMode(_, _)` falls back to the no-arg factory when no
+    /// mode-aware factory is wired (covers tests and any callsite that
+    /// hasn't been migrated yet). The mode metadata follows the actual
+    /// provider — so a default-mode `MockDiarization` keeps the job's
+    /// `usedDiarizerMode` consistent with what ran.
+    func testLateRerunWithModeOverrideFallsBackToDefaultFactory() async throws {
+        let engine = MockEngine()
+        engine.segmentsToReturn = [
+            TimestampedSegment(start: 0, end: 5, text: "Hello"),
+        ]
+        let mockDiar = MockDiarization()
+        mockDiar.mode = .offline
+        mockDiar.resultToReturn = DiarizationResult(
+            segments: [.init(start: 0, end: 5, speaker: "SPEAKER_0")],
+            speakingTimes: ["SPEAKER_0": 5],
+            autoNames: [:],
+            embeddings: ["SPEAKER_0": [1, 0, 0]],
+        )
+        // No `diarizationFactoryWithMode` provided — covers the fallback path.
+        let (pQueue, _) = makeMockProcessingQueue(
+            engine: engine,
+            diarizationFactory: { mockDiar },
+            diarizeEnabled: true,
+        )
+
+        let audioPath = try createTestAudioFile(in: tmpDir)
+        let job = PipelineJob(
+            meetingTitle: "Mode Override Fallback Test",
+            appName: "TestApp",
+            mixPath: audioPath,
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        pQueue.enqueue(job)
+
+        let pendingExpectation = XCTestExpectation(description: "speakerNamingPending")
+        pQueue.onJobStateChange = { _, _, newState in
+            if newState == .speakerNamingPending {
+                pendingExpectation.fulfill()
+            }
+        }
+        await pQueue.processNext()
+        await fulfillment(of: [pendingExpectation], timeout: 10)
+
+        pQueue.speakerNamingHandler = { _ in .confirmed([:]) }
+        let doneExpectation = XCTestExpectation(description: "done after fallback")
+        pQueue.onJobStateChange = { _, _, newState in
+            if newState == .done {
+                doneExpectation.fulfill()
+            }
+        }
+
+        pQueue.completeSpeakerNaming(
+            jobID: job.id,
+            result: .rerunWithMode(.sortformer, 2),
+        )
+        await fulfillment(of: [doneExpectation], timeout: 60)
+
+        // Without a mode-aware factory, the fallback runs the no-arg
+        // factory and the resulting provider's mode (.offline) wins.
+        XCTAssertEqual(pQueue.jobs.first?.usedDiarizerMode, .offline)
+    }
+
+    /// `lateDiarization` swallows diarizer errors and rolls the job back
+    /// to `.speakerNamingPending` (so the user can try again) without
+    /// touching `usedDiarizerMode` — the cached naming data still
+    /// reflects the prior successful run.
+    func testLateRerunRollsBackToPendingWhenDiarizerThrows() async throws {
+        let engine = MockEngine()
+        engine.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "Hello")]
+        let mockDiar = MockDiarization()
+        mockDiar.mode = .offline
+        mockDiar.resultToReturn = DiarizationResult(
+            segments: [.init(start: 0, end: 5, speaker: "SPEAKER_0")],
+            speakingTimes: ["SPEAKER_0": 5],
+            autoNames: [:],
+            embeddings: ["SPEAKER_0": [1, 0, 0]],
+        )
+        let (pQueue, _) = makeMockProcessingQueue(
+            engine: engine,
+            diarizationFactory: { mockDiar },
+            diarizeEnabled: true,
+        )
+
+        let audioPath = try createTestAudioFile(in: tmpDir)
+        let job = PipelineJob(
+            meetingTitle: "Late Rerun Throw Test", appName: "TestApp",
+            mixPath: audioPath, appPath: nil, micPath: nil, micDelay: 0,
+        )
+        pQueue.enqueue(job)
+        let pendingExpectation = XCTestExpectation(description: "speakerNamingPending")
+        pQueue.onJobStateChange = { _, _, newState in
+            if newState == .speakerNamingPending { pendingExpectation.fulfill() }
+        }
+        await pQueue.processNext()
+        await fulfillment(of: [pendingExpectation], timeout: 10)
+        XCTAssertEqual(pQueue.jobs.first?.usedDiarizerMode, .offline)
+
+        // Make the diarizer throw on the next run (the `_16k.wav` re-run path).
+        mockDiar.throwOnPathSuffix = "_16k.wav"
+
+        let rolledBack = XCTestExpectation(description: "rolled back to pending after throw")
+        var seenStates: [JobState] = []
+        pQueue.onJobStateChange = { _, _, newState in
+            seenStates.append(newState)
+            if seenStates.contains(.diarizing), newState == .speakerNamingPending {
+                rolledBack.fulfill()
+            }
+        }
+        pQueue.completeSpeakerNaming(jobID: job.id, result: .rerun(2))
+        await fulfillment(of: [rolledBack], timeout: 10)
+
+        XCTAssertEqual(pQueue.jobs.first?.state, .speakerNamingPending)
+        // usedDiarizerMode is unchanged from the prior successful run
+        // because the cached naming data still reflects that run.
+        XCTAssertEqual(pQueue.jobs.first?.usedDiarizerMode, .offline)
+    }
+
+    /// Late re-run of a dual-source job whose mic track fails to diarize must
+    /// fall back to the *unprefixed* app-only diarization — mirroring the batch
+    /// `runDiarization` path — instead of throwing (a silent no-op that bounces
+    /// the job back to pending) or emitting `R_`-prefixed keys that no longer
+    /// match the persisted app-only transcript. Regression guard for the
+    /// late-path sibling of the batch mic-fail app-name-loss bug.
+    func testLateRerunDualSourceMicFailFallsBackToAppOnly() async throws {
+        let engine = MockEngine()
+        engine.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "Hello")]
+        let mockDiar = MockDiarization()
+        mockDiar.mode = .offline
+        mockDiar.resultToReturn = DiarizationResult(
+            segments: [.init(start: 0, end: 5, speaker: "SPEAKER_0")],
+            speakingTimes: ["SPEAKER_0": 5],
+            autoNames: [:],
+            embeddings: ["SPEAKER_0": [1, 0, 0]],
+        )
+        let (pQueue, _) = makeMockProcessingQueue(
+            engine: engine,
+            diarizationFactory: { mockDiar },
+            diarizeEnabled: true,
+        )
+
+        // First run: both tracks succeed → reach speakerNamingPending with
+        // persisted naming data + namingSlug + persisted _app_16k/_mic_16k audio.
+        try pQueue.enqueue(makeDualSourceJob(title: "Late MicFail"))
+        let job = try XCTUnwrap(pQueue.jobs.first)
+        let pendingExpectation = XCTestExpectation(description: "speakerNamingPending")
+        pQueue.onJobStateChange = { _, _, newState in
+            if newState == .speakerNamingPending { pendingExpectation.fulfill() }
+        }
+        await pQueue.processNext()
+        await fulfillment(of: [pendingExpectation], timeout: 10)
+
+        // Re-run: make ONLY the mic track fail. The fallback must still drive the
+        // naming dialog (no silent no-op) with the raw, unprefixed app keys.
+        mockDiar.throwOnPathSuffix = "_mic_16k.wav"
+        var rerunKeys: [String] = []
+        // The handler firing at all proves the fallback ran — the buggy path
+        // throws on the mic track and bounces back to pending without calling it.
+        let handlerCalled = XCTestExpectation(description: "naming handler called after mic-fail fallback")
+        pQueue.speakerNamingHandler = { data in
+            rerunKeys = Array(data.mapping.keys)
+            handlerCalled.fulfill()
+            return .confirmed([:])
+        }
+
+        pQueue.completeSpeakerNaming(jobID: job.id, result: .rerun(2))
+        await fulfillment(of: [handlerCalled], timeout: 10)
+
+        XCTAssertTrue(
+            rerunKeys.contains("SPEAKER_0"),
+            "fallback should expose the raw app diarization keys — got: \(rerunKeys)",
+        )
+        XCTAssertFalse(
+            rerunKeys.contains { $0.hasPrefix("R_") || $0.hasPrefix("M_") },
+            "mic-fail fallback must use the unprefixed app diarization, not the R_/M_ merge — got: \(rerunKeys)",
+        )
+        let warnings = try XCTUnwrap(pQueue.jobs.first?.warnings)
+        XCTAssertTrue(
+            warnings.contains { $0.contains("Mic track diarization failed") },
+            "late mic-fail fallback should add a warning, like the batch path — got: \(warnings)",
+        )
+    }
+
+    /// The late re-run path (`runLateDiarization`) threads the job's `micDelay`
+    /// into the shared dual-track helper, so its mic diarization is shifted onto
+    /// the canonical timeline exactly like the batch path
+    /// (`testDiarizeDualTrackShiftsMicDiarizationByMicDelay`). Pinned separately
+    /// because the late re-run is a distinct caller: dropping `micDelay` from its
+    /// `recording` tuple (threading 0) would silently misalign re-run mic labels
+    /// — the same misalignment the batch-path shift prevents — and the batch test
+    /// would not catch it.
+    func testLateRerunDualSourceShiftsMicDiarizationByMicDelay() async throws {
+        let engine = MockEngine()
+        engine.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "Hello")]
+        let mockDiar = MockDiarization()
+        // Both tracks diarize the same raw [0,5] segment (the mock ignores the
+        // audio path). The mic copy must be shifted by +micDelay onto the
+        // canonical timeline before the R_/M_ merge.
+        mockDiar.resultToReturn = DiarizationResult(
+            segments: [.init(start: 0, end: 5, speaker: "SPEAKER_0")],
+            speakingTimes: ["SPEAKER_0": 5],
+            autoNames: [:],
+            embeddings: ["SPEAKER_0": [1, 0, 0]],
+        )
+        let (pQueue, _) = makeMockProcessingQueue(
+            engine: engine,
+            diarizationFactory: { mockDiar },
+            diarizeEnabled: true,
+        )
+
+        // First run → speakerNamingPending (persists _app_16k/_mic_16k + naming).
+        try pQueue.enqueue(makeDualSourceJob(title: "Late MicDelay", micDelay: 100))
+        let jobID = try XCTUnwrap(pQueue.jobs.first?.id)
+        let pending = XCTestExpectation(description: "speakerNamingPending")
+        pQueue.onJobStateChange = { _, _, newState in
+            if newState == .speakerNamingPending { pending.fulfill() }
+        }
+        await pQueue.processNext()
+        await fulfillment(of: [pending], timeout: 10)
+
+        // Re-run via the late path: capture its fresh naming data, then finish.
+        var rerunData: PipelineQueue.SpeakerNamingData?
+        let handlerCalled = XCTestExpectation(description: "naming handler called on re-run")
+        pQueue.speakerNamingHandler = { data in
+            rerunData = data
+            handlerCalled.fulfill()
+            return .confirmed([:])
+        }
+        pQueue.completeSpeakerNaming(jobID: jobID, result: .rerun(2))
+        await fulfillment(of: [handlerCalled], timeout: 10)
+
+        // The mic track's raw [0,5] diarization must be shifted by +micDelay
+        // (100s) → the merged M_-prefixed mic segment sits at [100,105]. A late
+        // path that threaded micDelay=0 would leave it at [0,5].
+        let segments = try XCTUnwrap(rerunData).segments
+        let micSegment = try XCTUnwrap(
+            segments.first { $0.speaker.hasPrefix("M_") },
+            "re-run naming data should include a mic-track (M_) segment — got: \(segments.map(\.speaker))",
+        )
+        XCTAssertEqual(
+            micSegment.start, 100, accuracy: 0.001,
+            "late re-run must shift mic diarization by micDelay (100s) — got start=\(micSegment.start)",
+        )
+    }
+
+    /// `isAvailable == false` short-circuits lateDiarization without
+    /// changing the job state — there's no recoverable path so the
+    /// user is left to fix the configuration (model download, etc.).
+    func testLateRerunIsNoOpWhenDiarizerNotAvailable() async throws {
+        let engine = MockEngine()
+        engine.segmentsToReturn = [TimestampedSegment(start: 0, end: 5, text: "Hello")]
+        let mockDiar = MockDiarization()
+        mockDiar.mode = .offline
+        mockDiar.resultToReturn = DiarizationResult(
+            segments: [.init(start: 0, end: 5, speaker: "SPEAKER_0")],
+            speakingTimes: ["SPEAKER_0": 5],
+            autoNames: [:],
+            embeddings: ["SPEAKER_0": [1, 0, 0]],
+        )
+        let (pQueue, _) = makeMockProcessingQueue(
+            engine: engine,
+            diarizationFactory: { mockDiar },
+            diarizeEnabled: true,
+        )
+
+        let audioPath = try createTestAudioFile(in: tmpDir)
+        let job = PipelineJob(
+            meetingTitle: "Late Rerun Unavailable", appName: "TestApp",
+            mixPath: audioPath, appPath: nil, micPath: nil, micDelay: 0,
+        )
+        pQueue.enqueue(job)
+        let pendingExpectation = XCTestExpectation(description: "speakerNamingPending")
+        pQueue.onJobStateChange = { _, _, newState in
+            if newState == .speakerNamingPending { pendingExpectation.fulfill() }
+        }
+        await pQueue.processNext()
+        await fulfillment(of: [pendingExpectation], timeout: 10)
+
+        // Flip the mock to "not available" so the late-rerun guard at the
+        // top of lateDiarization trips.
+        mockDiar.isAvailable = false
+        let initialState = pQueue.jobs.first?.state
+        pQueue.completeSpeakerNaming(jobID: job.id, result: .rerun(3))
+        // Yield once to let the Task dispatched from completeSpeakerNaming
+        // observe the unavailable guard and return early.
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(pQueue.jobs.first?.state, initialState)
+    }
+
+    func testLateConfirmationWithNoNamingDataIsNoOp() {
+        let queue = PipelineQueue(logDir: tmpDir)
+        var job = PipelineJob(
+            meetingTitle: "No Data Test",
+            appName: "Teams",
+            mixPath: URL(fileURLWithPath: "/tmp/mix.wav"),
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        job.state = .speakerNamingPending
+        queue.enqueue(job)
+
+        // No naming data set — should be a no-op
+        queue.completeSpeakerNaming(jobID: job.id, result: .confirmed(["SPEAKER_0": "Alice"]))
+
+        // State should NOT change since guard fails
+        XCTAssertEqual(queue.jobs.first?.state, .speakerNamingPending)
+    }
+
+    // MARK: - Snapshot Restore Cleans Up What It Discards
+
+    private func makeRestoreQueue(
+        outputDir: URL, diarizeEnabled: Bool = false, inFlightRuns: InFlightRunRegistry? = nil,
+    ) -> PipelineQueue {
+        PipelineQueue(
+            engine: MockEngine(),
+            diarizationFactory: { MockDiarization() },
+            protocolGeneratorFactory: { nil },
+            outputDir: outputDir,
+            logDir: tmpDir,
+            diarizeEnabled: diarizeEnabled,
+            inFlightRuns: inFlightRuns,
+        )
+    }
+
+    /// Quitting inside `completedJobLifetime` of a `.done` job means `removeJob`
+    /// never runs, so the restore is the last owner of those sidecars.
+    func testLoadSnapshotCleansSidecarsOfDiscardedDoneJob() throws {
+        let outputDir = tmpDir.appendingPathComponent("output")
+        let recordingsDir = outputDir.appendingPathComponent("recordings")
+        try FileManager.default.createDirectory(at: recordingsDir, withIntermediateDirectories: true)
+
+        let mixPath = tmpDir.appendingPathComponent("mix.wav")
+        try Data([0]).write(to: mixPath)
+
+        var job = PipelineJob(
+            meetingTitle: "Reaped Before Quit", appName: "App",
+            mixPath: mixPath, appPath: nil, micPath: nil, micDelay: 0,
+        )
+        job.state = .done
+        job.namingSlug = "reaped_before_quit"
+        try JSONEncoder().encode([job])
+            .write(to: tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename))
+        let sidecars = try SidecarFixture.write(slug: "reaped_before_quit", in: recordingsDir)
+
+        let freshQueue = makeRestoreQueue(outputDir: outputDir)
+        freshQueue.loadSnapshot()
+
+        XCTAssertEqual(freshQueue.jobs.count, 0)
+        assertSidecars(sidecars, exist: false)
+    }
+
+    /// The guard that keeps this cleanup off a job another queue is running.
+    /// Without it the restore deletes files a live flow is still reading.
+    func testLoadSnapshotKeepsSidecarsOfAnInFlightDiscardedJob() throws {
+        let outputDir = tmpDir.appendingPathComponent("output")
+        let recordingsDir = outputDir.appendingPathComponent("recordings")
+        try FileManager.default.createDirectory(at: recordingsDir, withIntermediateDirectories: true)
+
+        let mixPath = tmpDir.appendingPathComponent("mix.wav")
+        try Data([0]).write(to: mixPath)
+
+        var job = PipelineJob(
+            meetingTitle: "Running Elsewhere", appName: "App",
+            mixPath: mixPath, appPath: nil, micPath: nil, micDelay: 0,
+        )
+        job.state = .done
+        job.namingSlug = "running_elsewhere"
+        try JSONEncoder().encode([job])
+            .write(to: tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename))
+        let sidecars = try SidecarFixture.write(slug: "running_elsewhere", in: recordingsDir)
+
+        let registry = InFlightRunRegistry()
+        XCTAssertEqual(registry.begin(jobID: job.id, mixPath: mixPath), .claimed)
+
+        let freshQueue = makeRestoreQueue(outputDir: outputDir, inFlightRuns: registry)
+        freshQueue.loadSnapshot()
+
+        assertSidecars(sidecars, exist: true)
+    }
+
+    /// The missing-audio rule is where a job that another queue is still running
+    /// lands once that queue relocated the audio, and the late naming flows never
+    /// claim in the registry. Cleaning up there would delete the 16 kHz audio a
+    /// live re-diarization reads, so this rule deliberately leaves it alone.
+    func testLoadSnapshotKeepsSidecarsOfJobDiscardedForMissingAudio() throws {
+        let outputDir = tmpDir.appendingPathComponent("output")
+        let recordingsDir = outputDir.appendingPathComponent("recordings")
+        try FileManager.default.createDirectory(at: recordingsDir, withIntermediateDirectories: true)
+
+        var job = PipelineJob(
+            meetingTitle: "Audio Relocated", appName: "App",
+            mixPath: tmpDir.appendingPathComponent("gone_\(UUID().uuidString).wav"),
+            appPath: nil, micPath: nil, micDelay: 0,
+        )
+        job.state = .generatingProtocol
+        job.namingSlug = "audio_relocated"
+        try JSONEncoder().encode([job])
+            .write(to: tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename))
+        let sidecars = try SidecarFixture.write(slug: "audio_relocated", in: recordingsDir)
+
+        let freshQueue = makeRestoreQueue(outputDir: outputDir)
+        freshQueue.loadSnapshot()
+
+        XCTAssertEqual(freshQueue.jobs.count, 0)
+        assertSidecars(sidecars, exist: true)
+    }
+
+    /// The cleanup has to look where the files are, not where the setting
+    /// currently points. Repointing the output folder between the job finishing
+    /// and the restore would otherwise leave the sidecars orphaned for good,
+    /// since the job that names them is discarded in the same breath.
+    func testLoadSnapshotCleansSidecarsInTheJobsOwnOutputDir() throws {
+        let oldOutputDir = tmpDir.appendingPathComponent("old-output")
+        let oldRecordingsDir = oldOutputDir.appendingPathComponent("recordings")
+        let newOutputDir = tmpDir.appendingPathComponent("new-output")
+        for dir in [oldRecordingsDir, newOutputDir.appendingPathComponent("recordings")] {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+
+        let mixPath = tmpDir.appendingPathComponent("mix.wav")
+        try Data([0]).write(to: mixPath)
+
+        var job = PipelineJob(
+            meetingTitle: "Folder Moved", appName: "App",
+            mixPath: mixPath, appPath: nil, micPath: nil, micDelay: 0,
+        )
+        job.state = .done
+        job.namingSlug = "folder_moved"
+        job.recordSidecarOutputDir(oldOutputDir)
+        try JSONEncoder().encode([job])
+            .write(to: tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename))
+        let sidecars = try SidecarFixture.write(slug: "folder_moved", in: oldRecordingsDir)
+
+        // The user repointed the output folder; the queue is built on the new one.
+        let freshQueue = makeRestoreQueue(outputDir: newOutputDir)
+        freshQueue.loadSnapshot()
+
+        assertSidecars(sidecars, exist: false)
+    }
+
+    /// A job that survives the restore must keep everything it owns. Without
+    /// this, widening the cleanup to every loaded job stays green while
+    /// production wipes the re-diarization audio of each restored job.
+    func testLoadSnapshotKeepsSidecarsOfSurvivingNamingPendingJob() throws {
+        let outputDir = tmpDir.appendingPathComponent("output")
+        let recordingsDir = outputDir.appendingPathComponent("recordings")
+        try FileManager.default.createDirectory(at: recordingsDir, withIntermediateDirectories: true)
+
+        let mixPath = tmpDir.appendingPathComponent("mix.wav")
+        try Data([0]).write(to: mixPath)
+
+        var job = PipelineJob(
+            meetingTitle: "Awaiting Names", appName: "App",
+            mixPath: mixPath, appPath: nil, micPath: nil, micDelay: 0,
+        )
+        job.state = .speakerNamingPending
+        job.namingSlug = "awaiting_names"
+        try JSONEncoder().encode([job])
+            .write(to: tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename))
+        let sidecars = try SidecarFixture.write(slug: "awaiting_names", in: recordingsDir)
+
+        // Overwrite the placeholder with decodable naming data so restore keeps
+        // the job; the audio and segment sidecars stay as written above.
+        let namingData = PipelineQueue.SpeakerNamingData(
+            jobID: job.id,
+            meetingTitle: "Awaiting Names",
+            mapping: ["SPEAKER_0": "Speaker A"],
+            speakingTimes: ["SPEAKER_0": 60.0],
+            embeddings: ["SPEAKER_0": [0.1, 0.2]],
+            audioPath: recordingsDir.appendingPathComponent("awaiting_names_16k.wav"),
+            segments: [.init(start: 0, end: 5, speaker: "SPEAKER_0")],
+            participants: [],
+            isDualSource: false,
+        )
+        try SpeakerNamingStore(outputDir: outputDir).save(namingData, slug: "awaiting_names")
+
+        let freshQueue = makeRestoreQueue(outputDir: outputDir)
+        freshQueue.loadSnapshot()
+
+        XCTAssertEqual(freshQueue.jobs.first?.state, .speakerNamingPending)
+        assertSidecars(sidecars, exist: true)
+    }
+
+    /// The naming data is read where the job recorded its sidecars, like the
+    /// cleanup above and the resume decision, not from wherever the output
+    /// setting points now. Reading the current folder found nothing after a
+    /// repoint and finished the job with auto-names the user never confirmed.
+    func testLoadSnapshotRestoresNamingDataFromTheJobsOwnOutputDir() throws {
+        let test = try makePendingJobInSnapshot(title: "Named Elsewhere", folders: 1)
+        try SpeakerNamingStore(outputDir: test.folders[0])
+            .save(test.namingData(in: test.folders[0]), slug: test.slug)
+
+        let restored = restoreIntoAnotherFolder()
+
+        XCTAssertEqual(restored.jobs.first?.state, .speakerNamingPending)
+        XCTAssertNotNil(restored.naming.speakerNamingDataByJob[test.job.id])
+    }
+
+    /// A job that wrote sidecars under two folders is read from the one it
+    /// wrote last, while the cleanup visits both. Without that order a restore
+    /// would take the folder of the run before, which holds the mapping the
+    /// later run replaced.
+    func testLoadSnapshotRestoresNamingDataFromTheFolderTheJobWroteLast() throws {
+        let test = try makePendingJobInSnapshot(title: "Named Twice", folders: 2)
+        // Only under the folder written last, which is where the save that
+        // recorded it put the file.
+        try SpeakerNamingStore(outputDir: test.folders[1])
+            .save(test.namingData(in: test.folders[1]), slug: test.slug)
+
+        let restored = restoreIntoAnotherFolder()
+
+        XCTAssertEqual(restored.jobs.first?.state, .speakerNamingPending)
+        XCTAssertNotNil(restored.naming.speakerNamingDataByJob[test.job.id])
+    }
+
+    /// A recorded folder is not proof that the file arrived there: saving the
+    /// naming data logs its failure and carries on, so the newest recorded
+    /// folder can be one the write never reached. Reading only the newest would
+    /// finish the job with the auto-names in its transcript and drop the
+    /// mapping the user is owed, which is the silent loss the recorded folder
+    /// exists to prevent.
+    func testLoadSnapshotFallsBackToAnEarlierFolderWhenTheNewestHasNoNamingData() throws {
+        let test = try makePendingJobInSnapshot(title: "Save Failed", folders: 2)
+        // Only under the folder written first: the save under the folder
+        // recorded last is the one that failed.
+        try SpeakerNamingStore(outputDir: test.folders[0])
+            .save(test.namingData(in: test.folders[0]), slug: test.slug)
+
+        let restored = restoreIntoAnotherFolder()
+
+        XCTAssertEqual(restored.jobs.first?.state, .speakerNamingPending)
+        XCTAssertNotNil(restored.naming.speakerNamingDataByJob[test.job.id])
+    }
+
+    /// When both recorded folders hold naming data, the newest wins. A run that
+    /// saved under the old folder and then again under the new one leaves two
+    /// files, and reading the older one restores the mapping the second run
+    /// replaced, so the dialog comes back pre-filled with names the user has
+    /// already corrected.
+    func testLoadSnapshotPrefersTheNewestFolderWhenBothHoldNamingData() throws {
+        let test = try makePendingJobInSnapshot(title: "Saved Twice", folders: 2)
+        for (folder, speaker) in zip(test.folders, ["Speaker A", "Speaker B"]) {
+            try SpeakerNamingStore(outputDir: folder)
+                .save(test.namingData(in: folder, speaker: speaker), slug: test.slug)
+        }
+
+        let restored = restoreIntoAnotherFolder()
+
+        XCTAssertEqual(
+            restored.naming.speakerNamingDataByJob[test.job.id]?.mapping["SPEAKER_0"], "Speaker B",
+        )
+    }
+
+    /// A folder is recorded only by a write that landed there. The read trusts
+    /// the recorded order to find the newest payload, so a folder that holds
+    /// nothing must not take the front of it — which is what happened while the
+    /// folder was recorded next to the slug rather than next to the write.
+    func testOnlyAWriteThatLandedRecordsItsFolder() throws {
+        let test = try makePendingJobInSnapshot(title: "Not Written", folders: 1)
+        let queue = makeRestoreQueue(outputDir: tmpDir.appendingPathComponent("current-output"))
+        queue.insertJobForTesting(test.job)
+        let before = queue.jobs.first?.sidecarOutputDirs
+
+        queue.setNamingMetadata(
+            jobID: test.job.id, slug: test.slug, usedDiarizerMode: nil, wroteSidecarsIn: nil,
+        )
+
+        XCTAssertEqual(queue.jobs.first?.sidecarOutputDirs, before)
+        XCTAssertEqual(queue.jobs.first?.namingSlug, test.slug, "the slug is still set")
+    }
+
+    /// A payload that names another job is not this job's mapping. The slug
+    /// carries the title, the start minute and eight hex digits of the id, so
+    /// two jobs can agree on it.
+    func testLoadSnapshotIgnoresNamingDataThatNamesAnotherJob() throws {
+        let test = try makePendingJobInSnapshot(title: "Not Mine", folders: 1)
+        let foreign = test.namingData(in: test.folders[0], jobID: UUID())
+        try SpeakerNamingStore(outputDir: test.folders[0]).save(foreign, slug: test.slug)
+
+        let restored = restoreIntoAnotherFolder()
+
+        XCTAssertNil(restored.naming.speakerNamingDataByJob[test.job.id])
+        XCTAssertEqual(
+            restored.jobs.first?.state, .done,
+            "no mapping of its own, so the job finishes rather than waiting for one",
+        )
+    }
+
+    /// Whether a job interrupted in `.generatingProtocol` still has naming data
+    /// is asked of every folder it recorded, not only the newest. Naming data
+    /// still on disk means the confirm never rewrote the transcript, and a
+    /// protocol-only resume would then publish the auto-names. The newest
+    /// folder can hold only the audio stage 3 moved there, while the naming
+    /// data sits in the folder before it.
+    func testTheResumeLooksForNamingDataInEveryRecordedFolder() async throws {
+        let test = try makePendingJobInSnapshot(title: "Quit Mid Confirm", folders: 2)
+        var interrupted = test.job
+        interrupted.state = .generatingProtocol
+        let transcript = test.folders[0].appendingPathComponent("protocols/quit_mid_confirm.txt")
+        try write("[00:00] SPEAKER_0: hello", to: transcript)
+        interrupted.transcriptPath = transcript
+        let snapshot = try JSONEncoder().encode([interrupted])
+        let snapshotURL = tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename)
+        // A registry of its own per restore, so the control's run cannot leave
+        // the job looking in flight to the second restore.
+        func restore() -> PipelineQueue {
+            let queue = makeRestoreQueue(
+                outputDir: tmpDir.appendingPathComponent("current-output"),
+                inFlightRuns: InFlightRunRegistry(),
+            )
+            queue.loadSnapshot()
+            return queue
+        }
+
+        // Control: with no naming data anywhere, this job is resumed from its
+        // transcript. Otherwise the assertion below could pass for a reason
+        // that has nothing to do with the folders.
+        try snapshot.write(to: snapshotURL)
+        let control = restore()
+        XCTAssertEqual(control.protocolResumeDispositions[test.job.id], .resumeProtocolOnly)
+        // The restore and the resume it starts rewrite the snapshot off the
+        // main actor; let both land before the interrupted state is written
+        // back for the second restore.
+        await control.awaitProcessing()
+        await control.awaitSnapshotFlush()
+
+        try SpeakerNamingStore(outputDir: test.folders[0])
+            .save(test.namingData(in: test.folders[0]), slug: test.slug)
+        try snapshot.write(to: snapshotURL)
+        let restored = restore()
+
+        XCTAssertTrue(restored.jobs.contains { $0.id == test.job.id }, "test premise: the job survived the restore")
+        XCTAssertNil(
+            restored.protocolResumeDispositions[test.job.id],
+            "naming data in the earlier folder means the confirm never landed: run in full",
+        )
+        await restored.awaitProcessing()
+    }
+
+    /// A run that parks no naming data still records the folder stage 3 moved
+    /// its 16 kHz audio and segments into. Nothing else records it then, and a
+    /// job that recorded none falls back to whichever folder the setting points
+    /// at, which after a repoint is not the one holding its files.
+    func testARunWithoutNamingDataRecordsTheFolderItsSidecarsWentTo() async throws {
+        let (queue, _) = makeStraightThroughQueue()
+        let job = try PipelineJob(
+            meetingTitle: "No Naming Data", appName: "File",
+            mixPath: createTestAudioFile(in: tmpDir), appPath: nil, micPath: nil, micDelay: 0,
+        )
+        queue.enqueue(job)
+        await queue.processNext()
+        await queue.awaitSnapshotFlush()
+
+        XCTAssertNil(queue.speakerNamingDataByJob[job.id], "test premise: no naming data was parked")
+        let outputDir = try XCTUnwrap(queue.outputDir)
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: outputDir.appendingPathComponent("recordings").path),
+            "test premise: stage 3 moved sidecars under the output folder",
+        )
+        // Read back from the snapshot rather than the live job: the record is
+        // only worth anything if it reaches the file a restore reads.
+        let saved = try JSONDecoder().decode(
+            [PipelineJob].self,
+            from: Data(contentsOf: tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename)),
+        )
+        XCTAssertEqual(
+            saved.first { $0.id == job.id }?.sidecarOutputDirs.map(\.standardizedFileURL.path),
+            [outputDir.standardizedFileURL.path],
+        )
+    }
+
+    // MARK: - Restore arrangement
+
+    /// One `.speakerNamingPending` job in a snapshot, having recorded each of
+    /// `folders` in turn, with their `recordings/` subfolders created.
+    ///
+    /// Shared because these tests differ only in which folder receives the
+    /// naming data: the same arrangement written out four times is how a
+    /// fixture in this area went wrong once before, which is what
+    /// `SidecarFixture` records.
+    private struct RestoreCase {
+        let job: PipelineJob
+        let folders: [URL]
+        let slug: String
+
+        /// Naming data for this job, pointing at the audio under `folder`.
+        func namingData(
+            in folder: URL, speaker: String = "Speaker A", jobID: UUID? = nil,
+        ) -> PipelineQueue.SpeakerNamingData {
+            PipelineQueue.SpeakerNamingData(
+                jobID: jobID ?? job.id,
+                meetingTitle: job.meetingTitle,
+                mapping: ["SPEAKER_0": speaker],
+                speakingTimes: ["SPEAKER_0": 60.0],
+                embeddings: ["SPEAKER_0": [0.1, 0.2]],
+                audioPath: folder.appendingPathComponent("recordings/\(slug)_16k.wav"),
+                segments: [.init(start: 0, end: 5, speaker: "SPEAKER_0")],
+                participants: [],
+                isDualSource: false,
+            )
+        }
+    }
+
+    private func makePendingJobInSnapshot(title: String, folders count: Int) throws -> RestoreCase {
+        let dirs = try (0 ..< count).map { index in
+            let dir = tmpDir.appendingPathComponent("restore-output-\(index)")
+            _ = try makeRecordingsDir(in: dir)
+            return dir
+        }
+        let mixPath = tmpDir.appendingPathComponent("mix.wav")
+        try Data([0]).write(to: mixPath)
+
+        let slug = title.lowercased().replacingOccurrences(of: " ", with: "_")
+        var job = PipelineJob(
+            meetingTitle: title, appName: "App",
+            mixPath: mixPath, appPath: nil, micPath: nil, micDelay: 0,
+        )
+        job.state = .speakerNamingPending
+        job.namingSlug = slug
+        for dir in dirs {
+            job.recordSidecarOutputDir(dir)
+        }
+        try JSONEncoder().encode([job])
+            .write(to: tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename))
+        return RestoreCase(job: job, folders: dirs, slug: slug)
+    }
+
+    /// Restores into a queue writing to a folder none of the recorded ones is,
+    /// which is the state after the user repointed the output setting.
+    private func restoreIntoAnotherFolder() -> PipelineQueue {
+        let queue = makeRestoreQueue(outputDir: tmpDir.appendingPathComponent("current-output"))
+        queue.loadSnapshot()
+        return queue
+    }
+
+    // MARK: - Snapshot Restore + Speaker Naming Cache
+
+    func testLoadSnapshotRebuildsSpeakerNamingCache() throws {
+        let outputDir = tmpDir.appendingPathComponent("output")
+        let recordingsDir = outputDir.appendingPathComponent("recordings")
+        try FileManager.default.createDirectory(at: recordingsDir, withIntermediateDirectories: true)
+
+        let mixPath = tmpDir.appendingPathComponent("mix.wav")
+        try Data([0]).write(to: mixPath)
+
+        // Create a job in speakerNamingPending state and write snapshot JSON directly
+        var job = PipelineJob(
+            meetingTitle: "Snapshot Test",
+            appName: "App",
+            mixPath: mixPath,
+            appPath: nil,
+            micPath: nil,
+            micDelay: 0,
+        )
+        job.state = .speakerNamingPending
+        job.namingSlug = "snapshot_test"
+        let snapshotData = try JSONEncoder().encode([job])
+        try snapshotData.write(to: tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename))
+
+        // Save naming data as sidecar JSON
+        let namingData = PipelineQueue.SpeakerNamingData(
+            jobID: job.id,
+            meetingTitle: "Snapshot Test",
+            mapping: ["SPEAKER_0": "Alice"],
+            speakingTimes: ["SPEAKER_0": 60.0],
+            embeddings: ["SPEAKER_0": [0.1, 0.2]],
+            audioPath: recordingsDir.appendingPathComponent("snapshot_test_16k.wav"),
+            segments: [.init(start: 0, end: 5, speaker: "SPEAKER_0")],
+            participants: [],
+            isDualSource: false,
+        )
+        let json = try JSONEncoder().encode(namingData)
+        try json.write(to: recordingsDir.appendingPathComponent("snapshot_test_naming.json"))
+
+        // Load snapshot in a new queue that has outputDir set
+        let freshQueue = makeRestoreQueue(outputDir: outputDir, diarizeEnabled: true)
+        freshQueue.loadSnapshot()
+
+        // Verify: job still in speakerNamingPending, naming data loaded
+        XCTAssertEqual(freshQueue.jobs.first?.state, .speakerNamingPending)
+        XCTAssertNotNil(try freshQueue.speakerNamingDataByJob[XCTUnwrap(freshQueue.jobs.first?.id)])
+        XCTAssertEqual(
+            try freshQueue.speakerNamingDataByJob[XCTUnwrap(freshQueue.jobs.first?.id)]?.mapping["SPEAKER_0"],
+            "Alice",
+        )
+    }
+
+    func testLoadSnapshotFallsToDoneWhenNamingDataMissing() throws {
+        let mixPath = tmpDir.appendingPathComponent("mix.wav")
+        try Data([0]).write(to: mixPath)
+
+        var job = PipelineJob(
+            meetingTitle: "Missing Data Test",
+            appName: "App",
+            mixPath: mixPath,
+            appPath: nil,
+            micPath: nil,
+            micDelay: 0,
+        )
+        job.state = .speakerNamingPending
+        job.namingSlug = "missing_data_test"
+        let snapshotData = try JSONEncoder().encode([job])
+        try snapshotData.write(to: tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename))
+
+        // Load without saving naming JSON — should fall back to .done
+        let freshQueue = PipelineQueue(logDir: tmpDir)
+        freshQueue.loadSnapshot()
+
+        // Job transitions to .done in the naming rebuild loop (after removeAll ran),
+        // so it remains in the list as .done
+        let finalJob = freshQueue.jobs.first
+        XCTAssertEqual(finalJob?.state, .done)
+    }
+
+    func testLoadSnapshotMissingNamingUsesTerminalTransitionAndRetainsRawTranscript() throws {
+        let transcriptPath = tmpDir.appendingPathComponent("missing-naming.txt")
+        try Data("recoverable transcript".utf8).write(to: transcriptPath)
+        var job = PipelineJob(
+            meetingTitle: "Missing Naming Data",
+            appName: "App",
+            mixPath: nil,
+            appPath: nil,
+            micPath: nil,
+            micDelay: 0,
+            saveRawTranscriptSeparately: false,
+        )
+        job.state = .speakerNamingPending
+        job.namingSlug = "missing_naming_data"
+        job.transcriptPath = transcriptPath
+        try JSONEncoder().encode([job])
+            .write(to: tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename))
+
+        let store = TerminalJobStore(path: tmpDir.appendingPathComponent("terminal_jobs.json"))
+        let freshQueue = PipelineQueue(logDir: tmpDir, terminalJobStore: store)
+        freshQueue.loadSnapshot()
+
+        XCTAssertEqual(freshQueue.jobs.first?.state, .done)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: transcriptPath.path))
+        XCTAssertTrue(
+            freshQueue.jobs.first?.warnings.contains("Raw transcript retained because no protocol was saved") ?? false,
+        )
+        XCTAssertEqual(store.lookup(jobID: job.id)?.state, .done)
+    }
+
+    func testLoadSnapshotWithoutOutputOptionFieldsUsesLegacyDefaults() throws {
+        let mixPath = tmpDir.appendingPathComponent("legacy-options.wav")
+        try Data("fake audio".utf8).write(to: mixPath)
+        let job = PipelineJob(
+            meetingTitle: "Legacy Options",
+            appName: "App",
+            mixPath: mixPath,
+            appPath: nil,
+            micPath: nil,
+            micDelay: 0,
+        )
+        let encoded = try JSONEncoder().encode([job])
+        guard var jobs = try JSONSerialization.jsonObject(with: encoded) as? [[String: Any]] else {
+            XCTFail("expected encoded jobs to be JSON objects")
+            return
+        }
+        jobs[0].removeValue(forKey: "includeFullTranscriptInProtocol")
+        jobs[0].removeValue(forKey: "saveRawTranscriptSeparately")
+        let legacyData = try JSONSerialization.data(withJSONObject: jobs)
+        try legacyData.write(to: tmpDir.appendingPathComponent(PipelineSnapshot.snapshotFilename))
+
+        let freshQueue = PipelineQueue(logDir: tmpDir)
+        freshQueue.loadSnapshot()
+
+        let restored = try XCTUnwrap(freshQueue.jobs.first)
+        XCTAssertNil(restored.includeFullTranscriptInProtocol)
+        XCTAssertNil(restored.saveRawTranscriptSeparately)
+        let options = freshQueue.transcriptOutputOptions(forJobID: restored.id)
+        XCTAssertTrue(options.includeFullTranscriptInProtocol)
+        XCTAssertTrue(options.saveRawTranscriptSeparately)
+    }
+
+    // MARK: - Stale Pending Cleanup
+
+    func testCleanupStalePendingTransitionsToDone() {
+        var job = PipelineJob(
+            meetingTitle: "Old Meeting",
+            appName: "App",
+            mixPath: tmpDir.appendingPathComponent("mix.wav"),
+            appPath: nil,
+            micPath: nil,
+            micDelay: 0,
+        )
+        job.state = .speakerNamingPending
+        queue.enqueue(job)
+
+        // enqueuedAt is "now" — calling with maxAge: 0 should clean it up
+        queue.cleanupStalePending(maxAge: 0)
+
+        XCTAssertEqual(queue.jobs.first?.state, .done)
+        XCTAssertNil(queue.speakerNamingDataByJob[job.id])
+    }
+
+    func testCleanupStalePendingKeepsRecentJobs() {
+        var job = PipelineJob(
+            meetingTitle: "Recent Meeting",
+            appName: "App",
+            mixPath: tmpDir.appendingPathComponent("mix.wav"),
+            appPath: nil,
+            micPath: nil,
+            micDelay: 0,
+        )
+        job.state = .speakerNamingPending
+        queue.enqueue(job)
+
+        // With default 24h maxAge, a fresh job should not be cleaned up
+        queue.cleanupStalePending()
+
+        XCTAssertEqual(queue.jobs.first?.state, .speakerNamingPending)
+    }
+
+    // MARK: - knownSpeakerNames cache (issue #155)
+
+    //
+    // The SpeakerNamingView dialog used to call
+    // `appState.pipeline.queue.speakerMatcherFactory().allSpeakerNames()`
+    // inside the SwiftUI body getter. Each body re-eval re-constructed a
+    // SpeakerMatcher (running migrateIfNeeded → file read) and re-parsed
+    // the entire speakers.json (including embeddings) just to extract
+    // names — pinning the main thread at 100% CPU after extended uptime.
+    //
+    // Fix: cache the result on PipelineQueue, refresh only on updateDB
+    // and explicit calls. UI reads `pipelineQueue.knownSpeakerNames`
+    // directly with zero per-render I/O.
+
+    func testKnownSpeakerNamesIsExposedAsCachedProperty() {
+        // The cached property must exist on PipelineQueue. Empty DB → empty list.
+        let dbURL = tmpDir.appendingPathComponent("speakers.json")
+        let localQueue = PipelineQueue(
+            logDir: tmpDir,
+        ) { SpeakerMatcher(dbPath: dbURL) }
+        XCTAssertEqual(localQueue.knownSpeakerNames, [])
+    }
+
+    func testKnownSpeakerNamesReflectsDBAfterRefresh() {
+        let dbURL = tmpDir.appendingPathComponent("speakers.json")
+        // Seed the on-disk DB before constructing the queue.
+        let seeded = SpeakerMatcher(dbPath: dbURL)
+        seeded.updateDB(
+            mapping: ["S0": "Alice", "S1": "Bob"],
+            embeddings: ["S0": [0.1, 0.2], "S1": [0.3, 0.4]],
+        )
+
+        let localQueue = PipelineQueue(
+            logDir: tmpDir,
+        ) { SpeakerMatcher(dbPath: dbURL) }
+        localQueue.refreshKnownSpeakerNames()
+
+        XCTAssertEqual(Set(localQueue.knownSpeakerNames), Set(["Alice", "Bob"]))
+    }
+
+    func testKnownSpeakerNamesRefreshesAfterFactoryDBChange() {
+        let dbURL = tmpDir.appendingPathComponent("speakers.json")
+        let localQueue = PipelineQueue(
+            logDir: tmpDir,
+        ) { SpeakerMatcher(dbPath: dbURL) }
+        localQueue.refreshKnownSpeakerNames()
+        XCTAssertEqual(localQueue.knownSpeakerNames, [], "Empty DB at start")
+
+        // Simulate a recognition outcome that adds a new speaker.
+        let matcher = localQueue.speakerMatcherFactory()
+        matcher.updateDB(
+            mapping: ["S0": "Charlie"], embeddings: ["S0": [0.5, 0.6]],
+        )
+        localQueue.refreshKnownSpeakerNames()
+
+        XCTAssertEqual(localQueue.knownSpeakerNames, ["Charlie"])
+    }
+
+    func testKnownSpeakerNamesReadsAreFreeFromFactoryInvocation() {
+        // Property reads must not invoke the factory — that's the whole
+        // point of the cache. The factory is the heavy operation that was
+        // re-firing per SwiftUI render in the bug report.
+        let dbURL = tmpDir.appendingPathComponent("speakers.json")
+        var factoryCalls = 0
+        let localQueue = PipelineQueue(
+            logDir: tmpDir,
+        ) {
+            factoryCalls += 1
+            return SpeakerMatcher(dbPath: dbURL)
+        }
+        localQueue.refreshKnownSpeakerNames()
+        let baseline = factoryCalls
+
+        for _ in 0 ..< 10 {
+            _ = localQueue.knownSpeakerNames
+        }
+
+        XCTAssertEqual(
+            factoryCalls, baseline,
+            "Reading knownSpeakerNames must not invoke speakerMatcherFactory",
+        )
+    }
+
+    // MARK: - M3: slug uniqueness
+
+    /// Two back-to-back meetings with identical titles (e.g. recurring
+    /// "Daily Standup") would otherwise share the same on-disk slug — the
+    /// second job's `_naming.json` / `_16k.wav` overwrites the first's, and
+    /// snapshot rebuild then maps the survivor's data onto both UUIDs.
+    /// Embedding the job's short-id keeps each on-disk artefact distinct.
+    func test_namingSlug_differsForSameTitleDifferentJobs() throws {
+        let start = try localDate(2026, 3, 4, 9, 15)
+        let slug1 = PipelineQueue.namingSlug(title: "Daily Standup", jobID: UUID(), startTime: start)
+        let slug2 = PipelineQueue.namingSlug(title: "Daily Standup", jobID: UUID(), startTime: start)
+        XCTAssertNotEqual(
+            slug1, slug2,
+            "Identical titles must produce distinct slugs when job IDs differ",
+        )
+    }
+
+    /// Determinism: same input → same slug. Snapshot rebuild relies on this
+    /// to find a job's persisted `_naming.json` after a relaunch.
+    func test_namingSlug_isDeterministicForSameJob() throws {
+        let id = UUID()
+        let start = try localDate(2026, 3, 4, 9, 15)
+        let first = PipelineQueue.namingSlug(title: "Daily Standup", jobID: id, startTime: start)
+        let second = PipelineQueue.namingSlug(title: "Daily Standup", jobID: id, startTime: start)
+        XCTAssertEqual(first, second)
+    }
+
+    func test_namingSlug_embedsTitleAndShortID() throws {
+        let id = UUID()
+        let slug = try PipelineQueue.namingSlug(title: "Daily Standup", jobID: id, startTime: localDate(2026, 3, 4, 9, 15))
+        XCTAssertTrue(
+            slug.contains(PipelineJob.shortID(for: id)),
+            "Slug must include the job short-ID for uniqueness across same-title runs",
+        )
+        // Title-derived part should still be present (filesystem-friendly form).
+        XCTAssertTrue(
+            slug.lowercased().contains("daily") && slug.lowercased().contains("standup"),
+            "Slug should still encode the title for human-readable filenames",
+        )
+    }
+}
+
+/// A snapshot writer that parks every write on a gate the test opens, and
+/// counts the writes that entered and the ones that finished. A write gives up
+/// waiting after a coarse ceiling, so a save that wrongly waits for its write
+/// fails its assertion instead of hanging the run.
+private final class GatedSnapshotWriter: Sendable {
+    private let gate = DispatchSemaphore(value: 0)
+    private let enteredCount = OSAllocatedUnfairLock(initialState: 0)
+    private let finishedCount = OSAllocatedUnfairLock(initialState: 0)
+
+    /// `regressionCeiling` in seconds, for the semaphore's dispatch deadline.
+    private static let ceiling = regressionCeiling / .seconds(1)
+
+    var entered: Int {
+        enteredCount.withLock { $0 }
+    }
+
+    var finished: Int {
+        finishedCount.withLock { $0 }
+    }
+
+    var write: PipelineSnapshotStore.Writer {
+        { [self] _, _ in
+            enteredCount.withLock { $0 += 1 }
+            // Re-arm only after a real release: re-signalling after a timeout
+            // would leave a permit behind and open the gate for good.
+            if gate.wait(timeout: .now() + Self.ceiling) == .success {
+                gate.signal() // re-arm so later writes fall through
+            }
+            finishedCount.withLock { $0 += 1 }
+        }
+    }
+
+    func release() {
+        gate.signal()
+    }
+}

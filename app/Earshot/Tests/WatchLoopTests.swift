@@ -1,0 +1,548 @@
+@testable import Earshot
+import XCTest
+
+@MainActor
+final class WatchLoopTests: XCTestCase {
+    private func makeLoop(pipelineQueue: PipelineQueue? = nil) -> WatchLoop {
+        let detector = PowerAssertionDetector()
+        detector.assertionProvider = { [:] }
+        return WatchLoop(
+            detector: detector,
+            pipelineQueue: pipelineQueue,
+        )
+    }
+
+    // MARK: - Initial State
+
+    func testInitialState() {
+        let loop = makeLoop()
+        XCTAssertEqual(loop.state, .idle)
+        XCTAssertFalse(loop.isActive)
+        XCTAssertNil(loop.currentMeeting)
+        XCTAssertNil(loop.lastError)
+    }
+
+    // MARK: - Start / Stop
+
+    func testStartTransitionsToWatching() {
+        let loop = makeLoop()
+        loop.start()
+        XCTAssertEqual(loop.state, .watching)
+        XCTAssertTrue(loop.isActive)
+        loop.stop()
+    }
+
+    func testStopTransitionsToIdle() {
+        let loop = makeLoop()
+        loop.start()
+        loop.stop()
+        XCTAssertEqual(loop.state, .idle)
+        XCTAssertFalse(loop.isActive)
+    }
+
+    func testDoubleStartIsNoOp() {
+        let loop = makeLoop()
+        loop.start()
+        loop.start() // should not crash or create second task
+        XCTAssertEqual(loop.state, .watching)
+        loop.stop()
+    }
+
+    func testStopWithoutStartIsNoOp() {
+        let loop = makeLoop()
+        loop.stop() // should not crash
+        XCTAssertEqual(loop.state, .idle)
+    }
+
+    // MARK: - State Change Callback
+
+    func testOnStateChangeCallback() {
+        let loop = makeLoop()
+        var transitions: [(WatchLoop.State, WatchLoop.State)] = []
+        loop.onStateChange = { old, new in
+            transitions.append((old, new))
+        }
+
+        loop.start()
+        XCTAssertEqual(transitions.count, 1)
+        XCTAssertEqual(transitions[0].0, .idle)
+        XCTAssertEqual(transitions[0].1, .watching)
+
+        loop.stop()
+        XCTAssertEqual(transitions.count, 2)
+        XCTAssertEqual(transitions[1].0, .watching)
+        XCTAssertEqual(transitions[1].1, .idle)
+    }
+
+    // MARK: - Clean Title
+
+    func testCleanTitleTeams() {
+        XCTAssertEqual(
+            WatchLoop.cleanTitle("Daily Standup | Microsoft Teams"),
+            "Daily Standup",
+        )
+    }
+
+    func testCleanTitleZoom() {
+        XCTAssertEqual(
+            WatchLoop.cleanTitle("Project Review - Zoom"),
+            "Project Review",
+        )
+    }
+
+    func testCleanTitleWebex() {
+        XCTAssertEqual(
+            WatchLoop.cleanTitle("Sprint Planning - Webex"),
+            "Sprint Planning",
+        )
+    }
+
+    func testCleanTitleNoSuffix() {
+        XCTAssertEqual(
+            WatchLoop.cleanTitle("Just a Meeting"),
+            "Just a Meeting",
+        )
+    }
+
+    // MARK: - Transcriber State Mapping
+
+    func testTranscriberStateMapping() {
+        let loop = makeLoop()
+
+        // idle
+        XCTAssertEqual(loop.transcriberState, .idle)
+
+        // watching
+        loop.start()
+        XCTAssertEqual(loop.transcriberState, .watching)
+        loop.stop()
+    }
+
+    // MARK: - Default Output Dir
+
+    func testDefaultOutputDir() {
+        let dir = WatchLoop.defaultOutputDir
+        XCTAssertTrue(dir.path.contains("Downloads/Earshot"))
+    }
+
+    // MARK: - Meeting End Detection
+
+    // Grace-period / max-duration / grace-reset tests live in
+    // WatchLoopTimingTests.swift — they use TestClock and are async.
+
+    // MARK: - NoMic Configuration
+
+    func testNoMicDefault() {
+        let loop = makeLoop()
+        XCTAssertFalse(loop.noMic())
+    }
+
+    // MARK: - PipelineQueue Configuration
+
+    func testPipelineQueueDefault() {
+        let loop = makeLoop()
+        XCTAssertNil(loop.pipelineQueue)
+    }
+
+    func testPipelineQueueInit() throws {
+        let queue = try makeIsolatedQueue()
+        let loop = makeLoop(pipelineQueue: queue)
+        XCTAssertNotNil(loop.pipelineQueue)
+    }
+
+    // MARK: - Cancellation
+
+    func testStopDuringWatchingCleansUp() {
+        let loop = makeLoop()
+        loop.start()
+        XCTAssertEqual(loop.state, .watching)
+
+        loop.stop()
+        XCTAssertEqual(loop.state, .idle)
+        XCTAssertFalse(loop.isActive)
+    }
+
+    // MARK: - Pipeline Queue Wiring
+
+    func testPipelineQueuePassedToConstructor() throws {
+        let queue = try makeIsolatedQueue()
+        let loop = WatchLoop(
+            detector: PowerAssertionDetector(),
+            pipelineQueue: queue,
+        )
+        XCTAssertNotNil(loop.pipelineQueue)
+    }
+
+    // MARK: - Manual Recording
+
+    func testStartManualRecordingChangesState() async throws {
+        let (loop, recorder) = makeTestWatchLoop()
+        try await loop.startManualRecording(pid: 42, appName: "Chrome", title: "Meeting")
+        defer { loop.stop() }
+
+        XCTAssertTrue(loop.isManualRecording)
+        XCTAssertTrue(recorder.startCalled)
+    }
+
+    /// Pins that `startManualRecording` threads its `pid` plus the loop's
+    /// `noMic`/`micDeviceUID` into `recorder.start(...)` — not just that start
+    /// was called. A regression that dropped the PID, inverted `noMic`, or lost
+    /// `micDeviceUID` would tap the wrong process / wrong mic config and used to
+    /// pass unnoticed (the mock ignored every argument).
+    func testStartManualRecordingThreadsRecorderParams() async throws {
+        let (loop, recorder) = makeTestWatchLoop(noMic: true, micDeviceUID: "mock-mic-uid")
+        try await loop.startManualRecording(pid: 42, appName: "Chrome", title: "Meeting")
+        defer { loop.stop() }
+
+        XCTAssertEqual(
+            recorder.capturedSource, .appOnly(pid: 42),
+            "manual start must tap the requested PID, and the loop's noMic=true must reach the recorder as an app-only source",
+        )
+        XCTAssertEqual(recorder.capturedMicDeviceUID, "mock-mic-uid", "loop's micDeviceUID must reach the recorder")
+    }
+
+    func testManualRecordingHasMeetingInfo() async throws {
+        let (loop, _) = makeTestWatchLoop()
+        try await loop.startManualRecording(pid: 42, appName: "Safari", title: "Standup")
+        defer { loop.stop() }
+
+        XCTAssertEqual(loop.manualRecordingInfo?.appName, "Safari")
+        XCTAssertEqual(loop.manualRecordingInfo?.title, "Standup")
+    }
+
+    func testStopManualRecordingClearsState() async throws {
+        let (loop, _) = makeTestWatchLoop()
+        try await loop.startManualRecording(pid: 42, appName: "Chrome", title: "Meeting")
+        loop.stop()
+
+        XCTAssertFalse(loop.isManualRecording)
+        XCTAssertEqual(loop.state, .idle)
+    }
+
+    // MARK: - Clean Title Edge Cases
+
+    func testCleanTitleNoMatchReturnsOriginal() {
+        XCTAssertEqual(
+            WatchLoop.cleanTitle("Some Random Window"),
+            "Some Random Window",
+        )
+    }
+
+    func testCleanTitleMultiplePipes() {
+        // Only the last pipe-separated suffix should be removed for Teams
+        XCTAssertEqual(
+            WatchLoop.cleanTitle("Channel | Meeting | Microsoft Teams"),
+            "Channel | Meeting",
+        )
+    }
+
+    // MARK: - Stop Manual Recording Enqueues Job
+
+    func testStopManualRecordingEnqueuesJob() async throws {
+        let queue = try makeIsolatedQueue()
+        let (loop, recorder) = makeTestWatchLoop(pipelineQueue: queue)
+        recorder.mixPath = URL(fileURLWithPath: "/tmp/test_mix.wav")
+
+        try await loop.startManualRecording(pid: 42, appName: "Chrome", title: "Standup")
+        XCTAssertTrue(loop.isManualRecording)
+
+        loop.stopManualRecording()
+
+        XCTAssertFalse(loop.isManualRecording)
+        XCTAssertEqual(loop.state, .idle)
+        XCTAssertTrue(recorder.stopCalled)
+        XCTAssertEqual(queue.jobs.count, 1)
+        XCTAssertEqual(queue.jobs.first?.meetingTitle, "Standup")
+        XCTAssertEqual(queue.jobs.first?.appName, "Chrome")
+    }
+
+    // MARK: - Double Start Manual Recording
+
+    func testStartManualRecordingWhileRecordingIsNoOp() async throws {
+        let (loop, recorder) = makeTestWatchLoop()
+
+        try await loop.startManualRecording(pid: 42, appName: "Chrome", title: "First")
+        defer { loop.stop() }
+
+        XCTAssertTrue(loop.isManualRecording)
+        XCTAssertEqual(loop.manualRecordingInfo?.title, "First")
+
+        // Second start should be ignored because state is already .recording
+        try await loop.startManualRecording(pid: 99, appName: "Safari", title: "Second")
+
+        XCTAssertEqual(loop.manualRecordingInfo?.title, "First")
+        XCTAssertTrue(recorder.startCalled)
+    }
+
+    // MARK: - Permission Pre-Check
+
+    func testManualRecordingFailsWhenPermissionBroken() async {
+        let (loop, _) = makeTestWatchLoop()
+        loop.permissionChecker = {
+            HealthCheckResult(screenRecording: .healthy, microphone: .broken)
+        }
+
+        do {
+            try await loop.startManualRecording(pid: 123, appName: "Test", title: "Test")
+            XCTFail("Expected permissionDenied error")
+        } catch let error as RecorderError {
+            if case let .permissionDenied(reason) = error {
+                XCTAssertTrue(reason.contains("Microphone"))
+            } else {
+                XCTFail("Expected permissionDenied, got \(error)")
+            }
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
+    func testManualRecordingStartsWhenOnlyAccessibilityDenied() async throws {
+        let (loop, recorder) = makeTestWatchLoop()
+        loop.permissionChecker = {
+            HealthCheckResult(screenRecording: .healthy, microphone: .healthy, accessibility: .denied)
+        }
+
+        // Accessibility feeds participant reading and mute detection, neither of
+        // which this path uses, and Settings presents it as optional. Refusing
+        // over it left the app recording an auto-detected meeting while turning
+        // down the one the user asked for by hand.
+        try await loop.startManualRecording(pid: 123, appName: "Test", title: "Test")
+
+        XCTAssertTrue(recorder.startCalled)
+        XCTAssertTrue(loop.isManualRecording)
+    }
+
+    func testManualRecordingRefusalNamesOnlyBlockingPermissions() async {
+        let (loop, _) = makeTestWatchLoop()
+        loop.permissionChecker = {
+            HealthCheckResult(screenRecording: .healthy, microphone: .broken, accessibility: .denied)
+        }
+
+        do {
+            try await loop.startManualRecording(pid: 123, appName: "Test", title: "Test")
+            XCTFail("Expected permissionDenied error")
+        } catch let error as RecorderError {
+            guard case let .permissionDenied(reason) = error else {
+                XCTFail("Expected permissionDenied, got \(error)")
+                return
+            }
+            XCTAssertTrue(reason.contains("Microphone"))
+            // Naming a permission that had nothing to do with the refusal sends
+            // the user to the wrong pane in System Settings.
+            XCTAssertFalse(reason.contains("Accessibility"))
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
+    func testMicLessManualRecordingStartsWithoutMicrophonePermission() async throws {
+        let (loop, recorder) = makeTestWatchLoop(noMic: true)
+        loop.permissionChecker = {
+            HealthCheckResult(screenRecording: .healthy, microphone: .denied)
+        }
+
+        try await loop.startManualRecording(pid: 123, appName: "Test", title: "Test")
+
+        XCTAssertTrue(recorder.startCalled)
+    }
+
+    // MARK: - RecordOnlyDestination
+
+    func test_production_destinationSplitsScopeAndWriteDir() {
+        let parent = URL(fileURLWithPath: "/tmp/picked")
+        let dest = RecordOnlyDestination.production(parent: parent)
+        // Scope is the bookmark-resolved parent — start-access target.
+        XCTAssertEqual(dest.scope, parent)
+        // Files land in the `recordings/` subfolder of that scope.
+        XCTAssertEqual(dest.writeDir.lastPathComponent, "recordings")
+        XCTAssertEqual(dest.writeDir.deletingLastPathComponent().path, parent.path)
+    }
+
+    func test_unscoped_destinationCollapsesScopeAndWriteDir() {
+        let url = URL(fileURLWithPath: "/tmp/local")
+        let dest = RecordOnlyDestination.unscoped(url)
+        // Identical so start-access on `scope` is harmless and writes hit `url`.
+        XCTAssertEqual(dest.scope, url)
+        XCTAssertEqual(dest.writeDir, url)
+    }
+
+    // MARK: - Record-Only Mode
+
+    /// Drives a complete `start → stop` manual recording cycle so the test
+    /// exercises the public surface (`stopManualRecording`) rather than the
+    /// private `enqueueRecording` it forwards to.
+    private func runManualRecordOnlyRecording(
+        recorderMix: URL,
+        outputDir: URL,
+        queue: PipelineQueue,
+        recorderApp: URL? = nil,
+        recorderMic: URL? = nil,
+        title: String = "Standup",
+        appName: String = "Microsoft Teams",
+        notifier: any AppNotifying = SilentNotifier(),
+        recordingStartDate: Date? = nil,
+    ) async throws -> WatchLoop {
+        let (loop, recorder) = makeTestWatchLoop(
+            pipelineQueue: queue,
+            recordOnly: { true },
+            recordOnlyOutputDir: { outputDir },
+            notifier: notifier,
+        )
+        recorder.mixPath = recorderMix
+        recorder.appPath = recorderApp
+        recorder.micPath = recorderMic
+        recorder.recordingStartDate = recordingStartDate
+        try await loop.startManualRecording(pid: 42, appName: appName, title: title)
+        loop.stopManualRecording()
+        return loop
+    }
+
+    func test_recordOnly_writesSidecarAndDoesNotEnqueue() async throws {
+        let queue = try makeIsolatedQueue()
+        let tmp = try makeTempDirectory(prefix: "recordOnly")
+
+        let mixURL = tmp.appendingPathComponent("20260503_120000_mix.wav")
+        let appURL = tmp.appendingPathComponent("20260503_120000_app.wav")
+        let micURL = tmp.appendingPathComponent("20260503_120000_mic.wav")
+        try Data().write(to: mixURL)
+        try Data().write(to: appURL)
+        try Data().write(to: micURL)
+
+        let destDir = tmp.appendingPathComponent("dest", isDirectory: true)
+        _ = try await runManualRecordOnlyRecording(
+            recorderMix: mixURL,
+            outputDir: destDir,
+            queue: queue,
+            recorderApp: appURL,
+            recorderMic: micURL,
+        )
+
+        XCTAssertTrue(queue.jobs.isEmpty, "record-only must not enqueue a pipeline job")
+
+        let sidecarURL = destDir.appendingPathComponent("20260503_120000_meta.json")
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: sidecarURL.path),
+            "sidecar should be written into the record-only output directory",
+        )
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: destDir.appendingPathComponent("20260503_120000_mix.wav").path,
+            ),
+            "mix WAV should be moved into the record-only output directory",
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: mixURL.path),
+            "original mix WAV should be moved (not copied) out of the recorder's transient dir",
+        )
+
+        let data = try Data(contentsOf: sidecarURL)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let sidecar = try decoder.decode(RecordingSidecar.self, from: data)
+
+        XCTAssertEqual(sidecar.title, "Standup")
+        XCTAssertEqual(sidecar.appName, "Microsoft Teams")
+        XCTAssertEqual(sidecar.files.mix, "20260503_120000_mix.wav")
+        XCTAssertEqual(sidecar.files.app, "20260503_120000_app.wav")
+        XCTAssertEqual(sidecar.files.mic, "20260503_120000_mic.wav")
+        XCTAssertEqual(
+            sidecar.trigger, .manual,
+            "a recording started from the app picker must be labelled manual, not auto",
+        )
+        // startedAt must precede stoppedAt — we don't pin exact wall-clock
+        // values because the manual-recording flow records its own startTime.
+        XCTAssertLessThanOrEqual(sidecar.startedAt, sidecar.stoppedAt)
+    }
+
+    /// A backward wall-clock step during the meeting (e.g. NTP correcting a fast
+    /// clock) can make the recorder's captured start `Date` later than the
+    /// `Date()` read at stop. The sidecar must still satisfy
+    /// `startedAt <= stoppedAt` so a downstream fleet consumer never computes a
+    /// negative duration or rejects the JSON as malformed.
+    func test_recordOnly_sidecarStartedAtNeverAfterStoppedAt_onBackwardClockStep() async throws {
+        let queue = try makeIsolatedQueue()
+        let tmp = try makeTempDirectory(prefix: "recordOnlyClock")
+        let mixURL = tmp.appendingPathComponent("20260503_120000_mix.wav")
+        try Data().write(to: mixURL)
+        let destDir = tmp.appendingPathComponent("dest", isDirectory: true)
+
+        // Recorder reports a start one hour ahead of the Date() read at stop.
+        _ = try await runManualRecordOnlyRecording(
+            recorderMix: mixURL,
+            outputDir: destDir,
+            queue: queue,
+            recordingStartDate: Date(timeIntervalSinceNow: 3600),
+        )
+
+        let sidecarURL = destDir.appendingPathComponent("20260503_120000_meta.json")
+        let data = try Data(contentsOf: sidecarURL)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let sidecar = try decoder.decode(RecordingSidecar.self, from: data)
+        XCTAssertLessThanOrEqual(
+            sidecar.startedAt, sidecar.stoppedAt,
+            "sidecar interval must never invert even when the wall clock steps backward mid-recording",
+        )
+    }
+
+    func test_recordOnly_sidecarWriteFailure_setsLastErrorAndNotifies() async throws {
+        // `/dev/null` is not a directory — createDirectory(at:) will throw,
+        // exercising the failure path.
+        let unwritable = URL(fileURLWithPath: "/dev/null/cannot-write")
+        let mixURL = makeTempFile(suffix: "_mix.wav")
+        try Data().write(to: mixURL)
+        let notifier = RecordingNotifier()
+
+        let queue = try makeIsolatedQueue()
+        let loop = try await runManualRecordOnlyRecording(
+            recorderMix: mixURL,
+            outputDir: unwritable,
+            queue: queue,
+            notifier: notifier,
+        )
+
+        XCTAssertTrue(queue.jobs.isEmpty, "record-only must not enqueue even on sidecar failure")
+        XCTAssertNotNil(loop.lastError, "lastError must be set so failures are observable")
+        XCTAssertEqual(notifier.calls.count, 1, "user must be notified on sidecar write failure")
+        XCTAssertEqual(notifier.calls.first?.title, "Record-only output failed")
+        // Record-only performs no state transition, so this notification is the
+        // entire report that a recording was lost. At the suppressible default a
+        // Focus mode drops it and the loss is silent, which is the one outcome
+        // record-only cannot afford: a fleet client's whole job is to hand the
+        // audio on.
+        XCTAssertEqual(notifier.calls.first?.urgency, .timeSensitive)
+    }
+
+    func test_normalMode_enqueuesAndWritesNoSidecar() async throws {
+        let queue = try makeIsolatedQueue()
+        let tmp = try makeTempDirectory(prefix: "normalMode")
+
+        let mixURL = tmp.appendingPathComponent("20260503_120000_mix.wav")
+        try Data().write(to: mixURL)
+
+        let (loop, recorder) = makeTestWatchLoop(pipelineQueue: queue)
+        recorder.mixPath = mixURL
+        try await loop.startManualRecording(pid: 42, appName: "Microsoft Teams", title: "Standup")
+        loop.stopManualRecording()
+
+        XCTAssertEqual(queue.jobs.count, 1)
+        XCTAssertEqual(queue.jobs.first?.meetingTitle, "Standup")
+
+        let sidecarURL = tmp.appendingPathComponent("20260503_120000_meta.json")
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: sidecarURL.path),
+            "sidecar must not be written in normal mode",
+        )
+    }
+
+    func testManualRecordingProceedsWhenPermissionsHealthy() async throws {
+        let (loop, recorder) = makeTestWatchLoop()
+        loop.permissionChecker = {
+            HealthCheckResult(screenRecording: .healthy, microphone: .healthy)
+        }
+        recorder.mixPath = URL(fileURLWithPath: "/tmp/test_mix.wav")
+
+        try await loop.startManualRecording(pid: 123, appName: "Test", title: "Test")
+        XCTAssertTrue(recorder.startCalled)
+    }
+}

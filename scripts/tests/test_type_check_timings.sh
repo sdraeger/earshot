@@ -62,16 +62,16 @@ fixture_lines() {
     # the gate and must not be reported as ungated: none of its bodies are in
     # the repository.
     printf 'K\t    builtin-swiftTaskExecution -- /Applications/Xcode.app/x/swift-frontend -frontend -c -primary-file %s/tools/audiotap/Sources/Tap.swift -module-name AudioTapLib -warn-long-function-bodies\\=300 -debug-time-function-bodies\n' "$r"
-    printf 'K\t    builtin-SwiftDriver -- /Applications/Xcode.app/x/swiftc -module-name MeetingTranscriber -Onone -Xfrontend -warn-long-function-bodies\\=300 -Xfrontend -debug-time-function-bodies\n'
+    printf 'K\t    builtin-SwiftDriver -- /Applications/Xcode.app/x/swiftc -module-name Earshot -Onone -Xfrontend -warn-long-function-bodies\\=300 -Xfrontend -debug-time-function-bodies\n'
     printf 'K\t    builtin-SwiftDriver -- /Applications/Xcode.app/x/swiftc -module-name FluidAudio -Onone -Xfrontend -debug-time-function-bodies\n'
     # The same body seen by two compiler jobs; the slower one must win.
-    printf 'T\t40.00ms\t%s/app/Sources/AppState.swift:213:5\tinitializer MeetingTranscriber.(file).AppState.init(settings:)@%s/app/Sources/AppState.swift:213:5\n' "$r" "$r"
-    printf 'T\t151.67ms\t%s/app/Sources/AppState.swift:213:5\tinitializer MeetingTranscriber.(file).AppState.init(settings:)@%s/app/Sources/AppState.swift:213:5\n' "$r" "$r"
+    printf 'T\t40.00ms\t%s/app/Sources/AppState.swift:213:5\tinitializer Earshot.(file).AppState.init(settings:)@%s/app/Sources/AppState.swift:213:5\n' "$r" "$r"
+    printf 'T\t151.67ms\t%s/app/Sources/AppState.swift:213:5\tinitializer Earshot.(file).AppState.init(settings:)@%s/app/Sources/AppState.swift:213:5\n' "$r" "$r"
     # Slower than anything under the root, but a dependency: must not appear.
     printf 'T\t999.00ms\t/Users/runner/Library/Developer/Xcode/DerivedData/M-abc/SourcePackages/checkouts/FluidAudio/Sources/A.swift:1:1\tglobal function FluidAudio.(file).f()@/Users/runner/Library/Developer/Xcode/DerivedData/M-abc/SourcePackages/checkouts/FluidAudio/Sources/A.swift:1:1\n'
     # Synthesized conformance without a file, and a macro expansion buffer.
     printf 'T\t20.61ms\t<invalid loc>\toperator function WhisperKit.(file).TranscriptionSegment.==\n'
-    printf 'T\t3.44ms\t@__swiftmacro_18MeetingTranscriber11AppSettingsC12pollInterval18ObservationTrackedfMp_.swift:7:9\tdidSet observer MeetingTranscriber.(file).AppSettings._pollInterval.didSet observer@@__swiftmacro_18MeetingTranscriber11AppSettingsC12pollInterval18ObservationTrackedfMp_.swift:7:9\n'
+    printf 'T\t3.44ms\t@__swiftmacro_18Earshot11AppSettingsC12pollInterval18ObservationTrackedfMp_.swift:7:9\tdidSet observer Earshot.(file).AppSettings._pollInterval.didSet observer@@__swiftmacro_18Earshot11AppSettingsC12pollInterval18ObservationTrackedfMp_.swift:7:9\n'
     # Lines under the root that look like measurements and are not. Each must
     # survive `strip` and stay out of the table. First the gate's own
     # diagnostic with its source excerpt, in the compiler's current layout:
@@ -88,8 +88,8 @@ fixture_lines() {
     # in the table, so the console keeps it rather than losing it.
     printf 'K\t12.34ms\t%s/app/Sources/Cut.swift:1:1\n' "$r"
     # A tie, listed in reverse location order so the sort has to fix it.
-    printf 'T\t50.00ms\t%s/app/Sources/Zeta.swift:1:1\tgetter MeetingTranscriber.(file).Zeta.body.getter@%s/app/Sources/Zeta.swift:1:1\n' "$r" "$r"
-    printf 'T\t50.00ms\t%s/app/Sources/Alpha.swift:9:9\tgetter MeetingTranscriber.(file).Alpha.body.getter@%s/app/Sources/Alpha.swift:9:9\n' "$r" "$r"
+    printf 'T\t50.00ms\t%s/app/Sources/Zeta.swift:1:1\tgetter Earshot.(file).Zeta.body.getter@%s/app/Sources/Zeta.swift:1:1\n' "$r" "$r"
+    printf 'T\t50.00ms\t%s/app/Sources/Alpha.swift:9:9\tgetter Earshot.(file).Alpha.body.getter@%s/app/Sources/Alpha.swift:9:9\n' "$r" "$r"
     # The local audiotap package lives in the repository too.
     printf 'T\t12.00ms\t%s/tools/audiotap/Sources/Tap.swift:5:5\tinstance method AudioTapLib.(file).Tap.start()@%s/tools/audiotap/Sources/Tap.swift:5:5\n' "$r" "$r"
     printf 'K\t** TEST BUILD SUCCEEDED **\n'
@@ -143,7 +143,7 @@ test_dedupes_filters_and_orders() {
         "counts sentence missing or wrong" || return 1
     # Both modules with bodies in the repository are named with their limit,
     # and the headroom is the slowest body's distance to its own module's.
-    expect_in "$REPORT_OUT" 'Limit (`-warn-long-function-bodies`, read from each module.s compile commands): AudioTapLib 300 ms, MeetingTranscriber 300 ms\.' \
+    expect_in "$REPORT_OUT" 'Limit (`-warn-long-function-bodies`, read from each module.s compile commands): AudioTapLib 300 ms, Earshot 300 ms\.' \
         "per-module limit sentence missing or wrong" || return 1
     expect_in "$REPORT_OUT" "The slowest body leaves 148 ms of headroom" "headroom sentence missing or wrong" || return 1
     expect_not_in "$REPORT_OUT" "FluidAudio" "a dependency module leaked into the gate sentence" || return 1
@@ -219,7 +219,7 @@ test_partial_build_and_missing_gate_are_named() {
         echo; echo "  expected exit 0 (timings exist), got $REPORT_RC"; echo "$REPORT_OUT"; return 1
     fi
     expect_in "$REPORT_OUT" "The build did not report success" "partial-build note missing" || return 1
-    expect_in "$REPORT_OUT" 'No `-warn-long-function-bodies` limit on any compile command of AudioTapLib, MeetingTranscriber\*\*' \
+    expect_in "$REPORT_OUT" 'No `-warn-long-function-bodies` limit on any compile command of AudioTapLib, Earshot\*\*' \
         "missing-gate note does not name both modules" || return 1
     expect_not_in "$REPORT_OUT" "Limit (" "a limit was claimed with no gate in the log" || return 1
     expect_not_in "$REPORT_OUT" "headroom" "headroom was computed against no limit" || return 1
@@ -229,7 +229,7 @@ test_partial_build_and_missing_gate_are_named() {
 test_gate_is_read_per_module() {
     local fx; fx=$(mktemp)
     trap "rm -f -- '$fx*'" RETURN
-    local mt='-module-name MeetingTranscriber'
+    local mt='-module-name Earshot'
 
     # Different limits per module, audiotap's first in the log: each value
     # goes to its module, and the headroom (148) is measured against the
@@ -237,7 +237,7 @@ test_gate_is_read_per_module() {
     write_fixture "$fx"
     sed -i.bak 's/AudioTapLib -warn-long-function-bodies\\=300/AudioTapLib -warn-long-function-bodies\\=200/' "$fx"
     run_report "$fx" --root "$FAKE_ROOT"
-    expect_in "$REPORT_OUT" "compile commands): AudioTapLib 200 ms, MeetingTranscriber 300 ms\." "per-module limits not attributed" || return 1
+    expect_in "$REPORT_OUT" "compile commands): AudioTapLib 200 ms, Earshot 300 ms\." "per-module limits not attributed" || return 1
     expect_in "$REPORT_OUT" "leaves 148 ms of headroom" "headroom not taken from the slowest body's own module" || return 1
 
     # The app module lost its gate while audiotap kept it: the report must say
@@ -246,7 +246,7 @@ test_gate_is_read_per_module() {
     write_fixture "$fx"
     grep -v -- "$mt" "$fx" > "$fx.edited" && mv "$fx.edited" "$fx"
     run_report "$fx" --root "$FAKE_ROOT"
-    expect_in "$REPORT_OUT" 'No `-warn-long-function-bodies` limit on any compile command of MeetingTranscriber\*\*' "ungated app module not named" || return 1
+    expect_in "$REPORT_OUT" 'No `-warn-long-function-bodies` limit on any compile command of Earshot\*\*' "ungated app module not named" || return 1
     expect_in "$REPORT_OUT" "compile commands): AudioTapLib 300 ms\." "audiotap's own limit not kept" || return 1
     expect_not_in "$REPORT_OUT" "headroom" "headroom given for a body whose module has no limit" || return 1
     expect_not_in "$REPORT_OUT" "FluidAudio" "a dependency was reported as ungated" || return 1
@@ -259,7 +259,7 @@ test_gate_is_read_per_module() {
         echo; echo "  fixture edit for the duplicate flag did not apply"; return 1
     fi
     run_report "$fx" --root "$FAKE_ROOT"
-    expect_in "$REPORT_OUT" "MeetingTranscriber 500 ms\." "last flag on the command line not taken" || return 1
+    expect_in "$REPORT_OUT" "Earshot 500 ms\." "last flag on the command line not taken" || return 1
     expect_in "$REPORT_OUT" "leaves 348 ms of headroom" "headroom not against the effective limit" || return 1
 
     # Two compile commands of one module with different limits: say so, and
@@ -268,7 +268,7 @@ test_gate_is_read_per_module() {
     local second; second=$(grep -- "$mt" "$fx" | sed 's/bodies\\=300/bodies\\=500/')
     printf '%s\n' "$second" >> "$fx"
     run_report "$fx" --root "$FAKE_ROOT"
-    expect_in "$REPORT_OUT" 'Conflicting limits on the compile commands of MeetingTranscriber (300 and 500 ms)\.\*\*' "conflicting limits not named" || return 1
+    expect_in "$REPORT_OUT" 'Conflicting limits on the compile commands of Earshot (300 and 500 ms)\.\*\*' "conflicting limits not named" || return 1
     expect_in "$REPORT_OUT" "compile commands): AudioTapLib 300 ms\." "audiotap's own limit not kept beside the conflict" || return 1
     expect_not_in "$REPORT_OUT" "headroom" "headroom given against one of two conflicting limits" || return 1
     return 0

@@ -30,7 +30,7 @@ description: >
   this home without running in it: the upgrade lane clones its WhisperKit
   model from here into a throwaway home of its own.
 
-  Where: `<runner.tool_cache>/meetingtranscriber-home/<runner.name>`. The tool
+  Where: `<runner.tool_cache>/earshot-home/<runner.name>`. The tool
   cache persists between jobs and is not cleaned by actions/checkout; the
   runner name keeps two runners apart even if they were ever given one tool
   cache. A runner runs one job at a time. No actions/cache: the disk persists,
@@ -93,10 +93,10 @@ runs:
       env:
         HOME_DIR: ${{ steps.home.outputs.home }}
         PREWARM_VERSION: "1"
-        KEY: ${{ hashFiles('app/MeetingTranscriber/Package.resolved', 'app/MeetingTranscriber/Tests/ModelPreloadTests.swift') }}
+        KEY: ${{ hashFiles('app/Earshot/Package.resolved', 'app/Earshot/Tests/ModelPreloadTests.swift') }}
       run: |
         set -euo pipefail
-        cd "$GITHUB_WORKSPACE/app/MeetingTranscriber"
+        cd "$GITHUB_WORKSPACE/app/Earshot"
         CFFIXED_USER_HOME="$HOME_DIR" \
           PREWARM_MARKER="$HOME_DIR/.prewarmed-v$PREWARM_VERSION-$KEY" \
           "$GITHUB_WORKSPACE/scripts/ci/prewarm-models.sh" \

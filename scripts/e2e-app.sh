@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Live-recording E2E driver for the Meeting Transcriber dev app.
+# Live-recording E2E driver for the Earshot dev app.
 #
 # Builds the dev .app, deploys it to a stable path so its TCC permissions
 # persist across runs, launches it, triggers a synthetic meeting via the
@@ -7,7 +7,7 @@
 # pipeline job, and asserts on the transcript output.
 #
 # This is the production-app E2E path, intentionally separate from the
-# fixture-based component E2E tests in `app/MeetingTranscriber/Tests/*E2E*.swift`
+# fixture-based component E2E tests in `app/Earshot/Tests/*E2E*.swift`
 # (which run on PR-CI). Rationale and history: see the e2e-architecture skill.
 #
 # Prerequisites on the runner host (one-time setup):
@@ -17,7 +17,7 @@
 #   - A virtual input device (BlackHole 2ch) so AVAudioEngine has something
 #     to bind to on Mac mini hosts without a built-in mic
 #   - System Settings → Privacy: Microphone + Screen & System Audio Recording
-#     granted to ~/Applications/MeetingTranscriber-Dev.app
+#     granted to ~/Applications/Earshot-Dev.app
 #   See scripts/setup-self-hosted-runner.sh for the bootstrap flow.
 
 set -euo pipefail
@@ -85,7 +85,7 @@ Usage: e2e-app.sh [--no-build] [--keep-app] [--two-meetings] [--record-only]
                   [--naming-confirm] [--quit-flush] [--upgrade] [--protocol]
                   [--fixture path/to.wav]
 
-  --no-build           Skip build/deploy/re-sign; use ~/Applications/MeetingTranscriber-Dev.app as-is.
+  --no-build           Skip build/deploy/re-sign; use ~/Applications/Earshot-Dev.app as-is.
   --keep-app           Leave the dev app running on exit. Default: quit it.
   --two-meetings       Run two meetings back-to-back (cooldown + state-reset coverage).
   --mic-only           Record the microphone with no app audio (issue #633) via
@@ -107,7 +107,7 @@ Usage: e2e-app.sh [--no-build] [--keep-app] [--two-meetings] [--record-only]
                        AudioMixer 3-tier file-load fallback in one pass.
                        Self-contained — no prior run required.
   --reimport-latest    Skip the live-record phase and re-import the freshest
-                       *_mix.wav already in ~/Downloads/MeetingTranscriber/recordings/.
+                       *_mix.wav already in ~/Downloads/Earshot/recordings/.
                        Pair with a previous `--record-only --keep-recordings`
                        run (CI uses this to chain steps without re-recording;
                        locally also useful for silent fast iteration on the
@@ -136,7 +136,7 @@ Usage: e2e-app.sh [--no-build] [--keep-app] [--two-meetings] [--record-only]
                        Pre-fix the launch cleanup deletes the temp -> no
                        recovery (RED); the fix re-mixes + enqueues it (GREEN).
   --redeploy-only      Rebuild + redeploy the canonical (non-fault-injection)
-                       bundle to ~/Applications/MeetingTranscriber-Dev.app and
+                       bundle to ~/Applications/Earshot-Dev.app and
                        exit without launching or running a meeting. Used as an
                        always() cleanup after --mic-device-change to restore a
                        clean bundle (that run leaves a deliberately-crashing
@@ -230,7 +230,7 @@ Usage: e2e-app.sh [--no-build] [--keep-app] [--two-meetings] [--record-only]
                        /tmp/mt-live-lock) is held, the installed app is
                        running, or the pipeline queue is not empty; it backs the
                        shared pipeline state up (E2E_QUIT_FLUSH_BACKUP_DIR,
-                       default under ~/Library/Caches/MeetingTranscriber-e2e)
+                       default under ~/Library/Caches/Earshot-e2e)
                        and restores it on exit: a file that existed is put
                        back byte for byte and one that did not is removed,
                        each only when what changed is this run's records;
@@ -251,7 +251,7 @@ Usage: e2e-app.sh [--no-build] [--keep-app] [--two-meetings] [--record-only]
                        transcript from the app track. Runs the app with an
                        isolated home (CFFIXED_USER_HOME, a temp dir removed on
                        exit), so it never reads or writes the host's real
-                       MeetingTranscriber data or output folder, and with
+                       Earshot data or output folder, and with
                        protocol generation off. Standalone lane.
   --mic-stall-late     Same, but the microphone delivers for its first 10 s and
                        then stops with no configuration change: the shape a
@@ -497,13 +497,13 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-DEV_BUNDLE_BUILD="$ROOT/app/MeetingTranscriber/.build/MeetingTranscriber-Dev.app"
-DEV_BUNDLE_DEPLOY="$HOME/Applications/MeetingTranscriber-Dev.app"
+DEV_BUNDLE_BUILD="$ROOT/app/Earshot/.build/Earshot-Dev.app"
+DEV_BUNDLE_DEPLOY="$HOME/Applications/Earshot-Dev.app"
 SIMULATOR_PKG="$ROOT/tools/meeting-simulator"
 SIMULATOR_BIN="$SIMULATOR_PKG/.build/release/meeting-simulator"
 MTCLI_PKG="$ROOT/tools/mt-cli"
 MTCLI="$MTCLI_PKG/.build/release/mt-cli"
-DEFAULT_FIXTURE="$ROOT/app/MeetingTranscriber/Tests/Fixtures/two_speakers_de.wav"
+DEFAULT_FIXTURE="$ROOT/app/Earshot/Tests/Fixtures/two_speakers_de.wav"
 
 # The home the APP sees. The host's own for every lane but --mic-stall, which
 # launches the app with CFFIXED_USER_HOME pointing at a temp dir of its own:
@@ -520,7 +520,7 @@ APP_HOME="$HOME"
 # had to leave behind, and the provenance marker of the app it launched. Not
 # the throwaway home, which the next run never sees, and not $TMPDIR, which a
 # reboot clears.
-_MS_STATE_DIR="$HOME/Library/Caches/MeetingTranscriber-e2e"
+_MS_STATE_DIR="$HOME/Library/Caches/Earshot-e2e"
 _MS_PROTOCOL_RECORD="$_MS_STATE_DIR/mic-stall-protocolProvider"
 _MS_KEPT_HOMES="$_MS_STATE_DIR/mic-stall-kept-homes"
 # The mic-stall lane's cleanup, armed as soon as the lane has made anything of
@@ -538,7 +538,7 @@ _ms_cleanup() {
     declare -F mic_stall_restore_protocol >/dev/null || return 0
     mic_stall_restore_protocol "$DEV_BUNDLE_ID" "$(dev_container_plist)" "$_MS_PROTOCOL_RECORD" none || true
     local pid="${_launched_app:-}"
-    [ -n "$pid" ] || pid="$( { pgrep -f "MeetingTranscriber-Dev.app/Contents/MacOS/MeetingTranscriber" || true; } | head -1)"
+    [ -n "$pid" ] || pid="$( { pgrep -f "Earshot-Dev.app/Contents/MacOS/Earshot" || true; } | head -1)"
     mic_stall_release_home "$APP_HOME" "$pid" "$_MS_KEPT_HOMES"
 }
 if [ -n "$MIC_STALL" ]; then
@@ -601,15 +601,15 @@ fi
 # it, and where the key goes is covered by OpenAIProtocolGeneratorTests.
 # The deployed dev app's process, for every pgrep in this script (here because
 # the protocol helpers below need it before the preflight runs).
-_DEV_APP_PATTERN="MeetingTranscriber-Dev.app/Contents/MacOS/MeetingTranscriber"
+_DEV_APP_PATTERN="Earshot-Dev.app/Contents/MacOS/Earshot"
 _PP_RECORD="$_MS_STATE_DIR/protocol-lane-defaults"
 _PP_JOBS_RECORD="$_MS_STATE_DIR/protocol-lane-jobs"
 _PP_OUTPUTS_RECORD="$_MS_STATE_DIR/protocol-lane-outputs"
 # The host's own data and output folders, not $APP_HOME's: the lane never runs
 # in an isolated home, and the repair runs from every lane, --mic-stall and
 # --upgrade (whose $APP_HOME is a temp dir) included.
-_PP_HOST_SNAPSHOT="$HOME/Library/Application Support/MeetingTranscriber/ipc/pipeline_queue.json"
-_PP_HOST_OUTPUT_DIR="$HOME/Downloads/MeetingTranscriber"
+_PP_HOST_SNAPSHOT="$HOME/Library/Application Support/Earshot/ipc/pipeline_queue.json"
+_PP_HOST_OUTPUT_DIR="$HOME/Downloads/Earshot"
 _PP_KEYS=(protocolProvider protocolLanguage openAIEndpoint openAIModel openAITemperature openAITopP
     diarize saveRawTranscriptSeparately includeFullTranscriptInProtocol useAITitleForFilenames)
 _PP_MODEL="e2e-stub-model"
@@ -624,12 +624,12 @@ _PP_STUB_PID=""
 # record until it is done, so a later run retries only what is left. Returns 1
 # when a setting did not come back.
 #
-# The jobs are dropped by id, and only while no MeetingTranscriber runs at all
+# The jobs are dropped by id, and only while no Earshot runs at all
 # (the installed app shares the snapshot and could save it between the read and
 # the rename): a quit saves a job still in flight into the snapshot, and the
 # host's next launch would resume it under the host's own settings from a
 # fixture copy that no longer exists. Finished ones are left; the app discards
-# them at load. While any MeetingTranscriber runs they cannot be dropped, and
+# them at load. While any Earshot runs they cannot be dropped, and
 # the next dev launch would resume them, so that is a failure too. The output
 # files are removed only inside the output folder. A killed run's stub is
 # matched by the lane's own temp-dir argument, which no other stub (the helper
@@ -645,8 +645,8 @@ _pp_repair() {
             status=1
         fi
     fi
-    if [ -f "$_PP_JOBS_RECORD" ] && { pgrep -f "$_DEV_APP_PATTERN" >/dev/null 2>&1 || [ -n "$(non_dev_meetingtranscriber_pids)" ]; }; then
-        printf '[e2e-app] WARNING: [protocol] a MeetingTranscriber is running, so the lane jobs a killed run left (%s) cannot be dropped from the queue snapshot; quit it and rerun\n' "$_PP_JOBS_RECORD" >&2
+    if [ -f "$_PP_JOBS_RECORD" ] && { pgrep -f "$_DEV_APP_PATTERN" >/dev/null 2>&1 || [ -n "$(non_dev_earshot_pids)" ]; }; then
+        printf '[e2e-app] WARNING: [protocol] a Earshot is running, so the lane jobs a killed run left (%s) cannot be dropped from the queue snapshot; quit it and rerun\n' "$_PP_JOBS_RECORD" >&2
         status=1
     elif [ -f "$_PP_JOBS_RECORD" ]; then
         ids="$(jq -R 'ascii_downcase' "$_PP_JOBS_RECORD" | jq -s -c .)"
@@ -709,7 +709,7 @@ _pp_cleanup() {
 }
 
 # shellcheck disable=SC2034 # read by the RPC helpers in lib/e2e-helpers.sh
-RPC_TOKEN_FILE="$APP_HOME/Library/Application Support/MeetingTranscriber/.rpc-token"
+RPC_TOKEN_FILE="$APP_HOME/Library/Application Support/Earshot/.rpc-token"
 RPC_BASE="http://127.0.0.1:9876"
 
 # The app's output folder — `AppPaths.downloadsProtocolsDir`. Unsandboxed
@@ -717,7 +717,7 @@ RPC_BASE="http://127.0.0.1:9876"
 # Recordings and protocols are SIBLINGS under it: audio and its sidecar go to
 # `recordings/`, transcripts and protocols to `protocols/`. Derive both from
 # one root so an assertion cannot end up pointed at the wrong sibling.
-OUTPUT_DIR="$APP_HOME/Downloads/MeetingTranscriber"
+OUTPUT_DIR="$APP_HOME/Downloads/Earshot"
 RECORDINGS_DIR="$OUTPUT_DIR/recordings"
 # `find -newer` marker so cleanup only touches THIS run's files — never
 # pre-existing user data.
@@ -894,7 +894,7 @@ _dev_app_running() { pgrep -f "$_DEV_APP_PATTERN" >/dev/null 2>&1; }
 #     and never steals a live one;
 #   - the self-heal runs before every early exit, not just before the lane.
 _MIC_ONLY_DEVICE="BlackHole 2ch"
-_MIC_ONLY_OUTPUT_MARKER="$HOME/Library/Application Support/MeetingTranscriber/.e2e-mic-only-previous-output"
+_MIC_ONLY_OUTPUT_MARKER="$HOME/Library/Application Support/Earshot/.e2e-mic-only-previous-output"
 
 # Read the current default output, or empty on failure.
 _mic_only_current_output() {
@@ -1000,7 +1000,7 @@ _UG_TOKENIZER=whisper-small
 # download metadata and its tokenizer) is fingerprinted before and after; not
 # the whole folders, which other jobs on the same account change meanwhile.
 _UG_REAL_DOCS_HF="$HOME/Documents/huggingface"
-_UG_REAL_APP_HF="$HOME/Library/Application Support/MeetingTranscriber/huggingface"
+_UG_REAL_APP_HF="$HOME/Library/Application Support/Earshot/huggingface"
 _ug_real_fingerprint() {
     local base
     for base in "$_UG_REAL_DOCS_HF" "$_UG_REAL_APP_HF"; do
@@ -1016,11 +1016,11 @@ _ug_real_fingerprint() {
 _UG_MODEL_SOURCE="${E2E_UPGRADE_MODEL_SOURCE:-$_UG_REAL_APP_HF}"
 # What the lane imports to have the queue built (see run_upgrade): short, since
 # only the restored job's transcript is read.
-_UG_TRIGGER_FIXTURE="$ROOT/app/MeetingTranscriber/Tests/Fixtures/two_speakers_en.wav"
+_UG_TRIGGER_FIXTURE="$ROOT/app/Earshot/Tests/Fixtures/two_speakers_en.wav"
 # The lane's own files (seed copies, fingerprints, the app's output) sit in the
 # home but outside every folder the app owns.
 _UG_LANE_DIR="$APP_HOME/.e2e-upgrade"
-_UG_DATA_DIR="$APP_HOME/Library/Application Support/MeetingTranscriber"
+_UG_DATA_DIR="$APP_HOME/Library/Application Support/Earshot"
 _UG_DOCS_HF="$APP_HOME/Documents/huggingface"
 _UG_APP_HF="$_UG_DATA_DIR/huggingface"
 _UG_STAGING_DIR="$_UG_DATA_DIR/recordings"
@@ -1136,8 +1136,8 @@ _ug_launch() {
     holder="$(lsof -nP -iTCP:9876 -sTCP:LISTEN -t 2>/dev/null | head -1 || true)"
     [ -z "$holder" ] \
         || fail "[upgrade]: 127.0.0.1:9876 is already served by pid $holder ($(ps -o command= -p "$holder" 2>/dev/null | cut -c1-100)); this lane's app could not answer there"
-    CFFIXED_USER_HOME="$APP_HOME" MEETINGTRANSCRIBER_DEBUG_RPC=1 MEETINGTRANSCRIBER_DEBUG_SUPPRESS_AUTOWATCH=1 \
-        nohup sandbox-exec -p "$_UG_SANDBOX_PROFILE" "$DEV_BUNDLE_DEPLOY/Contents/MacOS/MeetingTranscriber" \
+    CFFIXED_USER_HOME="$APP_HOME" EARSHOT_DEBUG_RPC=1 EARSHOT_DEBUG_SUPPRESS_AUTOWATCH=1 \
+        nohup sandbox-exec -p "$_UG_SANDBOX_PROFILE" "$DEV_BUNDLE_DEPLOY/Contents/MacOS/Earshot" \
         "${_UG_APP_ARGS[@]}" >>"$_UG_LANE_DIR/app.log" 2>&1 &
     # sandbox-exec execs the app, so this is the app's pid.
     _UG_APP_PID=$!
@@ -1220,7 +1220,7 @@ _other_drivers="$(_e2e_other_drivers)"
 # either way; speakers.json is compared, never written. The backup (it holds a
 # copy of speakers.json) is removed when the compare matches, and kept, with
 # its path printed, when it does not.
-_QF_DATA_DIR="$HOME/Library/Application Support/MeetingTranscriber"
+_QF_DATA_DIR="$HOME/Library/Application Support/Earshot"
 _QF_IPC_DIR="$_QF_DATA_DIR/ipc"
 _QF_IPC_FILES=(pipeline_queue.json terminal_jobs.json pipeline_log.jsonl processed_recordings.json)
 _QF_LOCK_HELD=""
@@ -1319,10 +1319,10 @@ if [ "$QUIT_FLUSH" = true ]; then
     # itself: once the backup exists, the lane has started to change shared
     # state (the app launch writes it), so a failure here restores too.
     trap 'if declare -F on_exit >/dev/null; then on_exit; else _qf_restore_shared_state; _qf_release_lock; [ -z "${_QF_RESTORE_FAILED:-}" ] || exit 1; fi' EXIT
-    _qf_installed="$( { pgrep -x MeetingTranscriber || true; } | while read -r p; do
-        ps -o command= -p "$p" 2>/dev/null | grep -q "MeetingTranscriber-Dev.app/" || printf '%s ' "$p"; done)"
+    _qf_installed="$( { pgrep -x Earshot || true; } | while read -r p; do
+        ps -o command= -p "$p" 2>/dev/null | grep -q "Earshot-Dev.app/" || printf '%s ' "$p"; done)"
     [ -z "$_qf_installed" ] \
-        || fail "--quit-flush: a MeetingTranscriber that is not the dev app is running (pid(s): ${_qf_installed% }). It shares the pipeline state this lane writes and restores. Quit it first."
+        || fail "--quit-flush: a Earshot that is not the dev app is running (pid(s): ${_qf_installed% }). It shares the pipeline state this lane writes and restores. Quit it first."
     log "[quit-flush] lock $MT_LIVE_LOCK held, installed app not running; the queue check and the backup follow the dev app's quit"
 fi
 
@@ -1348,20 +1348,20 @@ fi
 # on a hand-run host, and a stale marker pid reused by an unrelated process
 # (both rare, both reported with the pid and command so a person can decide).
 # The mic-stall lane plays a synthetic meeting for over a minute. Its own app
-# runs in a throwaway home, but a MeetingTranscriber that is not the dev app
+# runs in a throwaway home, but a Earshot that is not the dev app
 # (the installed one) runs in the host's: with auto-watch on it would detect
 # that meeting and record it into the real staging folder and Downloads. Its
 # output-folder check below cannot catch that, because it reads `/state` from
 # whichever app answers the RPC port, and an installed app with the automation
 # API off does not. So the lane refuses, and never quits it.
 if [ -n "$MIC_STALL" ]; then
-    _installed="$(non_dev_meetingtranscriber_pids)"
+    _installed="$(non_dev_earshot_pids)"
     [ -z "$_installed" ] \
-        || fail "--mic-stall: a MeetingTranscriber that is not the dev app is running (pid(s): ${_installed% }). It would record the lane's synthetic meeting into the host's real folders. Quit it first; this lane does not quit it for you."
+        || fail "--mic-stall: a Earshot that is not the dev app is running (pid(s): ${_installed% }). It would record the lane's synthetic meeting into the host's real folders. Quit it first; this lane does not quit it for you."
 fi
 
 # The marker a driver running the app in the host's own home leaves.
-_E2E_HOST_MARKER="$HOME/Library/Application Support/MeetingTranscriber/.e2e-app-launched"
+_E2E_HOST_MARKER="$HOME/Library/Application Support/Earshot/.e2e-app-launched"
 # The one a lane with an isolated home (--mic-stall, --upgrade) leaves. Outside that home,
 # which the next run never sees: kept there, an app a failed run left behind
 # read as foreign to every later run.
@@ -1422,7 +1422,7 @@ if [ "$QUIT_FLUSH" = true ]; then
         1) fail "--quit-flush: the shared pipeline queue is not empty ($(jq -c '[.[] | {meetingTitle, state}]' "$_QF_IPC_DIR/pipeline_queue.json")). The lane restores it on exit and would lose that work. Let those jobs finish or dismiss them, then rerun." ;;
         *) fail "--quit-flush: $_QF_IPC_DIR/pipeline_queue.json does not parse; refusing to run over it." ;;
     esac
-    _QF_BACKUP_DIR="${E2E_QUIT_FLUSH_BACKUP_DIR:-$HOME/Library/Caches/MeetingTranscriber-e2e/quit-flush-$(date +%Y%m%d-%H%M%S)}"
+    _QF_BACKUP_DIR="${E2E_QUIT_FLUSH_BACKUP_DIR:-$HOME/Library/Caches/Earshot-e2e/quit-flush-$(date +%Y%m%d-%H%M%S)}"
     if ! backup_state_files "$_QF_IPC_DIR" "$_QF_BACKUP_DIR/ipc" "${_QF_IPC_FILES[@]}" \
         || ! backup_state_files "$_QF_DATA_DIR" "$_QF_BACKUP_DIR" speakers.json; then
         # Nothing has been changed yet, so there is nothing to restore, and a
@@ -1516,8 +1516,8 @@ fi
 # stalled". The variable name exists only in a -DE2E_FAULT_INJECTION build
 # (see E2EMicFault), which is also how a release build is shown not to carry it.
 if [ -n "$MIC_STALL" ]; then
-    grep -q -a "MEETINGTRANSCRIBER_E2E_MIC_FAULT" "$DEV_BUNDLE_DEPLOY/Contents/MacOS/MeetingTranscriber" \
-        || fail "--mic-stall needs a fault-injection build at $DEV_BUNDLE_DEPLOY (its binary does not carry MEETINGTRANSCRIBER_E2E_MIC_FAULT); run without --no-build"
+    grep -q -a "EARSHOT_E2E_MIC_FAULT" "$DEV_BUNDLE_DEPLOY/Contents/MacOS/Earshot" \
+        || fail "--mic-stall needs a fault-injection build at $DEV_BUNDLE_DEPLOY (its binary does not carry EARSHOT_E2E_MIC_FAULT); run without --no-build"
     log "[mic-stall] deployed bundle is a fault-injection build"
 fi
 
@@ -1678,7 +1678,7 @@ if [ "$PROTOCOL_LANE" = true ]; then
     # or the staging folder holds a recording a launch could recover. Finished
     # jobs do not count: the app drops them when it loads the snapshot.
     if [ "${GITHUB_ACTIONS:-}" != "true" ]; then
-        _pp_data="$APP_HOME/Library/Application Support/MeetingTranscriber"
+        _pp_data="$APP_HOME/Library/Application Support/Earshot"
         _pp_snapshot="$_pp_data/ipc/pipeline_queue.json"
         if [ -f "$_pp_snapshot" ] && ! jq -e 'type == "array" and all(.[]; .state == "done" or .state == "error")' "$_pp_snapshot" >/dev/null 2>&1; then
             fail "[protocol] the pipeline queue snapshot holds unfinished jobs (or does not parse); the app would resume them against the stub. Let them finish first. No protocol setting was changed."
@@ -1755,7 +1755,7 @@ fi
 # the pipeline-queue reset above: the destructive reset/restore machinery must
 # never touch a developer's real speaker DB. A LOCAL run therefore does NOT
 # snapshot, so the confirm will enroll into your real DB (warned below).
-_APP_SUPPORT_DIR="$APP_HOME/Library/Application Support/MeetingTranscriber"
+_APP_SUPPORT_DIR="$APP_HOME/Library/Application Support/Earshot"
 # Durable, DETERMINISTIC backup siblings (not a random /tmp dir): a hard kill
 # between the reset and the trap-restore would strand a random mktemp backup
 # nothing ever finds again, losing the runner's real DB. Deterministic sibling
@@ -1948,7 +1948,7 @@ fi
 # regenerable queue snapshot — never recordings, speakers.json, protocols, or
 # any other user content.
 if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
-    _ipc_dir="$HOME/Library/Application Support/MeetingTranscriber/ipc"
+    _ipc_dir="$HOME/Library/Application Support/Earshot/ipc"
     rm -f "$_ipc_dir/pipeline_queue.json" "$_ipc_dir/pipeline_queue.tmp"
     log "CI: reset stale pipeline-queue snapshot ($_ipc_dir/pipeline_queue.json)"
 fi
@@ -1960,14 +1960,14 @@ if [ -n "$MIC_STALL" ]; then
     # `open --env`, not a leading `env`: only the former reaches a process
     # LaunchServices starts (see the e2e-architecture skill).
     log "[mic-stall] app home $APP_HOME, microphone fault '$MIC_STALL'"
-    open --env CFFIXED_USER_HOME="$APP_HOME" --env MEETINGTRANSCRIBER_E2E_MIC_FAULT="$MIC_STALL" "$DEV_BUNDLE_DEPLOY"
+    open --env CFFIXED_USER_HOME="$APP_HOME" --env EARSHOT_E2E_MIC_FAULT="$MIC_STALL" "$DEV_BUNDLE_DEPLOY"
 elif [ "$UPGRADE" = true ]; then
     log "[upgrade] app home $APP_HOME, network closed but for localhost"
     _ug_launch
 elif [ "$MIC_DEVICE_CHANGE" = true ]; then
     # The fault build injects nothing unless asked, so a leftover fault bundle
     # cannot inject into a later, unrelated launch.
-    open --env MEETINGTRANSCRIBER_E2E_MIC_FAULT=device-change "$DEV_BUNDLE_DEPLOY"
+    open --env EARSHOT_E2E_MIC_FAULT=device-change "$DEV_BUNDLE_DEPLOY"
 else
     open "$DEV_BUNDLE_DEPLOY"
 fi
@@ -2139,7 +2139,7 @@ poll_state 20 1 state_is '.settings.recording | has("recordOnly")' \
 _SNAP="$STATE_BODY"
 _RESOLVED_RECORD_ONLY="$(jq -r '.settings.recording.recordOnly' <<<"$_SNAP")"
 [ "$_RESOLVED_RECORD_ONLY" = "$_EXPECTED_RECORD_ONLY" ] \
-    || fail "the app resolved settings.recording.recordOnly=$_RESOLVED_RECORD_ONLY but this lane needs $_EXPECTED_RECORD_ONLY. Most likely the preference write did not reach the domain the app reads (see write_dev_default in scripts/lib/e2e-helpers.sh); the other possibility is that a different MeetingTranscriber instance is answering on 127.0.0.1:9876."
+    || fail "the app resolved settings.recording.recordOnly=$_RESOLVED_RECORD_ONLY but this lane needs $_EXPECTED_RECORD_ONLY. Most likely the preference write did not reach the domain the app reads (see write_dev_default in scripts/lib/e2e-helpers.sh); the other possibility is that a different Earshot instance is answering on 127.0.0.1:9876."
 log "app resolved recordOnly=$_RESOLVED_RECORD_ONLY (as configured)"
 
 # Same reasoning one field over: every artifact assertion in this lane is built
@@ -2764,7 +2764,7 @@ LAST_RECORDED_MIX_PATH=""
 #
 # Live temps go to AppPaths.recordingsDir (Application Support), NOT the
 # record-only Downloads dir — recovery scans the same path.
-CRASH_RECORDINGS="$HOME/Library/Application Support/MeetingTranscriber/recordings"
+CRASH_RECORDINGS="$HOME/Library/Application Support/Earshot/recordings"
 CRASH_MARKER=""
 CRASH_STEM=""
 run_crash_recovery() {
@@ -3017,7 +3017,7 @@ run_naming_escape() {
     # lost mid-lane would otherwise hold osascript behind a prompt.
     local front_s=$(( tcc_timeout > 15 ? tcc_timeout : 15 ))
     front_err="$(run_bounded $((front_s + 5)) osascript -e "with timeout of ${front_s} seconds" \
-        -e 'tell application "System Events" to tell process "MeetingTranscriber" to set frontmost to true' \
+        -e 'tell application "System Events" to tell process "Earshot" to set frontmost to true' \
         -e 'end timeout' 2>&1)" \
         || fail "$label: could not front the app (124 = no answer within $((front_s + 5)) s): ${front_err:-<no output>}. If it was refused or timed out: $(tcc_fix_hint 'Automation → System Events')"
     sleep 1
@@ -3376,9 +3376,9 @@ run_naming_switch() {
     log "$label: building the two pairs under $_NS_DIR/pairs"
     python3 "$ROOT/scripts/fixtures/make-naming-switch-pairs.py" \
         --app "$DEFAULT_FIXTURE" \
-        --mic-first "$ROOT/app/MeetingTranscriber/Tests/Fixtures/three_speakers_de.wav" \
-        --voice-source "$ROOT/app/MeetingTranscriber/Tests/Fixtures/quality/two_speakers_de.wav" \
-        --voice-truth "$ROOT/app/MeetingTranscriber/Tests/Fixtures/quality/two_speakers_de_truth.json" \
+        --mic-first "$ROOT/app/Earshot/Tests/Fixtures/three_speakers_de.wav" \
+        --voice-source "$ROOT/app/Earshot/Tests/Fixtures/quality/two_speakers_de.wav" \
+        --voice-truth "$ROOT/app/Earshot/Tests/Fixtures/quality/two_speakers_de_truth.json" \
         --voice-speaker B --out "$_NS_DIR/pairs" --stem "$stem" 2>&1 | sed 's/^/    /' \
         || fail "$label: could not build the pairs"
 
@@ -3549,7 +3549,7 @@ run_naming_switch() {
     # The regression itself: pre-fix, the first keystroke wrote names[$first_index]
     # into a $second_count-element array and the app died. Check the process
     # directly so the report names the defect rather than a generic dead app.
-    if ! pgrep -f "MeetingTranscriber-Dev.app/Contents/MacOS/MeetingTranscriber" >/dev/null 2>&1; then
+    if ! pgrep -f "Earshot-Dev.app/Contents/MacOS/Earshot" >/dev/null 2>&1; then
         fail "$label: the app DIED on the first keystrokes into $survivor after the dialog switched from a $first_count-speaker job to a $second_count-speaker job with the same title (issue #700: the field kept a binding to row $first_index, past the new job's $second_count rows). Driver output: $out"
     fi
     assert_app_alive
@@ -3666,7 +3666,7 @@ _ms_float_lt() { awk -v a="$1" -v b="$2" 'BEGIN { exit !(a < b) }'; }
 # The capture layer's own account since $1, for this run's app only.
 _ms_capture_log() {
     /usr/bin/log show --style compact --info --start "$1" \
-        --predicate "processID == ${_launched_app:-0} AND subsystem == \"com.meetingtranscriber.audiotap\" AND category == \"MicCapture\"" 2>/dev/null || true
+        --predicate "processID == ${_launched_app:-0} AND subsystem == \"com.earshot.audiotap\" AND category == \"MicCapture\"" 2>/dev/null || true
 }
 
 run_mic_stall() {
@@ -4067,7 +4067,7 @@ _ug_assert_restored_job() {
     _ug_single "$label" "$RECORDINGS_DIR" '*_mix.wav'
     relocated="$_UG_FOUND"
     base="$(basename "$relocated")"
-    jq -e --arg b "/MeetingTranscriber/recordings/$base" 'any(.[]; endswith($b))' \
+    jq -e --arg b "/Earshot/recordings/$base" 'any(.[]; endswith($b))' \
         "$_UG_IPC_DIR/processed_recordings.json" >/dev/null \
         || _ug_fail "$label: the processed-recordings ledger does not name the moved recording $base: $(cat "$_UG_IPC_DIR/processed_recordings.json")"
     _ug_await_done "$label" "the import" "$trigger"
@@ -4161,8 +4161,8 @@ run_upgrade() {
 _echo_fixture_setup() {
     local label="$1"
     _ECHO_GENERATOR="$ROOT/scripts/fixtures/make-echo-pair.py"
-    _ECHO_APP_SOURCE="$ROOT/app/MeetingTranscriber/Tests/Fixtures/two_speakers_de.wav"
-    _ECHO_LOCAL_SOURCE="$ROOT/app/MeetingTranscriber/Tests/Fixtures/three_speakers_de.wav"
+    _ECHO_APP_SOURCE="$ROOT/app/Earshot/Tests/Fixtures/two_speakers_de.wav"
+    _ECHO_LOCAL_SOURCE="$ROOT/app/Earshot/Tests/Fixtures/three_speakers_de.wav"
     [ -f "$_ECHO_GENERATOR" ]    || fail "$label: fixture generator missing: $_ECHO_GENERATOR"
     [ -f "$_ECHO_APP_SOURCE" ]   || fail "$label: fixture missing: $_ECHO_APP_SOURCE"
     [ -f "$_ECHO_LOCAL_SOURCE" ] || fail "$label: fixture missing: $_ECHO_LOCAL_SOURCE"
@@ -4397,10 +4397,10 @@ _echo_require_model() {
     # to the bundle, so one naming a file that is gone yields no canceller at
     # all. That is the state a measurement session leaves behind, and the bundle
     # below would still look fine.
-    local override="${MEETINGTRANSCRIBER_LOCALVQE_MODEL:-}"
+    local override="${EARSHOT_LOCALVQE_MODEL:-}"
     if [ -n "$override" ]; then
         [ -f "$override" ] \
-            || fail "$label: MEETINGTRANSCRIBER_LOCALVQE_MODEL points at $override, which does not exist. The override takes precedence over the bundled model and does not fall back to it, so cancellation could only decline. Unset it or point it at a model."
+            || fail "$label: EARSHOT_LOCALVQE_MODEL points at $override, which does not exist. The override takes precedence over the bundled model and does not fall back to it, so cancellation could only decline. Unset it or point it at a model."
         log "$label: using the model override at $override"
         return 0
     fi
@@ -4674,7 +4674,7 @@ _pp_assert_one_request() {
 
 run_protocol_lane() {
     local label="[protocol]"
-    local fixture="$ROOT/app/MeetingTranscriber/Tests/Fixtures/two_speakers_en.wav"
+    local fixture="$ROOT/app/Earshot/Tests/Fixtures/two_speakers_en.wav"
     [ -f "$fixture" ] || fail "$label: fixture missing: $fixture"
 
     # The running app's own resolved view: a write that missed its domain would
@@ -4834,7 +4834,7 @@ run_protocol_lane() {
 # their naming and removes their transcripts and audio on the way out.
 
 _QF_TITLE="Microphone Recording"   # ManualRecordingInfo.microphoneTitle
-_QF_SNAPSHOT="$HOME/Library/Application Support/MeetingTranscriber/ipc/pipeline_queue.json"
+_QF_SNAPSHOT="$HOME/Library/Application Support/Earshot/ipc/pipeline_queue.json"
 # TerminationFlush: 5 s recording budget, 2 s flush, a second 2 s flush, plus
 # AppKit and teardown. Past this the quit is not being held, it is stuck.
 _QF_EXIT_DEADLINE_S=20
@@ -4878,7 +4878,7 @@ _qf_register_cycle_jobs() {
 # pid was lower than the app's, and the lane looked for streamers under it.
 _qf_app_pid() {
     local p
-    for p in $(pgrep -x MeetingTranscriber 2>/dev/null || true); do
+    for p in $(pgrep -x Earshot 2>/dev/null || true); do
         case "$(ps -o command= -p "$p" 2>/dev/null)" in
             *"$_DEV_APP_PATTERN"*) echo "$p"; return 0 ;;
         esac
@@ -4979,7 +4979,7 @@ _qf_cycle() {
 
     _qf_exited() { ! _pid_is_alive "$app_pid"; }
     poll_until "$_QF_EXIT_DEADLINE_S" 0.2 _qf_exited \
-        || fail "$label: the app (pid $app_pid) did not exit within ${_QF_EXIT_DEADLINE_S}s of the quit. The quit is being held open past every budget, a second quit cancelled it, or the quit never arrived. osascript output so far: '$(tr '\n' ' ' <"$out1")' (empty while it is still waiting: the bound holds the output until it returns). Only -1743 there, or a quit that never shows in the app's log, points at the Automation grant: $(tcc_fix_hint 'Automation → MeetingTranscriber-Dev')"
+        || fail "$label: the app (pid $app_pid) did not exit within ${_QF_EXIT_DEADLINE_S}s of the quit. The quit is being held open past every budget, a second quit cancelled it, or the quit never arrived. osascript output so far: '$(tr '\n' ' ' <"$out1")' (empty while it is still waiting: the bound holds the output until it returns). Only -1743 there, or a quit that never shows in the app's log, points at the Automation grant: $(tcc_fix_hint 'Automation → Earshot-Dev')"
     t_exit="$(date +%s)"
     log "$label: app exited about $(( t_exit - t0 ))s after the quit"
     # Before any assertion: a failure below must still clean up and restore
@@ -5024,12 +5024,12 @@ _qf_cycle() {
         # an app that has gone must not launch it again.
         sleep 3
         _qf_app_gone || fail "$label: a dev app is running again ($(_qf_app_pid)) after the double quit; the app did not end exactly once"
-        # No MeetingTranscriber at all: the preflight refused to start next to
+        # No Earshot at all: the preflight refused to start next to
         # the installed app, so any instance now was started by this quit.
         local left
-        left="$( { pgrep -x MeetingTranscriber || true; } | tr '\n' ' ')"
-        [ -z "$left" ] || fail "$label: a MeetingTranscriber process is running after the double quit (pid(s): $left)"
-        log "$label: the app ended once, nothing relaunched it, no MeetingTranscriber process left"
+        left="$( { pgrep -x Earshot || true; } | tr '\n' ' ')"
+        [ -z "$left" ] || fail "$label: a Earshot process is running after the double quit (pid(s): $left)"
+        log "$label: the app ended once, nothing relaunched it, no Earshot process left"
     fi
     rm -f "$out1"
 

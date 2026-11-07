@@ -237,7 +237,7 @@ jobs:
         run: bash scripts/e2e-app.sh --no-build
 
       # Channel-health indicator e2e (issue #258): launches the dev
-      # app with `MEETINGTRANSCRIBER_DEBUG_FORCE_MIC_SILENT=1` so
+      # app with `EARSHOT_DEBUG_FORCE_MIC_SILENT=1` so
       # `AppState.micSilentActive` is set at init, then asserts the
       # flag surfaces in `/state.channelHealth` via the RPC server.
       # Validates the env-hook → AppState → SwiftUI scene body →
@@ -324,7 +324,7 @@ jobs:
       # so a regression in the recorder → live-sink → controller →
       # streaming-transcriber → engine wiring chain surfaces here.
       # The fixture-based xctest E2E in
-      # `app/MeetingTranscriber/Tests/LiveTranscriptionE2ETests.swift`
+      # `app/Earshot/Tests/LiveTranscriptionE2ETests.swift`
       # covers everything from `LiveTranscriptionController` inward;
       # this lane covers the parts outside the xctest harness (CATap
       # tap, AudioCaptureSession, recorder live-sink wiring).
@@ -541,7 +541,7 @@ jobs:
       - name: "Run upgrade-from-v0.8.1 E2E"
         env:
           DEVELOPER_ID: ${{ secrets.DEVELOPER_ID }}
-          E2E_UPGRADE_MODEL_SOURCE: "${{ steps.upgrade-home.outputs.home }}/Library/Application Support/MeetingTranscriber/huggingface"
+          E2E_UPGRADE_MODEL_SOURCE: "${{ steps.upgrade-home.outputs.home }}/Library/Application Support/Earshot/huggingface"
         # Two model loads and three transcriptions of the 50 s fixture with the
         # small model; each model wait is capped at 300 s and each job at
         # 240 s, so 15 min covers a slow run and still ends a hang.

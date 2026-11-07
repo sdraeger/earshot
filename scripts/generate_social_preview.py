@@ -92,7 +92,7 @@ def build_svg() -> str:
   <rect width="{W}" height="{H}" fill="url(#glowP)"/>
   <rect width="{W}" height="{H}" fill="url(#glowB)"/>
   <text x="80" y="104" font-family="Helvetica, Arial, sans-serif" font-size="24" font-weight="700" letter-spacing="5" fill="#7C89A8">OPEN-SOURCE · macOS · ON-DEVICE</text>
-  <text x="76" y="212" font-family="Helvetica, Arial, sans-serif" font-size="92" font-weight="700" fill="#F4F7FF">Meeting Transcriber</text>
+  <text x="76" y="212" font-family="Helvetica, Arial, sans-serif" font-size="92" font-weight="700" fill="#F4F7FF">Earshot</text>
   <text x="80" y="300" font-family="Helvetica, Arial, sans-serif" font-size="40" font-weight="600" fill="#E4E9F7">Private meeting notes that never leave your Mac.</text>
   <text x="80" y="350" font-family="Helvetica, Arial, sans-serif" font-size="27" fill="#98A2BE">Auto-records Teams · Zoom · Webex  →  transcribe · diarize · summarize.</text>
   {_waveform()}

@@ -353,26 +353,26 @@ out of the feature.
 
 Verified line references are against branch `work` at the time of writing.
 
-1. `app/MeetingTranscriber/Sources/ConsentAnswer.swift`
+1. `app/Earshot/Sources/ConsentAnswer.swift`
    Add `.never`. `isGranted` unchanged.
 
-2. `app/MeetingTranscriber/Sources/ConsentDenyList.swift` (new)
+2. `app/Earshot/Sources/ConsentDenyList.swift` (new)
    `ConsentDenyList` (pure), the `ConsentDenyListStoring` protocol
    (`isDenied(_:)`, `deny(_:)`, `revert(_:)`), and an in-memory default.
 
-3. `app/MeetingTranscriber/Sources/AppSettings.swift` (+ a defaults-backed
+3. `app/Earshot/Sources/AppSettings.swift` (+ a defaults-backed
    `ConsentDenyListStoring` adapter, either here or in the new file)
    `consentDeniedApps` with the empty-default read described above.
 
-4. `app/MeetingTranscriber/Sources/MeetingPatterns.swift`
+4. `app/Earshot/Sources/MeetingPatterns.swift`
    Rename `chromeBrowser` to `browserMeetings`; `appName: "Browser Meetings"`,
    `ownerNames: []`. Keep it in `all` (harmless in `byName`; `forAppName`
    can only be asked for it by the category token, which no process carries).
 
-5. `app/MeetingTranscriber/Sources/AppSettings+Computed.swift`
+5. `app/Earshot/Sources/AppSettings+Computed.swift`
    `watchApps` appends `AppMeetingPattern.browserMeetings.appName`.
 
-6. `app/MeetingTranscriber/Sources/PowerAssertionDetector.swift`
+6. `app/Earshot/Sources/PowerAssertionDetector.swift`
    The core change:
    - browser `AssertionPattern` takes the category appName and
      `identity: .perProcess` (PR 1); it loses `processNames` (empty = open)
@@ -393,24 +393,24 @@ Verified line references are against branch `work` at the time of writing.
      patterns;
    - `unmatchedWatchedAssertionKeys` gains the keyword clause.
 
-7. `app/MeetingTranscriber/Sources/NotificationManager.swift`
+7. `app/Earshot/Sources/NotificationManager.swift`
    Third action ("Never for this app", id `BROWSER_MEETING_NEVER`) in
    `makeConsentCategory`; replace `consentGranted(for:)` with
    `consentAnswer(for:) -> ConsentAnswer`; `resolveConsent` routes through
    `ConsentPromptCoordinator.resolve(id:answer:)` (the answer overload already
    exists). `resolvePending(granted:)` (the RPC path) unchanged.
 
-8. `app/MeetingTranscriber/Sources/WatchLoop.swift` and
+8. `app/Earshot/Sources/WatchLoop.swift` and
    `WatchLoop+Consent.swift`
    Inject the deny-list store (default in-memory). `requestConsentIfNeeded`
    adds the denied guard before the cooldown check; `finishConsent` records
    `.never` as denied plus the decline cooldown.
 
-9. `app/MeetingTranscriber/Sources/WatchingController.swift`
+9. `app/Earshot/Sources/WatchingController.swift`
    Wire the settings-backed store into both `WatchLoop` construction sites.
 
-10. `app/MeetingTranscriber/Sources/A11yID.swift` and
-    `app/MeetingTranscriber/Sources/Settings/GeneralSettingsView.swift`
+10. `app/Earshot/Sources/A11yID.swift` and
+    `app/Earshot/Sources/Settings/GeneralSettingsView.swift`
     Toggle label/caption stop naming specific forks ("Browser Web Meetings
     (Chromium-based)"). New sub-section, visible when the toggle is on and
     the deny list is non-empty: the never-record apps as rows with a Remove

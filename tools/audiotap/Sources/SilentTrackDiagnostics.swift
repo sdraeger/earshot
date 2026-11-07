@@ -61,7 +61,7 @@ final class SilentTrackDiagnostics: @unchecked Sendable {
     typealias Sink = @Sendable (String, Outcome) -> Void
 
     private let queue = DispatchQueue(
-        label: "com.meetingtranscriber.audiotap.diagnostics", qos: .utility,
+        label: "com.earshot.audiotap.diagnostics", qos: .utility,
     )
     private let probe: Probe
     private let sink: Sink
@@ -341,7 +341,7 @@ final class SilentTrackDiagnostics: @unchecked Sendable {
         arm(DispatchWorkItem(block: work), after: delay, on: Self.deadlineQueue)
     }
 
-    private static let deadlineQueue = DispatchQueue(label: "com.meetingtranscriber.audiotap.watchdog-deadline")
+    private static let deadlineQueue = DispatchQueue(label: "com.earshot.audiotap.watchdog-deadline")
 
     /// Run `item` on `queue` after `delay`, or hand it to the injected
     /// scheduler, which then decides when it runs.

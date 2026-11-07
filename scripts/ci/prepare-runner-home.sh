@@ -6,7 +6,7 @@
 # Usage: prepare-runner-home.sh <tool-cache-dir> <runner-name>
 #   $HOME must be the account's real home (the step's own environment).
 #
-# The home is <tool-cache>/meetingtranscriber-home/<runner-name>. The tests run
+# The home is <tool-cache>/earshot-home/<runner-name>. The tests run
 # with CFFIXED_USER_HOME pointed there, which moves NSHomeDirectory(), so an
 # ffmpeg in the account's ~/.local/bin, one of the places FFmpegHelper looks,
 # is linked in, as it is for a local run in such a home. CI test steps do not
@@ -50,7 +50,7 @@ own_dir() {
     echo "$dir"
 }
 
-base=$(own_dir "$tool_cache_p" meetingtranscriber-home)
+base=$(own_dir "$tool_cache_p" earshot-home)
 home=$(own_dir "$base" "$runner_name")
 [ "$home" != "$account" ] || fail "test home $home is the account's home"
 case "$home/" in

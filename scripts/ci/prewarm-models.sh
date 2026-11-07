@@ -5,7 +5,7 @@
 # .github/actions/setup-swift-test; tested by
 # scripts/tests/test_prewarm_models.sh.
 #
-# Usage: (cd app/MeetingTranscriber && prewarm-models.sh [swift test args...])
+# Usage: (cd app/Earshot && prewarm-models.sh [swift test args...])
 #   PREWARM_MARKER  optional. Written once the suite has passed; when it
 #                   already exists nothing runs. runner-home keys its warm
 #                   cache on it; setup-swift-test leaves it unset, since

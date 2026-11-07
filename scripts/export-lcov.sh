@@ -10,7 +10,7 @@
 
 set -euo pipefail
 
-package_dir=${1:?package-dir required (e.g. app/MeetingTranscriber)}
+package_dir=${1:?package-dir required (e.g. app/Earshot)}
 output_path=${2:?output-path required (e.g. coverage-homebrew.lcov)}
 
 cd "$package_dir"

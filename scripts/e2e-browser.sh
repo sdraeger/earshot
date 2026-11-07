@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Live browser-meeting E2E driver for the Meeting Transcriber dev app (issue #503).
+# Live browser-meeting E2E driver for the Earshot dev app (issue #503).
 #
 # Proves the browser-detection + capture chain end-to-end, WITHOUT a real
 # meeting service, account, or second participant:
@@ -43,7 +43,7 @@ while [ $# -gt 0 ]; do
             cat <<'HELP'
 Usage: e2e-browser.sh [--no-build] [--keep-app] [--keep-chrome] [--browser NAME] [--jitsi [--jitsi-host HOST]]
 
-  --no-build     Skip build/deploy/re-sign; use ~/Applications/MeetingTranscriber-Dev.app as-is.
+  --no-build     Skip build/deploy/re-sign; use ~/Applications/Earshot-Dev.app as-is.
   --keep-app     Leave the dev app running on exit (default: quit it).
   --keep-chrome  Leave the fixture browser instance open on exit (default: quit it).
   --browser      Which Chromium browser to drive: chrome (default), brave, edge, chromium.
@@ -64,7 +64,7 @@ done
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-DEV_BUNDLE_DEPLOY="$HOME/Applications/MeetingTranscriber-Dev.app"
+DEV_BUNDLE_DEPLOY="$HOME/Applications/Earshot-Dev.app"
 MTCLI_PKG="$ROOT/tools/mt-cli"
 MTCLI="$MTCLI_PKG/.build/release/mt-cli"
 FIXTURE="$ROOT/scripts/fixtures/webrtc-tone.html"
@@ -74,10 +74,10 @@ KEEPER="$FIXTURES_DIR/jitsi-keeper.mjs"
 CDP_PORT=9222
 KEEPER_PID=""
 # shellcheck disable=SC2034 # read by the RPC helpers in lib/e2e-helpers.sh
-RPC_TOKEN_FILE="$HOME/Library/Application Support/MeetingTranscriber/.rpc-token"
+RPC_TOKEN_FILE="$HOME/Library/Application Support/Earshot/.rpc-token"
 # shellcheck disable=SC2034 # read by the RPC helpers in lib/e2e-helpers.sh
 RPC_BASE="http://127.0.0.1:9876"
-RECORDINGS_DIR="$HOME/Downloads/MeetingTranscriber/recordings"
+RECORDINGS_DIR="$HOME/Downloads/Earshot/recordings"
 # Resolve the target browser. All four are Chromium forks sharing one detection
 # pattern, but each is carried under its OWN identity, so the lane differs only
 # in which .app it launches and how it labels diagnostics. BROWSER_LABEL is also
@@ -294,7 +294,7 @@ poll_state 20 1 state_is '.settings.recording | has("recordOnly")' \
     || fail "$(state_why $? "/healthz answered but no /state carrying settings.recording.recordOnly arrived within 20s. Either the app came up without serving a state snapshot, or something other than the dev app is holding 127.0.0.1:9876.")"
 _RESOLVED_RECORD_ONLY="$(jq -r '.settings.recording.recordOnly' <<<"$STATE_BODY")"
 [ "$_RESOLVED_RECORD_ONLY" = "true" ] \
-    || fail "the app resolved settings.recording.recordOnly=$_RESOLVED_RECORD_ONLY, this lane needs true. Most likely the preference write did not reach the domain the app reads (see write_dev_default in scripts/lib/e2e-helpers.sh); the other possibility is that a different MeetingTranscriber instance is answering on 127.0.0.1:9876."
+    || fail "the app resolved settings.recording.recordOnly=$_RESOLVED_RECORD_ONLY, this lane needs true. Most likely the preference write did not reach the domain the app reads (see write_dev_default in scripts/lib/e2e-helpers.sh); the other possibility is that a different Earshot instance is answering on 127.0.0.1:9876."
 log "app resolved recordOnly=true (as configured)"
 
 # The lane answers the consent prompt over RPC, which resolves the parked
@@ -350,7 +350,7 @@ if [ "$NOTIFICATION_ALERT_STYLE" = "none" ]; then
     fail "the dev app's alert style is None, so the consent prompt shows no banner and
        expires unanswered for a real user. This lane would still pass, because it
        answers consent over RPC. Fix the runner: System Settings > Notifications >
-       MeetingTranscriber-Dev, set the alert style to Banners, then re-run."
+       Earshot-Dev, set the alert style to Banners, then re-run."
 fi
 # `disabled` means the switch was turned off for this app; `notSupported` means
 # the build carries no time-sensitive entitlement, which is a build property
@@ -358,7 +358,7 @@ fi
 if [ "$NOTIFICATION_TIME_SENSITIVE" = "disabled" ]; then
     fail "Time Sensitive notifications are switched off for the dev app, so the consent
        prompt cannot break through Focus. Fix the runner: System Settings >
-       Notifications > MeetingTranscriber-Dev > Allow Time Sensitive Notifications,
+       Notifications > Earshot-Dev > Allow Time Sensitive Notifications,
        then re-run."
 fi
 

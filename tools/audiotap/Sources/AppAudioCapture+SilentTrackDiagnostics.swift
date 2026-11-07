@@ -1,7 +1,7 @@
 import Foundation
 import os.log
 
-private let logger = Logger(subsystem: "com.meetingtranscriber.audiotap", category: "AppAudioCapture")
+private let logger = Logger(subsystem: "com.earshot.audiotap", category: "AppAudioCapture")
 
 /// The log call sites for the silent-track instrumentation (issue #672), split
 /// from `AppAudioCapture.swift` to stay under the 600-line lint cap, and kept

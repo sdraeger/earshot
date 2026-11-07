@@ -45,14 +45,14 @@ comment:
 flags:
   homebrew:
     paths:
-      - app/MeetingTranscriber/Sources/
+      - app/Earshot/Sources/
     # `carryforward: true` keeps the last known coverage for a flag when
     # one matrix leg fails to upload — prevents a transient upload error
     # from showing as a 100 % coverage drop.
     carryforward: true
   appstore:
     paths:
-      - app/MeetingTranscriber/Sources/
+      - app/Earshot/Sources/
     carryforward: true
   # AudioTapLib SPM library uploaded by the audiotap CI step. Lives in
   # its own flag because the test suite is in `tools/audiotap/Tests/`,
@@ -67,14 +67,14 @@ flags:
 # Files that are not unit-testable in xctest (hardware, generated, tests,
 # tooling) or that would distort the coverage signal. Reviewed line-by-line.
 ignore:
-  - "app/MeetingTranscriber/Tests/**/*"
-  - "app/MeetingTranscriber/Sources/Info.plist"
-  - "app/MeetingTranscriber/Sources/Assets.xcassets/**/*"
+  - "app/Earshot/Tests/**/*"
+  - "app/Earshot/Sources/Info.plist"
+  - "app/Earshot/Sources/Assets.xcassets/**/*"
   # @main SwiftUI scene shell — NSOpenPanel / NSWorkspace bindings, no
   # mock-point, exercised end-to-end by e2e-app.yml (live recording).
-  - "app/MeetingTranscriber/Sources/MeetingTranscriberApp.swift"
+  - "app/Earshot/Sources/EarshotApp.swift"
   # Pure AVAudioEngine wrapper — hardware-bound, exercised by e2e-app.yml.
-  - "app/MeetingTranscriber/Sources/MicRecorder.swift"
+  - "app/Earshot/Sources/MicRecorder.swift"
   # AudioTapLib hardware-bound paths — exercised by e2e-app.yml (live
   # recording with BlackHole), not by xctest. The rest of `tools/audiotap/`
   # is covered by its own test suite and uploaded under the `audiotap` flag.
@@ -103,13 +103,13 @@ ignore:
   # LiveTranscriptionNemotronStreamingTests's build/fallback tests); this default
   # builder is the glue, exercised end-to-end by the gated NemotronFinishDriftTests
   # and live recording. `\\+` escapes the literal `+` in the filename.
-  - "app/MeetingTranscriber/Sources/LiveTranscriptionController\\+Nemotron.swift"
+  - "app/Earshot/Sources/LiveTranscriptionController\\+Nemotron.swift"
   # Real-model seam implementations (NemotronAsrManager / FluidVADBoundaryDetector /
   # PartialCollector): wrap FluidAudio's Nemotron model + the Silero VAD, only
   # exercisable with the downloaded CoreML models (gated NemotronFinishDriftTests +
   # live recording). The session logic that drives them via the seam protocols is
   # unit-tested in NemotronStreamingCaptionSession.swift.
-  - "app/MeetingTranscriber/Sources/NemotronAsrManager.swift"
+  - "app/Earshot/Sources/NemotronAsrManager.swift"
   # Thin installTap wrapper bridging the NSException to a throw. The bridging
   # shim itself is unit-tested (CExceptionCatcherTests); the installTap call is
   # hardware-bound (exercised by e2e-app.yml). `+` is a regex metachar — escape
@@ -120,8 +120,8 @@ ignore:
   # is NSEvent global/local monitors, NSScreen frame checks, UserDefaults
   # position persistence, and a SwiftUI TimelineView body — none of which
   # has an xctest mock-point. Exercised end-to-end by e2e-live-captions.sh.
-  - "app/MeetingTranscriber/Sources/LiveCaptionsOverlay.swift"
-  - "app/MeetingTranscriber/Sources/LiveCaptionsWindowController.swift"
+  - "app/Earshot/Sources/LiveCaptionsOverlay.swift"
+  - "app/Earshot/Sources/LiveCaptionsWindowController.swift"
   # WeSpeaker post-hoc embedding extraction for Sortformer mode (Phase 1
   # of #165). Pulls a 150 MB CoreML model pair (pyannote_segmentation +
   # wespeaker_v2) the default xctest lane can't realistically download.
@@ -134,7 +134,7 @@ ignore:
   # accidentally match `FluidDiarizerrSortformerEmbeddings.swift` etc.
   # and miss the real file. Backslash-escape with `\\+` to match the
   # literal `+`.
-  - "app/MeetingTranscriber/Sources/FluidDiarizer\\+SortformerEmbeddings.swift"
+  - "app/Earshot/Sources/FluidDiarizer\\+SortformerEmbeddings.swift"
   # Nemotron 3 model load (HuggingFace download + CoreML load), only
   # exercisable with the ~200 MB CoreML model. Exercised by the Nemotron rows
   # of FluidDiarizerQualityTests and SortformerEmbeddingsE2ETests under
@@ -145,7 +145,7 @@ ignore:
   # only under RUN_QUALITY_TESTS=1: the stub cannot return a non-empty chunk
   # (FluidAudio's Nemotron3ChunkResult has no public initialiser), and the
   # embedding pass needs its own model download.
-  - "app/MeetingTranscriber/Sources/FluidDiarizer\\+NemotronModelLoad.swift"
+  - "app/Earshot/Sources/FluidDiarizer\\+NemotronModelLoad.swift"
   # CLI-only / tools targets — separate test suites, not part of the app.
   - "tools/meeting-simulator/**/*"
   - "tools/mt-cli/**/*"

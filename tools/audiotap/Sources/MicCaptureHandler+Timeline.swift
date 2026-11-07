@@ -2,7 +2,7 @@
 import Foundation
 import os.log
 
-private let logger = Logger(subsystem: "com.meetingtranscriber.audiotap", category: "MicCaptureTimeline")
+private let logger = Logger(subsystem: "com.earshot.audiotap", category: "MicCaptureTimeline")
 
 /// Wall-clock gap-filling for `MicCaptureHandler`. A device-change restart drops
 /// mic audio for the teardown→rebuild gap; without compensation the WAV

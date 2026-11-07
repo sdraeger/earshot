@@ -1,7 +1,7 @@
 import Foundation
 import os.log
 
-private let logger = Logger(subsystem: "com.meetingtranscriber.audiotap", category: "AudioCaptureSession")
+private let logger = Logger(subsystem: "com.earshot.audiotap", category: "AudioCaptureSession")
 
 /// Errors raised by `AudioCaptureSession` itself, before either track's
 /// hardware is touched. Deliberately not `@available`-gated so a caller can

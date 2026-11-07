@@ -2,7 +2,7 @@ import CoreAudio
 import Foundation
 import os.log
 
-private let logger = Logger(subsystem: "com.meetingtranscriber.audiotap", category: "AppAudioCapture")
+private let logger = Logger(subsystem: "com.earshot.audiotap", category: "AppAudioCapture")
 
 /// The opt-in silent-track watchdog (issue #672, part 2): when the app track
 /// has sat at exact zeros for `SilentTrackWatchdogPolicy.triggerZeroRunSeconds`

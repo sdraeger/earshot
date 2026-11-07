@@ -19,8 +19,8 @@
 #   The bundle must survive 5 s and must have written its liveness marker
 #   (AppPaths.livenessMarker: `<bundle-id>.running` in AppPaths.dataDir,
 #   holding its PID, written first thing at launch) inside its container,
-#   ~/Library/Containers/<bundle-id>/Data/Library/Application Support/MeetingTranscriber,
-#   and not into the non-container ~/Library/Application Support/MeetingTranscriber.
+#   ~/Library/Containers/<bundle-id>/Data/Library/Application Support/Earshot,
+#   and not into the non-container ~/Library/Application Support/Earshot.
 #   Writes there are attributed by the PID in the marker, not by comparing
 #   the folder before and after: a dev or Homebrew build on the same machine
 #   may own that folder and write to it during the run, and only a marker
@@ -35,7 +35,7 @@
 set -euo pipefail
 
 # The folder name AppPaths.dataDir appends to Application Support.
-DATA_DIR_NAME="MeetingTranscriber"
+DATA_DIR_NAME="Earshot"
 
 # compare_entitlements <expected.plist> <actual.plist>
 # An empty <actual> means the bundle carries no entitlements at all.

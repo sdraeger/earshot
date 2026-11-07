@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Live smoketest for the debug RPC server. Builds the dev app, launches it
-# with MEETINGTRANSCRIBER_DEBUG_RPC=1, drives every endpoint via mt-cli, and
+# with EARSHOT_DEBUG_RPC=1, drives every endpoint via mt-cli, and
 # asserts UI side-effects via window-size heuristics on the captured PNG.
 #
 # Useful before pushing RPC-related changes — catches things the in-process
@@ -13,12 +13,12 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SPM_DIR="$REPO_ROOT/app/MeetingTranscriber"
-APP_BUNDLE="$SPM_DIR/.build/MeetingTranscriber-Dev.app"
-APP_BINARY="$APP_BUNDLE/Contents/MacOS/MeetingTranscriber"
+SPM_DIR="$REPO_ROOT/app/Earshot"
+APP_BUNDLE="$SPM_DIR/.build/Earshot-Dev.app"
+APP_BINARY="$APP_BUNDLE/Contents/MacOS/Earshot"
 MT_CLI_DIR="$REPO_ROOT/tools/mt-cli"
 MT_CLI_BIN="$MT_CLI_DIR/.build/debug/mt-cli"
-TOKEN_FILE="$HOME/Library/Application Support/MeetingTranscriber/.rpc-token"
+TOKEN_FILE="$HOME/Library/Application Support/Earshot/.rpc-token"
 
 step() { printf "\n\033[1;34m==> %s\033[0m\n" "$1"; }
 ok()   { printf "    \033[0;32m✓\033[0m %s\n" "$1"; }
@@ -26,8 +26,8 @@ fail() { printf "    \033[0;31m✗\033[0m %s\n" "$1"; exit 1; }
 
 # --- Cleanup any prior dev instance so the rebuild picks up our binary. ---
 step "Stopping any running dev app"
-if pgrep -f MeetingTranscriber-Dev >/dev/null; then
-    pkill -f MeetingTranscriber-Dev || true
+if pgrep -f Earshot-Dev >/dev/null; then
+    pkill -f Earshot-Dev || true
     sleep 2
 fi
 
@@ -51,7 +51,7 @@ choose_signing_identity "$APP_BUNDLE"
 [ -n "$CHOSEN_IDENTITY" ] || fail "no codesigning identity in the keychain"
 ok "signing identity: $CHOSEN_IDENTITY_REASON"
 printf '%s\n' "$CHOSEN_IDENTITY_LISTING" | sed 's/^/      /'
-cp "$SPM_DIR/.build/release/MeetingTranscriber" "$APP_BINARY"
+cp "$SPM_DIR/.build/release/Earshot" "$APP_BINARY"
 # Through the shared helper: signing bare would strip the entitlements the
 # bundle was built with, and this lane launches the bundle it signs (issue #609).
 resign_deployed_bundle "$APP_BUNDLE" "$CHOSEN_IDENTITY" \
@@ -59,8 +59,8 @@ resign_deployed_bundle "$APP_BUNDLE" "$CHOSEN_IDENTITY" \
 ok "signed"
 
 # --- Launch with env var. ---
-step "Launching with MEETINGTRANSCRIBER_DEBUG_RPC=1"
-MEETINGTRANSCRIBER_DEBUG_RPC=1 open -gj "$APP_BUNDLE"
+step "Launching with EARSHOT_DEBUG_RPC=1"
+EARSHOT_DEBUG_RPC=1 open -gj "$APP_BUNDLE"
 # Poll for the listener instead of a fixed sleep.
 for _ in $(seq 1 30); do
     if lsof -i :9876 >/dev/null 2>&1; then break; fi
@@ -70,7 +70,7 @@ lsof -i :9876 >/dev/null 2>&1 || fail "server did not bind to :9876 within 6s"
 ok "listening on :9876"
 
 # Cleanup on exit.
-trap 'pkill -f MeetingTranscriber-Dev 2>/dev/null || true' EXIT
+trap 'pkill -f Earshot-Dev 2>/dev/null || true' EXIT
 
 [ -s "$TOKEN_FILE" ] || fail "token file not created"
 TOKEN=$(cat "$TOKEN_FILE")

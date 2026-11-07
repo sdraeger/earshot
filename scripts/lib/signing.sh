@@ -35,7 +35,7 @@ TIME_SENSITIVE_KEY="com.apple.developer.usernotifications.time-sensitive"
 # The dev bundle every e2e lane deploys is the Homebrew variant, so
 # resign_deployed_bundle resolves its base entitlements here rather than having
 # four lanes each spell the same path — one more place for them to drift apart.
-DEV_ENTITLEMENTS="${DEV_ENTITLEMENTS:-$_SIGNING_LIB_ROOT/app/MeetingTranscriber/Entitlements/Homebrew.entitlements}"
+DEV_ENTITLEMENTS="${DEV_ENTITLEMENTS:-$_SIGNING_LIB_ROOT/app/Earshot/Entitlements/Homebrew.entitlements}"
 
 # profile_for <bundle-id> → path, or empty when none is available.
 #
@@ -478,14 +478,14 @@ identity_sha1() {
 # The self-hosted runner's own signing identity, installed by
 # scripts/setup-self-hosted-runner.sh. Overridable so a test can point at a
 # fixture keychain.
-DEV_KEYCHAIN="${DEV_KEYCHAIN:-$HOME/Library/Keychains/meetingtranscriber-dev.keychain-db}"
-DEV_CERT_NAME="${DEV_CERT_NAME:-MeetingTranscriberDevSelfHosted}"
+DEV_KEYCHAIN="${DEV_KEYCHAIN:-$HOME/Library/Keychains/earshot-dev.keychain-db}"
+DEV_CERT_NAME="${DEV_CERT_NAME:-EarshotDevSelfHosted}"
 
 # dev_signing_identity → SHA-1 of that certificate, empty when it is not there.
 #
 # Resolved from the KEYCHAIN, which is where the setup script installs it and
 # where codesign reads it from when signing. The lanes used to hash the export
-# copy the setup script also leaves in /tmp/meetingtranscriber-setup — and macOS
+# copy the setup script also leaves in /tmp/earshot-setup — and macOS
 # discards /tmp across a reboot, after which a lane aborted with "run
 # scripts/setup-self-hosted-runner.sh first" although the keychain and the
 # identity were both intact. Nothing depends on that copy any more; it is an

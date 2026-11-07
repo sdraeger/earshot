@@ -3,7 +3,7 @@ import CoreAudio
 import Foundation
 import os.log
 
-private let logger = Logger(subsystem: "com.meetingtranscriber.audiotap", category: "MicEngineSession")
+private let logger = Logger(subsystem: "com.earshot.audiotap", category: "MicEngineSession")
 
 /// Everything in the microphone path that touches `AVAudioEngine` or CoreAudio,
 /// behind a protocol so the rest of `MicCaptureHandler` can be tested without

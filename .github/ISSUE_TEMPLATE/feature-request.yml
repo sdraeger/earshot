@@ -60,7 +60,7 @@ body:
       description: |
         Only useful if you answered the question above. To produce one:
 
-        1. Open Meeting Transcriber → **Settings → Advanced → Diagnostics**
+        1. Open Earshot → **Settings → Advanced → Diagnostics**
         2. Toggle **Verbose diagnostic logging** ON
         3. Reproduce what you observed
         4. Click **Export diagnostics…** and Finder will reveal a `.log` file

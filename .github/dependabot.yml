@@ -1,7 +1,7 @@
 version: 2
 updates:
   - package-ecosystem: "swift"
-    directory: "/app/MeetingTranscriber"
+    directory: "/app/Earshot"
     schedule:
       interval: "weekly"
 

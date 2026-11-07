@@ -5,8 +5,8 @@ speakers.json
 .DS_Store
 
 # Swift build artifacts
-app/MeetingTranscriber/.build/
-app/MeetingTranscriber/.build-appstore/
+app/Earshot/.build/
+app/Earshot/.build-appstore/
 tools/audiotap/.build/
 
 # Release build artifacts

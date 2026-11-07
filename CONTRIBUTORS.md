@@ -1,6 +1,6 @@
 # Contributors
 
-Thanks to everyone who has helped build Meeting Transcriber with code, bug reports, testing, ideas and documentation ([emoji key](https://allcontributors.org/en/reference/emoji-key/)):
+Thanks to everyone who has helped build Earshot with code, bug reports, testing, ideas and documentation ([emoji key](https://allcontributors.org/en/reference/emoji-key/)):
 
 <!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
 <!-- prettier-ignore-start -->

@@ -1,9 +1,9 @@
-# Meeting Transcriber
+# Earshot
 
 > **The local-first meeting transcriber for macOS.** Records Teams, Zoom, and Webex calls, transcribes them on-device with Whisper / Parakeet, separates speakers, and turns the result into Markdown meeting notes using your own Claude CLI or any local LLM. **No cloud. No subscription. No audio ever leaves your Mac.**
 
 <p align="center">
-  <img src="docs/hero.gif" alt="Meeting Transcriber turning a Teams call into Markdown meeting notes on-device" width="860">
+  <img src="docs/hero.gif" alt="Earshot turning a Teams call into Markdown meeting notes on-device" width="860">
 </p>
 
 <p align="center">
@@ -19,9 +19,9 @@
 
 Cloud meeting recorders (Otter, Fireflies, Granola, tl;dv) work great, until you remember that every word from every meeting goes to a third-party server. For a lot of teams (legal, healthcare, M&A, anything under NDA, or just folks who'd rather not) that's a non-starter.
 
-Meeting Transcriber runs the entire pipeline (recording, transcription, speaker diarization, summarization) on your Mac. No account, no upload, no monthly bill.
+Earshot runs the entire pipeline (recording, transcription, speaker diarization, summarization) on your Mac. No account, no upload, no monthly bill.
 
-|                                | Cloud transcribers | **Meeting Transcriber** |
+|                                | Cloud transcribers | **Earshot** |
 |--------------------------------|:------------------:|:-----------------------:|
 | Audio leaves your machine      | Yes                | **No**                  |
 | Recurring cost                 | $10–30 / month     | **Free**                |
@@ -34,7 +34,7 @@ Meeting Transcriber runs the entire pipeline (recording, transcription, speaker 
 
 ```bash
 brew tap pasrom/meeting-transcriber
-brew install --cask meeting-transcriber
+brew install --cask earshot
 ```
 
 > Homebrew 6.0+ may flag the third-party tap as untrusted. If so, run `brew trust --tap pasrom/meeting-transcriber` before installing.
@@ -93,7 +93,7 @@ flowchart TD
 - **Speaker recognition** — Voice embeddings stored across meetings, matched via cosine similarity
 - **VAD preprocessing** — Optional silence trimming via FluidAudio Silero v6 before transcription, with automatic timestamp remapping
 - **AI meeting notes generation** — Structured Markdown via [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code), OpenAI-compatible APIs (Ollama, LM Studio, etc.), or disabled (save transcript only)
-- **Configurable meeting notes prompt** — Custom prompt file support (`~/Library/Application Support/MeetingTranscriber/protocol_prompt.md`) with `{LANGUAGE}`, `{MEETING_DATE}` (`YYYY-MM-DD`), and `{MEETING_TIME}` (`HH:mm`) variables; recordings include authoritative metadata, while imports and recovery jobs resolve time placeholders to `Unknown`
+- **Configurable meeting notes prompt** — Custom prompt file support (`~/Library/Application Support/Earshot/protocol_prompt.md`) with `{LANGUAGE}`, `{MEETING_DATE}` (`YYYY-MM-DD`), and `{MEETING_TIME}` (`HH:mm`) variables; recordings include authoritative metadata, while imports and recovery jobs resolve time placeholders to `Unknown`
 - **Manual recording** — Record any app via app picker, not just detected meetings
 - **Multi-format input** — Supports WAV, MP3, M4A, MP4, FLAC, plus the phone and messenger voice formats AMR, 3GP/3G2 and OPUS/OGG; MKV and WebM additionally need ffmpeg
 - **Update checker** — Notifies when a new version is available
@@ -141,7 +141,7 @@ The app detects ffmpeg automatically. Status is shown in Settings → About.
 
 ```bash
 brew tap pasrom/meeting-transcriber
-brew install --cask meeting-transcriber
+brew install --cask earshot
 ```
 
 > **Tap trust:** Homebrew 6.0 added [tap trust](https://docs.brew.sh/Tap-Trust) for third-party taps. During the 6.0.x transition non-official taps are still allowed by default (you may just see a warning); enforcement is opt-in via `HOMEBREW_REQUIRE_TAP_TRUST` and becomes mandatory in a later release. If your Homebrew enforces it, run `brew trust --tap pasrom/meeting-transcriber` before `brew install --cask`.
@@ -150,7 +150,7 @@ brew install --cask meeting-transcriber
 
 ```bash
 brew tap pasrom/meeting-transcriber
-brew install --cask meeting-transcriber@beta
+brew install --cask earshot@beta
 ```
 
 > Note: The stable and beta casks conflict — uninstall one before installing the other.
@@ -202,7 +202,7 @@ A red exclamation mark in the bottom-right corner is overlaid on top of the curr
 - **Screen Recording** — denied, or granted but `CGWindowListCopyWindowInfo` returns no window titles (TCC state out of sync)
 - **Accessibility** — denied, or granted but the AX API refuses to read Teams participant/mute info
 
-The health check distinguishes *denied* from *broken*. "Broken" usually means the permission is toggled on in System Settings but macOS hasn't actually wired it through — the fix is to toggle the permission off and on again for Meeting Transcriber under **System Settings → Privacy & Security**. Open the menu bar dropdown to see which specific permission is affected; a notification is also posted when the state changes.
+The health check distinguishes *denied* from *broken*. "Broken" usually means the permission is toggled on in System Settings but macOS hasn't actually wired it through — the fix is to toggle the permission off and on again for Earshot under **System Settings → Privacy & Security**. Open the menu bar dropdown to see which specific permission is affected; a notification is also posted when the state changes.
 
 ### Record-only mode badge
 
@@ -276,7 +276,7 @@ When the server cannot be reached, exits, or rejects a request, the reason and t
 
 ## Output
 
-Files are saved to `~/Library/Application Support/MeetingTranscriber/protocols/`:
+Files are saved to `~/Library/Application Support/Earshot/protocols/`:
 
 | File | Content |
 |------|---------|
@@ -311,7 +311,7 @@ If a recording's `_app.wav` is silent or unexpectedly quiet, enable verbose audi
 
 1. Open **Settings → Diagnostics** and turn on **Verbose Audio Logging**.
 2. Reproduce the failing recording.
-3. Open **Console.app**, filter by subsystem `com.meetingtranscriber.audiotap`, and look for `[debug]` lines:
+3. Open **Console.app**, filter by subsystem `com.earshot.audiotap`, and look for `[debug]` lines:
    - `[debug] Tap target: pid=… exe=… bundle=… audioObjectID=…` — which process the tap targeted
    - `[debug] Default output device: name=… uid=… transport=… rate=…` — output device at start
    - `[debug] App audio RMS (5s): …dBFS, samples=…, totalBytes=…` — every 5 seconds; **tells you live whether the tap is delivering real audio (-40 dBFS or higher) or near-silence (≤ -90 dBFS)**
@@ -339,7 +339,7 @@ Pull requests run unit tests, lint, and analyzer in [`ci.yml`](.github/workflows
 
 ## Contributors
 
-Meeting Transcriber is built with help from many people: code, bug reports, testing, ideas and documentation. Some of the most active so far:
+Earshot is built with help from many people: code, bug reports, testing, ideas and documentation. Some of the most active so far:
 
 <!-- CONTRIBUTORS-PREVIEW:START count=14 - generated from .all-contributorsrc by scripts/update-contributors.sh --render -->
 <a href="https://github.com/pasrom"><img src="https://avatars.githubusercontent.com/u/32713472?v=4&amp;s=80" width="40" height="40" alt="pasrom" title="pasrom"/></a>

@@ -76,14 +76,14 @@ expect a_file_url_percent_encodes_each_segment "file:///tmp/Application%20Suppor
 expect foundation_dates_count_from_2001 0 "$(upgrade_foundation_date 978307200)"
 
 JOB="$(upgrade_v081_pipeline_job 11111111-2222-3333-4444-555555555555 "A Title" transcribing \
-    "/x/Application Support/MeetingTranscriber/recordings/s_mix.wav" 1800000000)"
+    "/x/Application Support/Earshot/recordings/s_mix.wav" 1800000000)"
 # Exactly the keys v0.8.1's PipelineJob encoded for such a job, and none of the
 # ones added since: a seed carrying a newer key would test today's format.
 expect the_job_has_exactly_the_v081_keys \
     "appName autoSkipNaming enqueuedAt id includeFullTranscriptInProtocol meetingStartTime meetingTitle micDelay mixPath participants saveRawTranscriptSeparately state warnings" \
     "$(jq -r 'keys | join(" ")' <<<"$JOB")"
 expect the_job_mix_path_is_a_file_url \
-    "file:///x/Application%20Support/MeetingTranscriber/recordings/s_mix.wav" "$(jq -r .mixPath <<<"$JOB")"
+    "file:///x/Application%20Support/Earshot/recordings/s_mix.wav" "$(jq -r .mixPath <<<"$JOB")"
 expect the_job_dates_are_foundation_seconds "821692800 821692740" \
     "$(jq -r '"\(.enqueuedAt) \(.meetingStartTime)"' <<<"$JOB")"
 

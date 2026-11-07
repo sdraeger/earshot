@@ -58,7 +58,7 @@ _require() {
     DEVELOPER_ID="$developer_id" \
     DEV_KEYCHAIN="$keychain" \
     E2E_SIGNING_KEYCHAIN="${4:-}" \
-    DEV_CERT_NAME="MeetingTranscriberDevSelfHosted" \
+    DEV_CERT_NAME="EarshotDevSelfHosted" \
         bash -c 'set -uo pipefail
                  source "$SIGNING_LIB"
                  if require_signing_identity 2>"$STUB_IDENTITIES.err"; then
@@ -110,7 +110,7 @@ test_developer_id_that_resolves_is_accepted() {
 test_unresolvable_developer_id_falls_back_to_the_dev_keychain() {
     local dir; dir="$(mktemp -d)" rc=0
     _write_security_stub "$dir"
-    printf '  1) %s "MeetingTranscriberDevSelfHosted"\n' "$HASH_B" > "$dir/identities"
+    printf '  1) %s "EarshotDevSelfHosted"\n' "$HASH_B" > "$dir/identities"
     : > "$dir/dev.keychain-db"
     check fallback ok "$HASH_B" "$dir/dev.keychain-db" \
         _require "$dir" "Developer ID Application: Ghost (TEAM)" "$dir/dev.keychain-db" || rc=1
@@ -133,7 +133,7 @@ test_an_ambiguous_developer_id_refuses_instead_of_falling_back() {
     local dir name; dir="$(mktemp -d)" rc=0
     name="Developer ID Application: Someone (TEAM)"
     _write_security_stub "$dir"
-    printf '  1) %s "%s"\n  2) %s "%s (renewed)"\n  3) %s "MeetingTranscriberDevSelfHosted"\n' \
+    printf '  1) %s "%s"\n  2) %s "%s (renewed)"\n  3) %s "EarshotDevSelfHosted"\n' \
         "$HASH_A" "$name" "$HASH_B" "$name" "$HASH_A" > "$dir/identities"
     : > "$dir/dev.keychain-db"
     check ambiguous_devid refused "" "" \
@@ -154,7 +154,7 @@ test_an_ambiguous_developer_id_refuses_instead_of_falling_back() {
 test_dev_keychain_identity_is_accepted() {
     local dir; dir="$(mktemp -d)" rc=0
     _write_security_stub "$dir"
-    printf '  1) %s "MeetingTranscriberDevSelfHosted"\n' "$HASH_B" > "$dir/identities"
+    printf '  1) %s "EarshotDevSelfHosted"\n' "$HASH_B" > "$dir/identities"
     : > "$dir/dev.keychain-db"
     check dev_keychain ok "$HASH_B" "$dir/dev.keychain-db" \
         _require "$dir" "" "$dir/dev.keychain-db" || rc=1
@@ -179,7 +179,7 @@ test_no_route_at_all_is_refused_with_both_remedies() {
 test_ambiguous_dev_identity_is_not_blamed_on_a_missing_setup() {
     local dir; dir="$(mktemp -d)" rc=0
     _write_security_stub "$dir"
-    printf '  1) %s "MeetingTranscriberDevSelfHosted"\n  2) %s "MeetingTranscriberDevSelfHosted (old)"\n' \
+    printf '  1) %s "EarshotDevSelfHosted"\n  2) %s "EarshotDevSelfHosted (old)"\n' \
         "$HASH_A" "$HASH_B" > "$dir/identities"
     : > "$dir/dev.keychain-db"
     check ambiguous refused "" "" _require "$dir" "" "$dir/dev.keychain-db" || rc=1

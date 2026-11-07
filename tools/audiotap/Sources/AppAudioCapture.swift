@@ -2,7 +2,7 @@ import CoreAudio
 import Foundation
 import os
 
-private let logger = Logger(subsystem: "com.meetingtranscriber.audiotap", category: "AppAudioCapture")
+private let logger = Logger(subsystem: "com.earshot.audiotap", category: "AppAudioCapture")
 
 /// Captures app audio via CATapDescription (macOS 14.2+, CoreAudio).
 /// No Screen Recording permission needed — only Audio Capture.
@@ -136,7 +136,7 @@ public class AppAudioCapture: @unchecked Sendable {
     /// chain of HAL calls through the same coreaudiod that can stop answering,
     /// and on the main queue a stuck one takes the whole app down.
     let restartQueue = DispatchQueue(
-        label: "com.meetingtranscriber.audiotap.app-restart",
+        label: "com.earshot.audiotap.app-restart",
         qos: .userInitiated,
     )
 
@@ -355,7 +355,7 @@ public class AppAudioCapture: @unchecked Sendable {
         // handle is included; for native apps the array is a single PID.
         let tap = CATapDescription(stereoMixdownOfProcesses: processObjectIDs)
         tap.uuid = UUID()
-        tap.name = "MeetingTranscriber-tap"
+        tap.name = "Earshot-tap"
         tap.isPrivate = true
         tap.muteBehavior = .unmuted
 

@@ -2,7 +2,7 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Persist `os.Logger` output to file-based logs in `~/Library/Logs/MeetingTranscriber/` so diagnostic data survives longer than the macOS unified-log retention window (~1 hour for `.info`-level entries). Existing `Logger` call sites remain unchanged.
+**Goal:** Persist `os.Logger` output to file-based logs in `~/Library/Logs/Earshot/` so diagnostic data survives longer than the macOS unified-log retention window (~1 hour for `.info`-level entries). Existing `Logger` call sites remain unchanged.
 
 **Architecture:** A background `log stream` subprocess writes app-subsystem entries to a daily-rotated text file. `DiagnosticExporter` is taught to read from these files (fallback to `OSLogStore` only when file source is empty/missing). A 30-day cleanup runs on app launch.
 
@@ -33,13 +33,13 @@ git checkout -b feat/persistent-diagnostic-log origin/main
 ### Task 1.1: Define paths + cleanup policy as pure helpers
 
 **Files:**
-- Create: `app/MeetingTranscriber/Sources/PersistentDiagnosticLog.swift`
-- Test: `app/MeetingTranscriber/Tests/PersistentDiagnosticLogTests.swift`
+- Create: `app/Earshot/Sources/PersistentDiagnosticLog.swift`
+- Test: `app/Earshot/Tests/PersistentDiagnosticLogTests.swift`
 
 **Step 1: Write failing tests for pure helpers**
 
 ```swift
-@testable import MeetingTranscriber
+@testable import Earshot
 import XCTest
 
 final class PersistentDiagnosticLogTests: XCTestCase {
@@ -72,7 +72,7 @@ final class PersistentDiagnosticLogTests: XCTestCase {
 **Step 2: Run → fail**
 
 ```bash
-cd app/MeetingTranscriber && swift test --filter PersistentDiagnosticLogTests
+cd app/Earshot && swift test --filter PersistentDiagnosticLogTests
 ```
 
 Expected: missing-symbol errors.
@@ -85,12 +85,12 @@ Create `Sources/PersistentDiagnosticLog.swift`:
 import Foundation
 
 /// Manages a rolling on-disk mirror of `os.Logger` output for the
-/// `com.meetingtranscriber*` subsystems. Files are written by a background
+/// `com.earshot*` subsystems. Files are written by a background
 /// `log stream` subprocess (see `start(...)` / `stop()`) and rotated daily.
 /// `DiagnosticExporter` reads from these files when present, so users can
 /// reproduce a bug, wait, and still export hours-old logs.
 enum PersistentDiagnosticLog {
-    /// Where rotated log files live. `~/Library/Logs/MeetingTranscriber/`
+    /// Where rotated log files live. `~/Library/Logs/Earshot/`
     /// follows Apple's convention and is what `Console.app`'s "Log Reports"
     /// tab surfaces. Not auto-cleaned by macOS.
     static var logDirectory: URL {
@@ -98,7 +98,7 @@ enum PersistentDiagnosticLog {
             .urls(for: .libraryDirectory, in: .userDomainMask)
             .first!
             .appendingPathComponent("Logs", isDirectory: true)
-            .appendingPathComponent("MeetingTranscriber", isDirectory: true)
+            .appendingPathComponent("Earshot", isDirectory: true)
         try? FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
         return logs
     }
@@ -133,8 +133,8 @@ enum PersistentDiagnosticLog {
 **Step 5: Commit**
 
 ```bash
-git add app/MeetingTranscriber/Sources/PersistentDiagnosticLog.swift \
-        app/MeetingTranscriber/Tests/PersistentDiagnosticLogTests.swift
+git add app/Earshot/Sources/PersistentDiagnosticLog.swift \
+        app/Earshot/Tests/PersistentDiagnosticLogTests.swift
 git commit -m "feat(app): add PersistentDiagnosticLog path + cleanup policy helpers"
 ```
 
@@ -143,8 +143,8 @@ git commit -m "feat(app): add PersistentDiagnosticLog path + cleanup policy help
 ### Task 1.2: Cleanup of expired files
 
 **Files:**
-- Modify: `app/MeetingTranscriber/Sources/PersistentDiagnosticLog.swift`
-- Test: `app/MeetingTranscriber/Tests/PersistentDiagnosticLogTests.swift`
+- Modify: `app/Earshot/Sources/PersistentDiagnosticLog.swift`
+- Test: `app/Earshot/Tests/PersistentDiagnosticLogTests.swift`
 
 **Step 1: Failing test for cleanup**
 
@@ -203,8 +203,8 @@ static func cleanup(in directory: URL = logDirectory, retentionDays: Int = defau
 **Step 3: Test → pass + commit**
 
 ```bash
-git add app/MeetingTranscriber/Sources/PersistentDiagnosticLog.swift \
-        app/MeetingTranscriber/Tests/PersistentDiagnosticLogTests.swift
+git add app/Earshot/Sources/PersistentDiagnosticLog.swift \
+        app/Earshot/Tests/PersistentDiagnosticLogTests.swift
 git commit -m "feat(app): clean up persistent diagnostic logs older than 30 days"
 ```
 
@@ -213,7 +213,7 @@ git commit -m "feat(app): clean up persistent diagnostic logs older than 30 days
 ### Task 1.3: Background `log stream` subprocess management
 
 **Files:**
-- Modify: `app/MeetingTranscriber/Sources/PersistentDiagnosticLog.swift`
+- Modify: `app/Earshot/Sources/PersistentDiagnosticLog.swift`
 
 **Step 1: Manual verification only** — subprocess + live unified-log streaming can't be reliably unit-tested.
 
@@ -246,7 +246,7 @@ extension PersistentDiagnosticLog {
             process.executableURL = URL(fileURLWithPath: "/usr/bin/log")
             process.arguments = [
                 "stream",
-                "--predicate", "subsystem CONTAINS 'com.meetingtranscriber'",
+                "--predicate", "subsystem CONTAINS 'com.earshot'",
                 "--style", "syslog",
                 "--info",
             ]
@@ -288,15 +288,15 @@ extension PersistentDiagnosticLog {
 **Step 3: Build + smoke test**
 
 ```bash
-cd app/MeetingTranscriber && swift build
+cd app/Earshot && swift build
 ```
 
-Manual: in `MeetingTranscriberApp.swift`, temporarily call `PersistentDiagnosticLog.startForToday()` at launch; verify `~/Library/Logs/MeetingTranscriber/diagnostics-YYYY-MM-DD.log` grows when other parts of the app log.
+Manual: in `EarshotApp.swift`, temporarily call `PersistentDiagnosticLog.startForToday()` at launch; verify `~/Library/Logs/Earshot/diagnostics-YYYY-MM-DD.log` grows when other parts of the app log.
 
 **Step 4: Commit**
 
 ```bash
-git add app/MeetingTranscriber/Sources/PersistentDiagnosticLog.swift
+git add app/Earshot/Sources/PersistentDiagnosticLog.swift
 git commit -m "feat(app): background log-stream subprocess writes to rotated file"
 ```
 
@@ -307,8 +307,8 @@ git commit -m "feat(app): background log-stream subprocess writes to rotated fil
 ### Task 2.1: Start streamer at launch, stop at shutdown
 
 **Files:**
-- Modify: `app/MeetingTranscriber/Sources/AppState.swift`
-- Modify: `app/MeetingTranscriber/Sources/MeetingTranscriberApp.swift` (cleanup hook)
+- Modify: `app/Earshot/Sources/AppState.swift`
+- Modify: `app/Earshot/Sources/EarshotApp.swift` (cleanup hook)
 
 **Step 1: AppState owns the streamer**
 
@@ -342,7 +342,7 @@ Add a `shutdown()` method on AppState:
 
 **Step 2: Wire to scene lifecycle**
 
-In `MeetingTranscriberApp.swift`, observe `NSApplicationWillTerminate` (or `.scenePhase` becoming `.background`):
+In `EarshotApp.swift`, observe `NSApplicationWillTerminate` (or `.scenePhase` becoming `.background`):
 
 ```swift
 .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
@@ -354,15 +354,15 @@ In `MeetingTranscriberApp.swift`, observe `NSApplicationWillTerminate` (or `.sce
 
 ```bash
 ./scripts/run_app.sh
-# Observe: ~/Library/Logs/MeetingTranscriber/diagnostics-2026-05-05.log grows in real time.
+# Observe: ~/Library/Logs/Earshot/diagnostics-2026-05-05.log grows in real time.
 # Quit the app via menu → file should be closed cleanly.
 ```
 
 **Step 4: Commit**
 
 ```bash
-git add app/MeetingTranscriber/Sources/AppState.swift \
-        app/MeetingTranscriber/Sources/MeetingTranscriberApp.swift
+git add app/Earshot/Sources/AppState.swift \
+        app/Earshot/Sources/EarshotApp.swift
 git commit -m "feat(app): start/stop persistent log streamer with AppState lifecycle"
 ```
 
@@ -373,8 +373,8 @@ git commit -m "feat(app): start/stop persistent log streamer with AppState lifec
 ### Task 3.1: Read from persistent log when available
 
 **Files:**
-- Modify: `app/MeetingTranscriber/Sources/DiagnosticExporter.swift`
-- Test: `app/MeetingTranscriber/Tests/DiagnosticExporterTests.swift`
+- Modify: `app/Earshot/Sources/DiagnosticExporter.swift`
+- Test: `app/Earshot/Tests/DiagnosticExporterTests.swift`
 
 **Step 1: Add a file-source path**
 
@@ -478,7 +478,7 @@ func test_exportFromFile_writesHeaderPlusLines() throws {
     fmt.dateFormat = "MMM d HH:mm:ss"
     fmt.locale = Locale(identifier: "en_US_POSIX")
     let stamp = fmt.string(from: now)
-    let line = "\(stamp) MeetingTranscriber[1234]: hello world"
+    let line = "\(stamp) Earshot[1234]: hello world"
     try line.write(to: tmpSrc, atomically: true, encoding: .utf8)
 
     let count = try DiagnosticExporter.exportFromFile(
@@ -487,7 +487,7 @@ func test_exportFromFile_writesHeaderPlusLines() throws {
     )
     XCTAssertEqual(count, 1)
     let written = try String(contentsOf: tmpDst, encoding: .utf8)
-    XCTAssertTrue(written.contains("MeetingTranscriber 1.0"))
+    XCTAssertTrue(written.contains("Earshot 1.0"))
     XCTAssertTrue(written.contains("hello world"))
 }
 ```
@@ -495,8 +495,8 @@ func test_exportFromFile_writesHeaderPlusLines() throws {
 **Step 4: Commit**
 
 ```bash
-git add app/MeetingTranscriber/Sources/DiagnosticExporter.swift \
-        app/MeetingTranscriber/Tests/DiagnosticExporterTests.swift
+git add app/Earshot/Sources/DiagnosticExporter.swift \
+        app/Earshot/Tests/DiagnosticExporterTests.swift
 git commit -m "feat(app): DiagnosticExporter reads persistent file when available"
 ```
 
@@ -507,9 +507,9 @@ git commit -m "feat(app): DiagnosticExporter reads persistent file when availabl
 ### Task 4.1: `#if !APPSTORE` gates around subprocess code
 
 **Files:**
-- Modify: `app/MeetingTranscriber/Sources/PersistentDiagnosticLog.swift`
-- Modify: `app/MeetingTranscriber/Sources/AppState.swift`
-- Modify: `app/MeetingTranscriber/Sources/DiagnosticExporter.swift`
+- Modify: `app/Earshot/Sources/PersistentDiagnosticLog.swift`
+- Modify: `app/Earshot/Sources/AppState.swift`
+- Modify: `app/Earshot/Sources/DiagnosticExporter.swift`
 
 **Step 1: Wrap subprocess sections**
 
@@ -529,7 +529,7 @@ In `DiagnosticExporter.swift`, the file-source path is fine to keep universal �
 **Step 3: Commit**
 
 ```bash
-git add app/MeetingTranscriber/Sources/
+git add app/Earshot/Sources/
 git commit -m "build(app): gate persistent-log subprocess behind !APPSTORE"
 ```
 
@@ -540,7 +540,7 @@ git commit -m "build(app): gate persistent-log subprocess behind !APPSTORE"
 ### Task 5.1: "Open Diagnostic Logs Folder" button
 
 **Files:**
-- Modify: `app/MeetingTranscriber/Sources/Settings/AdvancedSettingsView.swift`
+- Modify: `app/Earshot/Sources/Settings/AdvancedSettingsView.swift`
 
 A small UX win: a button next to "Export Diagnostics…" that reveals the persistent-log directory in Finder. Lets users browse historical logs without exporting a 30-min snapshot.
 
@@ -553,7 +553,7 @@ Button("Open Diagnostic Logs Folder") {
 Commit:
 
 ```bash
-git add app/MeetingTranscriber/Sources/Settings/AdvancedSettingsView.swift
+git add app/Earshot/Sources/Settings/AdvancedSettingsView.swift
 git commit -m "feat(app): add 'Open Diagnostic Logs Folder' button in Advanced settings"
 ```
 
@@ -566,7 +566,7 @@ git push -u origin feat/persistent-diagnostic-log
 gh pr create --title "feat(app): persistent file-based diagnostic logs (~30 day retention)" --body "$(cat <<'EOF'
 ## Summary
 
-Persistent file-based diagnostic logs that survive longer than the macOS unified-log retention window (~1 hour for `.info`-level entries). A background `log stream` subprocess mirrors the `com.meetingtranscriber*` subsystems to a daily-rotated file under `~/Library/Logs/MeetingTranscriber/`. Files older than 30 days are cleaned up on app launch.
+Persistent file-based diagnostic logs that survive longer than the macOS unified-log retention window (~1 hour for `.info`-level entries). A background `log stream` subprocess mirrors the `com.earshot*` subsystems to a daily-rotated file under `~/Library/Logs/Earshot/`. Files older than 30 days are cleaned up on app launch.
 
 `DiagnosticExporter` is taught to prefer the file source over `OSLogStore`, falling back to `OSLogStore` only when no persistent file exists (e.g. App Store sandbox build, or first launch).
 
@@ -574,7 +574,7 @@ Persistent file-based diagnostic logs that survive longer than the macOS unified
 
 - [ ] Swift tests pass: `swift test --parallel`
 - [ ] Lint clean: `./scripts/lint.sh`
-- [ ] Manually: launch app, do a recording; verify `~/Library/Logs/MeetingTranscriber/diagnostics-YYYY-MM-DD.log` grows in real time
+- [ ] Manually: launch app, do a recording; verify `~/Library/Logs/Earshot/diagnostics-YYYY-MM-DD.log` grows in real time
 - [ ] Wait > 1 hour, click Export Diagnostics — verify the exported `.log` still contains the older entries
 - [ ] Backdate one of the log files to >30 days; relaunch app; verify it gets deleted on cleanup
 - [ ] Verify App Store build (`./scripts/build_release.sh --appstore --no-notarize`) compiles and runs (subprocess gated off, falls back to OSLogStore)

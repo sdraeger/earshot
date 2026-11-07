@@ -224,20 +224,20 @@ _expect() {
 # stand-in reads. Echoes nothing; non-zero when the fixture cannot be built.
 _stage_dev_bundle_scripts() {
     local workdir="$1" root="$1/repo" spm bundle
-    spm="$root/app/MeetingTranscriber"
-    bundle="$spm/.build/MeetingTranscriber-Dev.app"
+    spm="$root/app/Earshot"
+    bundle="$spm/.build/Earshot-Dev.app"
     mkdir -p "$root/scripts/lib" "$root/licenses" "$root/tools/mt-cli" \
         "$spm/Sources" "$spm/Entitlements" "$spm/.build/release" "$bundle/Contents/MacOS" || return 1
     cp "$REPO_ROOT/scripts/run_app.sh" "$REPO_ROOT/scripts/test_rpc.sh" "$root/scripts/" || return 1
     cp "$REPO_ROOT"/scripts/lib/*.sh "$root/scripts/lib/" || return 1
-    cp "$REPO_ROOT/app/MeetingTranscriber/Sources/Info.plist" "$spm/Sources/" || return 1
-    cp "$REPO_ROOT/app/MeetingTranscriber/Entitlements/Homebrew.entitlements" "$spm/Entitlements/" || return 1
+    cp "$REPO_ROOT/app/Earshot/Sources/Info.plist" "$spm/Sources/" || return 1
+    cp "$REPO_ROOT/app/Earshot/Entitlements/Homebrew.entitlements" "$spm/Entitlements/" || return 1
     ln -s "$STUB_HARNESS/fetch-localvqe-model.sh" "$root/scripts/fetch-localvqe-model.sh" || return 1
     printf '0.0.0\n' > "$root/VERSION"
     printf 'stand-in licence\n' > "$root/licenses/Test-LICENSE.txt"
-    printf 'previous build\n' > "$bundle/Contents/MacOS/MeetingTranscriber"
-    printf 'fresh build\n' > "$spm/.build/release/MeetingTranscriber"
-    chmod +x "$bundle/Contents/MacOS/MeetingTranscriber" "$spm/.build/release/MeetingTranscriber"
+    printf 'previous build\n' > "$bundle/Contents/MacOS/Earshot"
+    printf 'fresh build\n' > "$spm/.build/release/Earshot"
+    chmod +x "$bundle/Contents/MacOS/Earshot" "$spm/.build/release/Earshot"
 }
 
 # Runs one of the staged scripts with the stand-ins first on PATH; its output
@@ -249,7 +249,7 @@ _run_dev_bundle_script() {
     PATH="$STUB_HARNESS:$STUB_CODESIGN:$STUB_SECURITY:$PATH" \
     SECURITY_IDENTITIES="$workdir/identities.txt" \
     STUB_LEAF_DER="$workdir/leaf.der" \
-    STUB_EXECUTABLE="$root/app/MeetingTranscriber/.build/MeetingTranscriber-Dev.app/Contents/MacOS/MeetingTranscriber" \
+    STUB_EXECUTABLE="$root/app/Earshot/.build/Earshot-Dev.app/Contents/MacOS/Earshot" \
     CODESIGN_CALLS="$workdir/codesign.log" \
         bash "$root/scripts/$script" "$@" > "$workdir/run.log" 2>&1
 }
@@ -347,7 +347,7 @@ test_takes_the_first_identity_when_no_developer_id_exists() {
     workdir="$(mktemp -d)"
     bundle="$(_make_bundle "$workdir")"
     _keychain_lists "$workdir" \
-        "$SELF_SIGNED \"MeetingTranscriberDevSelfHosted\"" \
+        "$SELF_SIGNED \"EarshotDevSelfHosted\"" \
         "$APPLE_DEV \"Apple Development: Someone (ABCDE12345)\""
 
     report="$(_choose "$workdir" "$bundle")"
@@ -356,7 +356,7 @@ test_takes_the_first_identity_when_no_developer_id_exists() {
     [ "$status" -eq 0 ] || { echo "  choose_signing_identity exited $status" >&2; rc=1; }
     _expect "$report" identity "$SELF_SIGNED" || rc=1
     _expect "$report" reason "no Developer ID Application certificate exists, took the first identity" || rc=1
-    _expect "$report" listing "1) $SELF_SIGNED \"MeetingTranscriberDevSelfHosted\"" || rc=1
+    _expect "$report" listing "1) $SELF_SIGNED \"EarshotDevSelfHosted\"" || rc=1
     _expect "$report" stdout "$NOTE" || rc=1
     rm -rf "$workdir"
     return "$rc"
@@ -552,7 +552,7 @@ test_prepare_signing_resolves_the_same_developer_id() {
     bundle="$(_make_bundle "$workdir")"
     mkdir -p "$workdir/profiles"
     printf 'stand-in for a provisioning profile' > "$workdir/profiles/com.example.test.provisionprofile"
-    cp "$REPO_ROOT/app/MeetingTranscriber/Entitlements/Homebrew.entitlements" "$workdir/base.entitlements"
+    cp "$REPO_ROOT/app/Earshot/Entitlements/Homebrew.entitlements" "$workdir/base.entitlements"
     _keychain_lists "$workdir" \
         "$SELF_SIGNED \"Archive of Developer ID Application: Someone (TEAM)\"" \
         "$DEVID_A \"Developer ID Application: Someone (TEAM)\""

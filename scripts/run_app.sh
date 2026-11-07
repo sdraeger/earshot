@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Launch the Meeting Transcriber menu bar app.
+# Launch the Earshot menu bar app.
 # Builds an .app bundle so macOS APIs (notifications, etc.) work correctly.
 #
 # --build-only: Build the bundle but skip `open -W`. Used by the Pattern-C
@@ -22,17 +22,17 @@ TRANSCRIBER_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 export TRANSCRIBER_ROOT
 
-SPM_DIR="$TRANSCRIBER_ROOT/app/MeetingTranscriber"
-BUILD_BINARY="$SPM_DIR/.build/release/MeetingTranscriber"
-APP_BUNDLE="$SPM_DIR/.build/MeetingTranscriber-Dev.app"
+SPM_DIR="$TRANSCRIBER_ROOT/app/Earshot"
+BUILD_BINARY="$SPM_DIR/.build/release/Earshot"
+APP_BUNDLE="$SPM_DIR/.build/Earshot-Dev.app"
 APP_MACOS="$APP_BUNDLE/Contents/MacOS"
-APP_BINARY="$APP_MACOS/MeetingTranscriber"
+APP_BINARY="$APP_MACOS/Earshot"
 INFO_PLIST="$SPM_DIR/Sources/Info.plist"
 # shellcheck source=lib/bundle-ids.sh
 source "$SCRIPT_DIR/lib/bundle-ids.sh"
 
 # Always rebuild to pick up code changes
-echo "Building Meeting Transcriber app..."
+echo "Building Earshot app..."
 cd "$SPM_DIR"
 SWIFT_BUILD_FLAGS=(-c release)
 # Opt-in fault-injection build for the mic-device-change e2e lane only
@@ -133,7 +133,7 @@ else
     echo "  with a certificate. TCC binds its grants to that certificate, so without one"
     echo "  no grant made to this build survives the next rebuild."
     # Ad-hoc sign the bundle anyway. The linker's own signature covers the
-    # executable alone, under the identifier `MeetingTranscriber` and with no
+    # executable alone, under the identifier `Earshot` and with no
     # Info.plist bound, so TCC never saw the bundle ID: the app was missing
     # from System Settings' privacy lists and could not be granted anything.
     codesign --force --sign - --entitlements "$SIGNING_ENTITLEMENTS" "$APP_BUNDLE" \
@@ -147,7 +147,7 @@ if [ "$BUILD_ONLY" = true ]; then
     exit 0
 fi
 
-echo "Starting Meeting Transcriber..."
+echo "Starting Earshot..."
 echo "  TRANSCRIBER_ROOT=$TRANSCRIBER_ROOT"
 
 # Launch via `open` so macOS LaunchServices properly registers the app

@@ -1,7 +1,7 @@
 import Foundation
 import os.log
 
-private let logger = Logger(subsystem: "com.meetingtranscriber.audiotap", category: "audio")
+private let logger = Logger(subsystem: "com.earshot.audiotap", category: "audio")
 
 /// Per-buffer level + dBFS-energy logging helpers driven from the
 /// CoreAudio IOProc. Extracted from `AppAudioCapture.swift` to keep the

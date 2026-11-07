@@ -165,7 +165,7 @@ jobs:
         if: failure()
         run: |
           pmset -g assertions > /tmp/e2e-browser-assertions.txt 2>&1 || true
-          log show --last 5m --predicate 'subsystem == "com.meetingtranscriber.audiotap"' \
+          log show --last 5m --predicate 'subsystem == "com.earshot.audiotap"' \
             > /tmp/e2e-browser-audiotap.log 2>&1 || true
 
       - name: Upload diagnostics

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # E2E test for the per-channel signal indicator (issue #258).
 #
-# Launches the dev .app with `MEETINGTRANSCRIBER_DEBUG_FORCE_MIC_SILENT=1` so
+# Launches the dev .app with `EARSHOT_DEBUG_FORCE_MIC_SILENT=1` so
 # `AppState.micSilentActive` is set at init, then asserts via the DebugRPCServer
 # that `channelHealth.micSilent == true` in `/state`. Optionally screencaptures
 # the menubar region for visual proof.
@@ -55,8 +55,8 @@ source "$ROOT/scripts/lib/e2e-helpers.sh"
 # Ends what a timed-out earlier step left running, then records this
 # driver for the next (see e2e_register_driver).
 e2e_register_driver
-APP="$ROOT/app/MeetingTranscriber/.build/MeetingTranscriber-Dev.app"
-BIN="$APP/Contents/MacOS/MeetingTranscriber"
+APP="$ROOT/app/Earshot/.build/Earshot-Dev.app"
+BIN="$APP/Contents/MacOS/Earshot"
 MTCLI="$ROOT/tools/mt-cli/.build/debug/mt-cli"
 
 cleanup() {
@@ -91,9 +91,9 @@ bootout_stale_launchctl
 # `_SUPPRESS_AUTOWATCH=1` prevents the +3 s auto-watch trigger from running
 # `stopChannelHealthMonitoring()` which would clear the forced flag before
 # we can observe it.
-env MEETINGTRANSCRIBER_DEBUG_RPC=1 \
-    MEETINGTRANSCRIBER_DEBUG_FORCE_MIC_SILENT=1 \
-    MEETINGTRANSCRIBER_DEBUG_SUPPRESS_AUTOWATCH=1 \
+env EARSHOT_DEBUG_RPC=1 \
+    EARSHOT_DEBUG_FORCE_MIC_SILENT=1 \
+    EARSHOT_DEBUG_SUPPRESS_AUTOWATCH=1 \
     "$BIN" &
 APP_PID=$!
 
