@@ -639,7 +639,7 @@ test_run_app_says_so_when_it_leaves_the_bundle_unsigned() {
         echo "  signed with '${signed:-<nothing>}' instead of ad hoc although the keychain holds no identity" >&2
         rc=1
     fi
-    if ! grep -q 'WARNING: no codesigning identity' "$workdir/run.log"; then
+    if ! grep -q 'No codesigning identity in the keychain' "$workdir/run.log"; then
         echo "  left the bundle unsigned without saying so; the build log ends:" >&2
         tail -5 "$workdir/run.log" | sed 's/^/    /' >&2
         rc=1

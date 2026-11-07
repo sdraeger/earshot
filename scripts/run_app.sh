@@ -129,16 +129,23 @@ else
     # over as the identity), and an honest empty answer would otherwise pass
     # without a word, leaving a bundle that loses every TCC grant at the next
     # rebuild.
-    echo "  WARNING: no codesigning identity in the keychain; this bundle is not signed"
-    echo "  with a certificate. TCC binds its grants to that certificate, so without one"
-    echo "  no grant made to this build survives the next rebuild."
+    echo "  No codesigning identity in the keychain; signing ad hoc with a designated"
+    echo "  requirement on the bundle ID alone, so TCC grants survive rebuilds."
     # Ad-hoc sign the bundle anyway. The linker's own signature covers the
     # executable alone, under the identifier `Earshot` and with no
     # Info.plist bound, so TCC never saw the bundle ID: the app was missing
     # from System Settings' privacy lists and could not be granted anything.
-    codesign --force --sign - --entitlements "$SIGNING_ENTITLEMENTS" "$APP_BUNDLE" \
+    # An ad-hoc signature's default designated requirement is its cdhash,
+    # which every rebuild changes, and TCC checks a grant against that
+    # requirement: Screen Recording and Accessibility read as denied after
+    # each rebuild although System Settings shows them on. Requiring only the
+    # identifier keeps the grants. Dev builds only: any code signed with this
+    # identifier would satisfy it.
+    ADHOC_ID="$(defaults read "$APP_BUNDLE/Contents/Info" CFBundleIdentifier)"
+    codesign --force --sign - --entitlements "$SIGNING_ENTITLEMENTS" \
+        --requirements "=designated => identifier \"$ADHOC_ID\"" "$APP_BUNDLE" \
         || { echo "ad-hoc codesign failed for $APP_BUNDLE (entitlements $SIGNING_ENTITLEMENTS)" >&2; exit 1; }
-    echo "  Signed ad hoc as $(defaults read "$APP_BUNDLE/Contents/Info" CFBundleIdentifier) (+ entitlements)"
+    echo "  Signed ad hoc as $ADHOC_ID (+ entitlements, designated requirement on the identifier)"
 fi
 verify_signing "$APP_BUNDLE"
 
