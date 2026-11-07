@@ -82,12 +82,14 @@ struct TranscriptionSettingsView: View {
     /// some controls by their position in the section, so merging two of them
     /// into one property would move every control after it.
     private var transcriptionSection: some View {
-        Section("Transcription") {
+        Section {
             enginePicker
             whisperKitPickers
             parakeetLanguagePicker
             modelServerFields
             engineStatusView
+        } header: {
+            SettingsHeader("Transcription")
         }
         .accessibilityIdentifier(A11yID.transcriptionSection)
         .recordOnlyDisabled(settings.recordOnly)
@@ -225,7 +227,7 @@ struct TranscriptionSettingsView: View {
     /// Hoisted out of `body` into a named property so the section's nesting
     /// doesn't grow the `body` type-check past the 300 ms hard limit on CI.
     private var liveTranscriptionSection: some View {
-        Section("Live transcription (experimental)") {
+        Section {
             // The toggle stays enabled even for engines without the
             // re-transcribe hook, because the language-driven streaming
             // backends route captions through an engine-independent session.
@@ -254,6 +256,8 @@ struct TranscriptionSettingsView: View {
 
             captionOverlayToggle
             captionSizePicker
+        } header: {
+            SettingsHeader("Live transcription (experimental)")
         }
         .accessibilityIdentifier(A11yID.liveTranscriptionSection)
         .recordOnlyDisabled(settings.recordOnly)
@@ -431,10 +435,12 @@ struct TranscriptionSettingsView: View {
 /// the type-length limit.
 extension TranscriptionSettingsView {
     private var vocabularySection: some View {
-        Section("Vocabulary") {
+        Section {
             customVocabularyToggle
             customVocabularyFileRows
             terminologyRulesEditor
+        } header: {
+            SettingsHeader("Vocabulary")
         }
         .accessibilityIdentifier(A11yID.vocabularySection)
         .recordOnlyDisabled(settings.recordOnly)

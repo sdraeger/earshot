@@ -15,7 +15,7 @@ struct RecognitionStatsView: View {
     }
 
     var body: some View {
-        Section("Recognition stats") {
+        Section {
             Picker("Window", selection: $windowDays) {
                 ForEach(StatsWindowChoice.allCases) { choice in
                     Text(choice.label).tag(choice)
@@ -44,6 +44,8 @@ struct RecognitionStatsView: View {
                     Task { await reload() }
                 }
             }
+        } header: {
+            SettingsHeader("Recognition stats")
         }
         .task(id: windowDays) { await reload() }
     }

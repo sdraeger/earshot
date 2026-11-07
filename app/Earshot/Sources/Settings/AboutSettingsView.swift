@@ -10,7 +10,7 @@ struct AboutSettingsView: View {
 
     var body: some View {
         Form {
-            Section("About") {
+            Section {
                 LabeledContent("Version", value: Self.versionString)
                     .textSelection(.enabled)
                 LabeledContent("Identifier", value: Bundle.main.bundleID)
@@ -26,6 +26,8 @@ struct AboutSettingsView: View {
                     .font(.callout)
                 }
                 Link("GitHub", destination: Self.githubURL)
+            } header: {
+                SettingsHeader("About")
             }
 
             if let updateChecker {
@@ -61,7 +63,7 @@ struct AboutSettingsView: View {
 
     private func updatesSection(updateChecker: UpdateChecker) -> some View {
         // swiftlint:disable:next closure_body_length
-        Section("Updates") {
+        Section {
             Toggle("Check for updates", isOn: $settings.checkForUpdates)
 
             if settings.checkForUpdates {
@@ -103,6 +105,8 @@ struct AboutSettingsView: View {
             }
 
             updateAction(updateChecker: updateChecker)
+        } header: {
+            SettingsHeader("Updates")
         }
     }
 

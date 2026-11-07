@@ -53,7 +53,7 @@ struct OutputSettingsView: View {
         Form {
             // Output folder applies to record-only AND protocol mode, so this
             // section deliberately sits outside the .recordOnlyDisabled block.
-            Section("Output folder") {
+            Section {
                 HStack {
                     Text("Output folder")
                     Spacer()
@@ -75,12 +75,14 @@ struct OutputSettingsView: View {
 
                     Spacer()
                 }
+            } header: {
+                SettingsHeader("Output folder")
             }
             .accessibilityIdentifier(A11yID.outputFolderSection)
 
             NotionExportSettingsView(settings: settings)
 
-            Section("Meeting notes") {
+            Section {
                 Toggle("Include full transcript in meeting notes", isOn: $settings.includeFullTranscriptInProtocol)
                     .accessibilityIdentifier(A11yID.includeFullTranscriptToggle)
                 Toggle("Save raw transcript separately", isOn: $settings.saveRawTranscriptSeparately)
@@ -103,6 +105,8 @@ struct OutputSettingsView: View {
                 }
 
                 promptControls
+            } header: {
+                SettingsHeader("Meeting notes")
             }
             .accessibilityIdentifier(A11yID.protocolSection)
             .recordOnlyDisabled(settings.recordOnly)

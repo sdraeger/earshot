@@ -27,20 +27,24 @@ struct GeneralSettingsView: View {
     var body: some View {
         // swiftlint:disable:next closure_body_length
         Form {
-            Section("Mode") {
+            Section {
                 Toggle("Record-only mode", isOn: $settings.recordOnly)
                     .accessibilityIdentifier(A11yID.recordOnlyToggle)
                 if settings.recordOnly {
                     recordOnlyBanner
                 }
+            } header: {
+                SettingsHeader("Mode")
             }
 
-            Section("Notifications") {
+            Section {
                 Toggle("Play sounds", isOn: $settings.notificationSounds)
                     .settingsNote("Only notifications that need you, such as a meeting waiting for your OK to record, make a sound.")
+            } header: {
+                SettingsHeader("Notifications")
             }
 
-            Section("Apps to watch") {
+            Section {
                 Toggle("Microsoft Teams", isOn: $settings.watchTeams)
                 Toggle("Zoom", isOn: $settings.watchZoom)
                 Toggle("Webex", isOn: $settings.watchWebex)
@@ -62,9 +66,11 @@ struct GeneralSettingsView: View {
                     )
                 browserConsentWarning
                 consentDenyList
+            } header: {
+                SettingsHeader("Apps to watch")
             }
 
-            Section("Detection") {
+            Section {
                 HStack {
                     Text("Poll interval")
                     Spacer()
@@ -86,6 +92,8 @@ struct GeneralSettingsView: View {
                         .labelsHidden()
                     Text("seconds").foregroundStyle(.secondary)
                 }
+            } header: {
+                SettingsHeader("Detection")
             }
         }
         .formStyle(.grouped)

@@ -268,7 +268,7 @@ struct SpeakerNamingView: View { // swiftlint:disable:this type_body_length
         VStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Who's speaking?")
-                    .font(.title2.weight(.semibold))
+                    .font(.system(.title2, design: .serif, weight: .semibold))
                 Text(data.meetingTitle)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

@@ -51,13 +51,14 @@ struct SpeakersSettingsView: View {
     }
 
     var body: some View {
+        // swiftlint:disable:next closure_body_length
         Form {
             diarizationSection
                 .accessibilityIdentifier(A11yID.diarizationSection)
                 .recordOnlyDisabled(settings.recordOnly)
 
             if !settings.noMic {
-                Section("Speaker identity") {
+                Section {
                     HStack {
                         Text("Mic speaker name")
                         Spacer()
@@ -70,15 +71,19 @@ struct SpeakersSettingsView: View {
                         "Every voice on your microphone gets its own speaker. The one that speaks most gets this name "
                             + "unless a voice profile or the conversation names it. Leave empty to name none.",
                     )
+                } header: {
+                    SettingsHeader("Speaker identity")
                 }
                 .recordOnlyDisabled(settings.recordOnly)
             }
 
-            Section("Known voices") {
+            Section {
                 Button("Manage\u{2026}") {
                     knownVoicesSheet = KnownVoicesSheetItem(matcher: matcherFactory())
                 }
                 .settingsNote("Rename, delete, or merge entries in your speaker DB.")
+            } header: {
+                SettingsHeader("Known voices")
             }
 
             RecognitionStatsView(log: recognitionStatsLog)
@@ -100,7 +105,7 @@ struct SpeakersSettingsView: View {
     // MARK: - Diarization Section
 
     private var diarizationSection: some View {
-        Section("Diarization") {
+        Section {
             Toggle("Speaker diarization", isOn: $settings.diarize)
             if settings.diarize {
                 diarizationModePicker
@@ -120,6 +125,8 @@ struct SpeakersSettingsView: View {
                     experimentalTuningDisclosure
                 }
             }
+        } header: {
+            SettingsHeader("Diarization")
         }
     }
 

@@ -33,6 +33,7 @@ struct SettingsView: View {
     var legacyWhisperModels: LegacyWhisperModelsState?
 
     @State private var selection: SettingsTab = .general
+    private static let maxColumn: CGFloat = 680
 
     var body: some View {
         splitView
@@ -42,26 +43,43 @@ struct SettingsView: View {
         NavigationSplitView {
             List(SettingsTab.allCases, selection: $selection) { tab in
                 Label(tab.label, systemImage: tab.systemImage)
+                    .padding(.vertical, 3)
                     .tag(tab)
                     .accessibilityIdentifier(A11yID.settingsTab(tab.rawValue))
             }
-            .environment(\.sidebarRowSize, .large)
-            .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 260)
+            .safeAreaInset(edge: .top, alignment: .leading) {
+                Text("Earshot")
+                    .font(.system(size: 22, weight: .semibold, design: .serif))
+                    .padding(.horizontal, 20)
+                    .padding(.top, 4)
+                    .padding(.bottom, 12)
+            }
+            .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 240)
         } detail: {
-            // Larger type and controls in an inset column: rows stretched across
-            // the full pane put a label and its control too far apart to scan.
-            detailView(for: selection)
-                .font(.system(size: 14))
-                .controlSize(.large)
-                .contentMargins(.horizontal, 48, for: .scrollContent)
-                .navigationTitle(selection.label)
+            // A centered column no wider than `maxColumn`: rows stretched across
+            // a wide window put a label and its control too far apart to scan.
+            // Margins rather than a max width keep the scrollbar at the edge.
+            GeometryReader { proxy in
+                detailView(for: selection)
+                    .contentMargins(
+                        .horizontal, max(28, (proxy.size.width - Self.maxColumn) / 2), for: .scrollContent,
+                    )
+                    .scrollContentBackground(.hidden)
+                    .safeAreaInset(edge: .top, spacing: 0) {
+                        SettingsPageHeader(title: selection.label, subtitle: selection.subtitle)
+                            .padding(.horizontal, max(48, (proxy.size.width - Self.maxColumn) / 2 + 20))
+                    }
+            }
+            .background(Theme.paper)
+            .navigationTitle("")
         }
+        .tint(Theme.accent)
         .frame(
-            minWidth: 860,
-            idealWidth: 1000,
+            minWidth: 820,
+            idealWidth: 960,
             maxWidth: 1200,
-            minHeight: 600,
-            idealHeight: 760,
+            minHeight: 560,
+            idealHeight: 720,
             maxHeight: .infinity,
         )
     }
@@ -127,6 +145,19 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
         case .output: "Output"
         case .advanced: "Advanced"
         case .about: "About"
+        }
+    }
+
+    /// One line under the page title saying what the page holds.
+    var subtitle: String {
+        switch self {
+        case .general: "When Earshot records, and how it tells you."
+        case .audio: "Microphone, voice detection and echo."
+        case .transcription: "Speech recognition, live captions and vocabulary."
+        case .speakers: "Voices Earshot knows and how it tells them apart."
+        case .output: "Where your notes go and how they are written."
+        case .advanced: "Permissions and diagnostics."
+        case .about: "Version and updates."
         }
     }
 

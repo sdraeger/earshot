@@ -7,7 +7,7 @@ struct AudioSettingsView: View {
 
     var body: some View {
         Form {
-            Section("Microphone") {
+            Section {
                 Toggle("No microphone (app audio only)", isOn: $settings.noMic)
 
                 if !settings.noMic {
@@ -19,6 +19,8 @@ struct AudioSettingsView: View {
                     }
                     .onAppear { refreshAudioDevices() }
                 }
+            } header: {
+                SettingsHeader("Microphone")
             }
 
             VoiceActivityDetectionSection(settings: settings)
@@ -44,7 +46,7 @@ private struct VoiceActivityDetectionSection: View {
     @Bindable var settings: AppSettings
 
     var body: some View {
-        Section("Voice activity detection") {
+        Section {
             HelpfulToggle(
                 title: "Voice Activity Detection (VAD)",
                 help: SettingsHelp.vad,
@@ -60,6 +62,8 @@ private struct VoiceActivityDetectionSection: View {
                         .frame(width: 35)
                 }
             }
+        } header: {
+            SettingsHeader("Voice activity detection")
         }
         .accessibilityIdentifier(A11yID.vadSection)
         .recordOnlyDisabled(settings.recordOnly)
@@ -74,7 +78,7 @@ private struct EchoSection: View {
     @Bindable var settings: AppSettings
 
     var body: some View {
-        Section("Echo") {
+        Section {
             HelpfulToggle(
                 title: "Remove echoed remote speech before transcribing",
                 help: SettingsHelp.echoCancellation,
@@ -94,6 +98,8 @@ private struct EchoSection: View {
             // unavailable, and hiding it would leave a stored setting nobody
             // can see or change.
             .disabled(settings.echoCancellationEnabled)
+        } header: {
+            SettingsHeader("Echo")
         }
         .recordOnlyDisabled(settings.recordOnly)
     }
@@ -103,7 +109,7 @@ private struct PerChannelIndicatorSection: View {
     @Bindable var settings: AppSettings
 
     var body: some View {
-        Section("Per-Channel Indicator") {
+        Section {
             HelpfulToggle(
                 title: "Detect Silent Capture Channel",
                 help: SettingsHelp.silentCaptureChannel,
@@ -136,6 +142,8 @@ private struct PerChannelIndicatorSection: View {
                     .monospacedDigit()
                     .frame(width: 40)
             }
+        } header: {
+            SettingsHeader("Per-channel indicator")
         }
         .accessibilityIdentifier(A11yID.channelIndicatorSection)
     }

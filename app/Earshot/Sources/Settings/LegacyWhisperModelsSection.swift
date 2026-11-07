@@ -12,7 +12,7 @@ struct LegacyWhisperModelsSection: View {
 
     var body: some View {
         if state.isVisible {
-            Section("Storage") {
+            Section {
                 if !state.models.isEmpty {
                     Text(state.summary)
                         .settingsNote(LegacyWhisperModelInventory.sharedFolderNote)
@@ -29,6 +29,8 @@ struct LegacyWhisperModelsSection: View {
                         .font(.callout)
                         .foregroundStyle(.red)
                 }
+            } header: {
+                SettingsHeader("Storage")
             }
         }
     }

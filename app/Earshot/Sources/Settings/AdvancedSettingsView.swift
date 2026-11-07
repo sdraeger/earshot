@@ -36,7 +36,7 @@ struct AdvancedSettingsView: View {
             permissionsSection
 
             // swiftlint:disable:next closure_body_length
-            Section("Diagnostics") {
+            Section {
                 Toggle("Verbose diagnostic logging", isOn: $settings.verboseDiagnostics)
                     .settingsNote(
                         "Logs detailed diagnostics across recording, transcription,"
@@ -88,6 +88,8 @@ struct AdvancedSettingsView: View {
                                 + " headless automation or shell-driven inspection.",
                         )
                 #endif
+            } header: {
+                SettingsHeader("Diagnostics")
             }
         }
         .formStyle(.grouped)
@@ -96,7 +98,7 @@ struct AdvancedSettingsView: View {
 
     private var permissionsSection: some View {
         // swiftlint:disable:next closure_body_length
-        Section("Permissions") {
+        Section {
             PermissionRow(
                 label: "Screen Recording",
                 detail: Self.screenRecordingDetail,
@@ -145,6 +147,8 @@ struct AdvancedSettingsView: View {
                 refreshPermissions()
             }
             .font(.callout)
+        } header: {
+            SettingsHeader("Permissions")
         }
     }
 

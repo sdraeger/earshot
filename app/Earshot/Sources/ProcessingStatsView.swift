@@ -16,7 +16,7 @@ struct ProcessingStatsView: View {
     }
 
     var body: some View {
-        Section("Processing stats") {
+        Section {
             Picker("Window", selection: $windowDays) {
                 ForEach(StatsWindowChoice.allCases) { choice in
                     Text(choice.label).tag(choice)
@@ -49,6 +49,8 @@ struct ProcessingStatsView: View {
                     Task { await reload() }
                 }
             }
+        } header: {
+            SettingsHeader("Processing stats")
         }
         .task(id: windowDays) { await reload() }
     }
