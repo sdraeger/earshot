@@ -724,11 +724,20 @@ extension PipelineQueue {
             // stray `CancellationError` for a job still ours, costs the labels.
             guard isStillQueued(ctx.jobID) else { throw CancellationError() }
             logger.warning("[\(ctx.shortID, privacy: .public)] diarization_failed error=\(error.localizedDescription, privacy: .public)")
-            addWarning(id: ctx.jobID, "Diarization failed — speakers not identified")
+            addWarning(id: ctx.jobID, Self.diarizationWarning(for: error))
             // Continue with original transcript
         }
 
         return output
+    }
+
+    /// The job warning for a failed diarization. A clip too short to embed a
+    /// voice says so, since nothing is broken and a longer recording works.
+    static func diarizationWarning(for error: any Error) -> String {
+        if case DiarizationError.tooLittleSpeech = error {
+            return "Too little speech to tell speakers apart"
+        }
+        return "Diarization failed — speakers not identified"
     }
 
     /// Ensure a 16 kHz mix exists for diarization, returning its path. Single

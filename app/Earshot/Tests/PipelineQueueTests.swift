@@ -2936,6 +2936,17 @@ final class PipelineQueueTests: XCTestCase {
         )
     }
 
+    func testDiarizationWarningNamesTooLittleSpeech() {
+        XCTAssertEqual(
+            PipelineQueue.diarizationWarning(for: DiarizationError.tooLittleSpeech),
+            "Too little speech to tell speakers apart",
+        )
+        XCTAssertEqual(
+            PipelineQueue.diarizationWarning(for: DiarizationError.notPrepared),
+            "Diarization failed — speakers not identified",
+        )
+    }
+
     func testDiarizeDualTrackAppFailFallsBackToMicOnly() async throws {
         // Symmetric to the mic-fail fallback: when the app (remote) track
         // diarization fails — e.g. a silent remote side in a solo meeting, where

@@ -419,11 +419,21 @@ struct FluidOfflineProcessor: OfflineDiarizationProcessing {
         logger.info("FluidAudio offline models ready")
     }
 
+    /// FluidAudio's "no speech" means no stretch long enough for a voice
+    /// embedding, which a clip of a word or two never has.
+    private static func mappingNoSpeech<T>(_ body: () async throws -> T) async throws -> T {
+        do {
+            return try await body()
+        } catch OfflineDiarizationError.noSpeechDetected {
+            throw DiarizationError.tooLittleSpeech
+        }
+    }
+
     func process(audioPath: URL) async throws -> DiarizationResult {
         guard let manager else {
             throw DiarizationError.notPrepared
         }
-        let fluidResult = try await manager.process(audioPath)
+        let fluidResult = try await Self.mappingNoSpeech { try await manager.process(audioPath) }
         let segments = fluidResult.segments.map { seg in
             DiarizationResult.Segment(
                 start: TimeInterval(seg.startTimeSeconds),

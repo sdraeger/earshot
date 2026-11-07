@@ -390,11 +390,15 @@ extension DiarizationProcess {
 enum DiarizationError: LocalizedError {
     case notAvailable
     case notPrepared
+    /// The diarizer found no stretch of speech long enough for a voice
+    /// embedding: a clip of a word or two.
+    case tooLittleSpeech
 
     var errorDescription: String? {
         switch self {
         case .notAvailable: "Diarization not available"
         case .notPrepared: "Offline diarization manager not prepared"
+        case .tooLittleSpeech: "Too little speech to tell speakers apart"
         }
     }
 }
