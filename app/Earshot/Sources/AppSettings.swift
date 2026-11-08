@@ -750,13 +750,30 @@ final class AppSettings { // swiftlint:disable:this type_body_length
     }
 
     var openAIAPIKey: String {
-        get { KeychainHelper.read(key: apiKeyAccount) ?? "" }
-        set {
-            if newValue.isEmpty {
-                KeychainHelper.delete(key: apiKeyAccount)
-            } else {
-                KeychainHelper.save(key: apiKeyAccount, value: newValue)
-            }
+        get { keychainValue(apiKeyAccount) }
+        set { setKeychainValue(newValue, for: apiKeyAccount) }
+    }
+
+    /// Keychain values read so far. Settings views bind the key fields
+    /// directly, so without it every render queried the Keychain.
+    @ObservationIgnored private var keychainCache: [String: String] = [:]
+
+    /// The Keychain value for `account`, read once; empty when none is stored.
+    private func keychainValue(_ account: String) -> String {
+        if let value = keychainCache[account] { return value }
+        let value = KeychainHelper.read(key: account) ?? ""
+        keychainCache[account] = value
+        return value
+    }
+
+    /// Stores `value` for `account`; empty deletes it.
+    private func setKeychainValue(_ value: String, for account: String) {
+        guard keychainCache[account] != value else { return }
+        keychainCache[account] = value
+        if value.isEmpty {
+            KeychainHelper.delete(key: account)
+        } else {
+            KeychainHelper.save(key: account, value: value)
         }
     }
 
@@ -765,14 +782,8 @@ final class AppSettings { // swiftlint:disable:this type_body_length
         /// in Settings → Meeting Notes. Empty means use the CLI's own
         /// `claude login` session; this is never populated automatically.
         var claudeAPIKey: String {
-            get { KeychainHelper.read(key: claudeAPIKeyAccount) ?? "" }
-            set {
-                if newValue.isEmpty {
-                    KeychainHelper.delete(key: claudeAPIKeyAccount)
-                } else {
-                    KeychainHelper.save(key: claudeAPIKeyAccount, value: newValue)
-                }
-            }
+            get { keychainValue(claudeAPIKeyAccount) }
+            set { setKeychainValue(newValue, for: claudeAPIKeyAccount) }
         }
     #endif
 
@@ -797,16 +808,10 @@ final class AppSettings { // swiftlint:disable:this type_body_length
     var notionAPIKey: String {
         get {
             access(keyPath: \.notionAPIKey)
-            return KeychainHelper.read(key: notionAPIKeyAccount) ?? ""
+            return keychainValue(notionAPIKeyAccount)
         }
         set {
-            withMutation(keyPath: \.notionAPIKey) {
-                if newValue.isEmpty {
-                    KeychainHelper.delete(key: notionAPIKeyAccount)
-                } else {
-                    KeychainHelper.save(key: notionAPIKeyAccount, value: newValue)
-                }
-            }
+            withMutation(keyPath: \.notionAPIKey) { setKeychainValue(newValue, for: notionAPIKeyAccount) }
         }
     }
 
