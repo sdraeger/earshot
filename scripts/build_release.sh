@@ -105,25 +105,9 @@ cp "$SPM_DIR/Sources/Info.plist" "$CONTENTS/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$CONTENTS/Info.plist"
 
 # App icon
-ICONSET_SRC="$SPM_DIR/Sources/Assets.xcassets/AppIcon.appiconset"
-if [ -d "$ICONSET_SRC" ]; then
-    ICONSET="$BUILD_DIR/AppIcon.iconset"
-    rm -rf "$ICONSET"
-    mkdir -p "$ICONSET"
-    cp "$ICONSET_SRC/icon_16x16.png"      "$ICONSET/icon_16x16.png"
-    cp "$ICONSET_SRC/icon_16x16@2x.png"   "$ICONSET/icon_16x16@2x.png"
-    cp "$ICONSET_SRC/icon_32x32.png"       "$ICONSET/icon_32x32.png"
-    cp "$ICONSET_SRC/icon_32x32@2x.png"    "$ICONSET/icon_32x32@2x.png"
-    cp "$ICONSET_SRC/icon_128x128.png"     "$ICONSET/icon_128x128.png"
-    cp "$ICONSET_SRC/icon_128x128@2x.png"  "$ICONSET/icon_128x128@2x.png"
-    cp "$ICONSET_SRC/icon_256x256.png"     "$ICONSET/icon_256x256.png"
-    cp "$ICONSET_SRC/icon_256x256@2x.png"  "$ICONSET/icon_256x256@2x.png"
-    cp "$ICONSET_SRC/icon_512x512.png"     "$ICONSET/icon_512x512.png"
-    cp "$ICONSET_SRC/icon_512x512@2x.png"  "$ICONSET/icon_512x512@2x.png"
-    iconutil -c icns "$ICONSET" -o "$RESOURCES/AppIcon.icns"
-    rm -rf "$ICONSET"
-    echo "  App icon: $RESOURCES/AppIcon.icns"
-fi
+# shellcheck source=lib/app-icon.sh
+source "$SCRIPT_DIR/lib/app-icon.sh"
+install_app_icon "$SPM_DIR/Sources" "$RESOURCES"
 
 # Licences for the third-party code and weights this bundle redistributes.
 # Installed before the model, and unconditionally, so no failure further down

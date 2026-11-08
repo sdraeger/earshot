@@ -81,6 +81,11 @@ cp "$BUILD_BINARY" "$APP_BINARY"
 source "$SCRIPT_DIR/lib/bundle-licenses.sh"
 install_third_party_licenses "$APP_BUNDLE/Contents/Resources"
 
+# The same app icon as the release bundle.
+# shellcheck source=lib/app-icon.sh
+source "$SCRIPT_DIR/lib/app-icon.sh"
+install_app_icon "$SPM_DIR/Sources" "$APP_BUNDLE/Contents/Resources"
+
 # LocalVQE echo-cancellation model, the same resources build_release.sh bundles,
 # so the dev app (which scripts/e2e-app.sh deploys) can exercise the feature.
 # Non-fatal here and fatal there: an unreachable download must not stop someone
