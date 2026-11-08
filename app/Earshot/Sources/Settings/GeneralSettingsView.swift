@@ -54,7 +54,7 @@ struct GeneralSettingsView: View {
                     .settingsNote("A card at the top right asks you to start. Browser meetings always ask.")
                 Toggle("Show floating recording button", isOn: $settings.recordingButtonEnabled)
                     .accessibilityIdentifier(A11yID.recordingButtonToggle)
-                    .settingsNote("A small button at the right edge of the screen that moves with your voice. Drag it up or down; click it to stop.")
+                    .settingsNote("A small button on the edge of the screen that moves with your voice. Drag it to any edge; click it to stop.")
             } header: {
                 SettingsHeader("While recording")
             }

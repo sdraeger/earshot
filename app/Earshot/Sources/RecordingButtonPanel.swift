@@ -1,28 +1,43 @@
 import AppKit
 import SwiftUI
 
-/// The floating button shown while a recording runs: a pill at the right edge
-/// of the menu-bar screen with voice-activity bars over the app glyph. Drag it
-/// up or down (the height is kept); click it for a menu that stops the
-/// recording. `sharingType = .none` keeps it out of screen shares and
-/// screenshots of other apps.
+/// The floating button shown while a recording runs: a pill on an edge of
+/// the menu-bar screen with voice-activity bars beside the app glyph. Drag it
+/// anywhere; on release it snaps to the nearest edge (upright on the left and
+/// right, lying down on the top and bottom) and keeps that place. Click it
+/// for a menu that stops the recording. `sharingType = .none` keeps it out of
+/// screen shares and screenshots of other apps.
 @MainActor
 final class RecordingButtonPanel {
-    /// Panel size: the 44×92 pill plus room for its shadow.
-    static let panelSize = NSSize(width: 60, height: 108)
+    enum Edge: String {
+        case left, right, top, bottom
+
+        var isVertical: Bool {
+            self == .left || self == .right
+        }
+    }
+
+    /// The pill's length and thickness.
+    static let pillLength: CGFloat = 80
+    static let pillThickness: CGFloat = 36
+    /// Room around the pill for its shadow.
+    static let shadowMargin: CGFloat = 8
     static let edgeInset: CGFloat = 4
-    /// The pill's height on screen as a fraction of the visible height, from the bottom.
-    static let positionDefaultsKey = "recordingButtonYFraction"
+    /// How far along its edge the pill sits, 0 at the bottom or left end.
+    /// The key predates the other edges, when it held the height on the right.
+    static let fractionDefaultsKey = "recordingButtonYFraction"
+    static let edgeDefaultsKey = "recordingButtonEdge"
     static let defaultFraction = 0.62
 
     private var panel: NSPanel?
+    private var host: NSHostingView<RecordingButtonView>?
     private let level: @MainActor () -> Double
     private let stopTitle: @MainActor () -> String
     private let onStop: @MainActor () -> Void
     private let onHide: @MainActor () -> Void
     private let onOpenTranscript: @MainActor () -> Void
     private let defaults: UserDefaults
-    private var grabOffset: CGFloat?
+    private var grabOffset: NSPoint?
 
     init(
         level: @escaping @MainActor () -> Double,
@@ -42,7 +57,9 @@ final class RecordingButtonPanel {
 
     func show() {
         let panel = ensurePanel()
-        place(panel)
+        let edge = defaults.string(forKey: Self.edgeDefaultsKey).flatMap(Edge.init(rawValue:)) ?? .right
+        let fraction = defaults.object(forKey: Self.fractionDefaultsKey) as? Double ?? Self.defaultFraction
+        place(panel, edge: edge, fraction: fraction)
         panel.orderFrontRegardless()
     }
 
@@ -50,28 +67,69 @@ final class RecordingButtonPanel {
         panel?.orderOut(nil)
     }
 
-    /// Origin for a pill at `fraction` of the way up `visible`, flush right.
-    static func origin(fraction: Double, in visible: NSRect) -> NSPoint {
-        let clamped = min(max(fraction, 0), 1)
-        return NSPoint(
-            x: visible.maxX - panelSize.width - edgeInset,
-            y: visible.minY + clamped * (visible.height - panelSize.height),
-        )
+    /// The panel's size on `edge`: the pill plus its shadow margin, long side
+    /// along the edge.
+    static func panelSize(on edge: Edge) -> NSSize {
+        let long = pillLength + 2 * shadowMargin
+        let short = pillThickness + 2 * shadowMargin
+        return edge.isVertical ? NSSize(width: short, height: long) : NSSize(width: long, height: short)
+    }
+
+    /// The panel's frame on `edge`, `fraction` of the way along it (clamped).
+    static func frame(edge: Edge, fraction: Double, in visible: NSRect) -> NSRect {
+        let size = panelSize(on: edge)
+        let along = CGFloat(min(max(fraction, 0), 1))
+        let origin = switch edge {
+        case .left: NSPoint(x: visible.minX + edgeInset, y: visible.minY + along * (visible.height - size.height))
+        case .right: NSPoint(x: visible.maxX - size.width - edgeInset, y: visible.minY + along * (visible.height - size.height))
+        case .bottom: NSPoint(x: visible.minX + along * (visible.width - size.width), y: visible.minY + edgeInset)
+        case .top: NSPoint(x: visible.minX + along * (visible.width - size.width), y: visible.maxY - size.height - edgeInset)
+        }
+        return NSRect(origin: origin, size: size)
+    }
+
+    /// The edge nearest `center` and how far along it `center` lies.
+    static func snap(center: NSPoint, in visible: NSRect) -> (edge: Edge, fraction: Double) {
+        let distances: [(Edge, CGFloat)] = [
+            (.left, center.x - visible.minX), (.right, visible.maxX - center.x),
+            (.bottom, center.y - visible.minY), (.top, visible.maxY - center.y),
+        ]
+        let edge = distances.min { $0.1 < $1.1 }?.0 ?? .right
+        let size = panelSize(on: edge)
+        let fraction = edge.isVertical
+            ? (center.y - size.height / 2 - visible.minY) / (visible.height - size.height)
+            : (center.x - size.width / 2 - visible.minX) / (visible.width - size.width)
+        return (edge, Double(min(max(fraction, 0), 1)))
     }
 
     private var visibleFrame: NSRect {
         (NSScreen.screens.first ?? NSScreen.main)?.visibleFrame ?? .zero
     }
 
-    private func place(_ panel: NSPanel) {
-        let fraction = defaults.object(forKey: Self.positionDefaultsKey) as? Double ?? Self.defaultFraction
-        panel.setFrameOrigin(Self.origin(fraction: fraction, in: visibleFrame))
+    private func place(_ panel: NSPanel, edge: Edge, fraction: Double, animate: Bool = false) {
+        host?.rootView = makeView(horizontal: !edge.isVertical)
+        let frame = Self.frame(edge: edge, fraction: fraction, in: visibleFrame)
+        if animate {
+            panel.animator().setFrame(frame, display: true)
+        } else {
+            panel.setFrame(frame, display: true)
+        }
+    }
+
+    private func makeView(horizontal: Bool) -> RecordingButtonView {
+        RecordingButtonView(
+            level: level,
+            horizontal: horizontal,
+            onTap: { [weak self] in self?.showMenu() },
+            onDrag: { [weak self] in self?.drag() },
+            onDragEnd: { [weak self] in self?.endDrag() },
+        )
     }
 
     private func ensurePanel() -> NSPanel {
         if let panel { return panel }
         let panel = NSPanel(
-            contentRect: NSRect(origin: .zero, size: Self.panelSize),
+            contentRect: NSRect(origin: .zero, size: Self.panelSize(on: .right)),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false,
@@ -86,34 +144,39 @@ final class RecordingButtonPanel {
         panel.becomesKeyOnlyIfNeeded = true
         panel.sharingType = .none
         panel.identifier = NSUserInterfaceItemIdentifier("recording-button")
-        panel.contentView = NSHostingView(rootView: RecordingButtonView(
-            level: level,
-            onTap: { [weak self] in self?.showMenu() },
-            onDrag: { [weak self] in self?.drag() },
-            onDragEnd: { [weak self] in self?.endDrag() },
-        ))
+        let host = NSHostingView(rootView: makeView(horizontal: false))
+        panel.contentView = host
+        self.host = host
         self.panel = panel
         return panel
     }
 
-    /// Follows the pointer vertically, keeping the point it was grabbed at.
+    /// Follows the pointer, keeping the point it was grabbed at, within the screen.
     private func drag() {
         guard let panel else { return }
-        let mouseY = NSEvent.mouseLocation.y
-        let offset = grabOffset ?? (mouseY - panel.frame.minY)
+        let mouse = NSEvent.mouseLocation
+        let offset = grabOffset ?? NSPoint(x: mouse.x - panel.frame.minX, y: mouse.y - panel.frame.minY)
         grabOffset = offset
         let visible = visibleFrame
-        let y = min(max(mouseY - offset, visible.minY), visible.maxY - Self.panelSize.height)
-        panel.setFrameOrigin(NSPoint(x: panel.frame.minX, y: y))
+        let size = panel.frame.size
+        panel.setFrameOrigin(NSPoint(
+            x: min(max(mouse.x - offset.x, visible.minX), visible.maxX - size.width),
+            y: min(max(mouse.y - offset.y, visible.minY), visible.maxY - size.height),
+        ))
     }
 
+    /// Snaps to the nearest edge and remembers it.
     private func endDrag() {
         grabOffset = nil
         guard let panel else { return }
-        let visible = visibleFrame
-        let span = visible.height - Self.panelSize.height
-        guard span > 0 else { return }
-        defaults.set(Double((panel.frame.minY - visible.minY) / span), forKey: Self.positionDefaultsKey)
+        let frame = panel.frame
+        let (edge, fraction) = Self.snap(center: NSPoint(x: frame.midX, y: frame.midY), in: visibleFrame)
+        defaults.set(edge.rawValue, forKey: Self.edgeDefaultsKey)
+        defaults.set(fraction, forKey: Self.fractionDefaultsKey)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.15
+            place(panel, edge: edge, fraction: fraction, animate: true)
+        }
     }
 
     private func showMenu() {
@@ -167,31 +230,43 @@ enum VoiceBars {
 
 struct RecordingButtonView: View {
     let level: @MainActor () -> Double
+    /// Lying down, on the top or bottom edge.
+    var horizontal = false
     let onTap: () -> Void
     let onDrag: () -> Void
     let onDragEnd: () -> Void
 
+    private var pillSize: CGSize {
+        let length = RecordingButtonPanel.pillLength
+        let thickness = RecordingButtonPanel.pillThickness
+        return horizontal ? CGSize(width: length, height: thickness) : CGSize(width: thickness, height: length)
+    }
+
     var body: some View {
-        VStack(spacing: 12) {
+        let layout = horizontal ? AnyLayout(HStackLayout(spacing: 7)) : AnyLayout(VStackLayout(spacing: 7))
+        let panel = RecordingButtonPanel.panelSize(on: horizontal ? .top : .right)
+        layout {
+            grip
+
             TimelineView(.animation(minimumInterval: 1.0 / 15)) { context in
                 bars(VoiceBars.heights(
                     levelDBFS: level(),
                     phase: context.date.timeIntervalSinceReferenceDate * 9,
                 ))
             }
-            .frame(width: 20, height: 22)
+            .frame(width: 16, height: 18)
 
             Image(systemName: "ear")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.white)
-                .frame(width: 28, height: 28)
+                .frame(width: 24, height: 24)
                 .background(Theme.accent, in: Circle())
         }
-        .frame(width: 44, height: 92)
+        .frame(width: pillSize.width, height: pillSize.height)
         .background(Theme.paper, in: Capsule())
         .overlay(Capsule().strokeBorder(Theme.hairline))
-        .shadow(color: .black.opacity(0.18), radius: 5, y: 2)
-        .frame(width: RecordingButtonPanel.panelSize.width, height: RecordingButtonPanel.panelSize.height)
+        .shadow(color: .black.opacity(0.18), radius: 4, y: 2)
+        .frame(width: panel.width, height: panel.height)
         .contentShape(Capsule())
         .onTapGesture(perform: onTap)
         .gesture(DragGesture(minimumDistance: 3).onChanged { _ in onDrag() }.onEnded { _ in onDragEnd() })
@@ -201,12 +276,29 @@ struct RecordingButtonView: View {
         .accessibilityIdentifier(A11yID.recordingButton)
     }
 
+    /// Two short bars across the pill to grab it by; an open hand over them.
+    private var grip: some View {
+        let layout = horizontal ? AnyLayout(HStackLayout(spacing: 2.5)) : AnyLayout(VStackLayout(spacing: 2.5))
+        return layout {
+            ForEach(0 ..< 2, id: \.self) { _ in
+                Capsule()
+                    .fill(.secondary.opacity(0.55))
+                    .frame(width: horizontal ? 2 : 12, height: horizontal ? 12 : 2)
+            }
+        }
+        .frame(width: horizontal ? 7 : 16, height: horizontal ? 16 : 7)
+        .contentShape(Rectangle())
+        .onHover { inside in
+            if inside { NSCursor.openHand.push() } else { NSCursor.pop() }
+        }
+    }
+
     private func bars(_ heights: [Double]) -> some View {
-        HStack(alignment: .center, spacing: 3) {
+        HStack(alignment: .center, spacing: 2.5) {
             ForEach(heights.indices, id: \.self) { index in
                 Capsule()
                     .fill(Theme.accent)
-                    .frame(width: 3, height: 22 * heights[index])
+                    .frame(width: 2.5, height: 18 * heights[index])
             }
         }
         .animation(.easeOut(duration: 0.12), value: heights)

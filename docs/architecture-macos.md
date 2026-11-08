@@ -126,7 +126,7 @@ State writes to `AppPaths.dataDir`; IPC + queue snapshots to `ipcDir`.
 | `LiveCaptionsState.swift` | `@Observable` live-captions state (per-channel hypotheses + finalised utterances) + RPC-wire types |
 | `LiveCaptionsOverlay.swift` | SwiftUI caption-bar content (recent finals + per-channel hypotheses) hosted in `LiveCaptionsWindow` |
 | `LiveCaptionsWindowController.swift` | Borderless click-through NSPanel hosting the caption overlay (⌥-drag to reposition; origin persisted) |
-| `RecordingButtonPanel.swift` | Floating pill at the right screen edge while recording: voice-activity bars from the louder channel's dBFS, vertical drag (height persisted), click menu to stop; `sharingType = .none` keeps it out of screen shares |
+| `RecordingButtonPanel.swift` | Floating pill on a screen edge while recording: voice-activity bars from the louder channel's dBFS, free drag that snaps to the nearest edge on release (edge and place along it persisted; lies down on top and bottom), click menu to stop; `sharingType = .none` keeps it out of screen shares |
 | `MeetingCardPanel.swift` | The card asking whether to record a detected meeting or an in-person calendar meeting (Start, Not now, live-transcript switch, notes template); top right, hidden from screen shares |
 | `MeetingLibrary.swift` | The meetings in the notes folder (notes `.md` + transcript `.txt` paired by file name), newest first; search, rename (title heading), move to Trash |
 | `MeetingsView.swift` | The Meetings window: notepad and live transcript while recording, Ask your meetings, each meeting's notes or transcript (copy, open, Finder, rename, delete, rewrite with a template, tasks to Reminders), and People |
