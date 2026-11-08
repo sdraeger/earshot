@@ -16,6 +16,9 @@ final class MeetingsController {
     /// the recording that ends next, and cleared then.
     var notepad = ""
 
+    /// Meetings whose notes are being rewritten; a second rewrite waits.
+    private(set) var rewriting: Set<String> = []
+
     /// An in-person calendar meeting that just started, for the meeting card.
     private(set) var calendarCard: CalendarMeeting?
     @ObservationIgnored private var announced: Set<String> = []
@@ -29,8 +32,10 @@ final class MeetingsController {
         self.settings = settings
         self.pipeline = pipeline
         self.watching = watching
-        library = MeetingLibrary { [pipeline] in
-            pipeline.outputDirectory.resolve().appendingPathComponent("protocols", isDirectory: true)
+        // A pure read: `resolve()` reports an unreachable folder, which a
+        // window reloading its list must not do.
+        library = MeetingLibrary { [settings] in
+            settings.effectiveOutputDir.appendingPathComponent("protocols", isDirectory: true)
         }
     }
 
@@ -83,19 +88,24 @@ final class MeetingsController {
 
     // MARK: - Finished meetings
 
-    /// Writes new notes for `meeting` from its transcript with `template`.
+    /// Writes new notes for `meeting` from its transcript with `template`,
+    /// keeping the appended transcript when Settings asks for it. Nothing is
+    /// written for a meeting deleted while the model was writing.
     func regenerate(_ meeting: MeetingLibrary.Meeting, template: String) async throws {
-        guard let transcript = library.transcript(of: meeting), let target = meeting.notesURL ?? meeting.transcriptURL
+        guard let transcript = library.transcript(of: meeting), let transcriptURL = meeting.transcriptURL
         else { throw MeetingsError.noTranscript }
+        guard rewriting.insert(meeting.id).inserted else { return }
+        defer { rewriting.remove(meeting.id) }
         let generator = try generator(promptURL: ProtocolTemplates.url(for: template))
-        let diarized = transcript.range(of: #"\] [^:\n]+: "#, options: .regularExpression) != nil
         let notes = try await generator.generate(
-            transcript: transcript, title: meeting.title, diarized: diarized,
+            transcript: transcript, title: meeting.title, diarized: ProtocolGenerator.isDiarized(transcript),
             meetingStartTime: MeetingLibrary.date(fromFileName: meeting.id),
         )
-        _ = try ProtocolGenerator.saveProtocol(
-            notes, basename: target.deletingPathExtension().lastPathComponent, dir: target.deletingLastPathComponent(),
-        )
+        guard FileManager.default.fileExists(atPath: transcriptURL.path) else { return }
+        let markdown = settings.includeFullTranscriptInProtocol
+            ? ProtocolGenerator.withFullTranscript(notes, transcript: transcript)
+            : notes
+        _ = try ProtocolGenerator.saveProtocol(markdown, basename: meeting.id, dir: transcriptURL.deletingLastPathComponent())
         library.reload()
     }
 
@@ -103,15 +113,21 @@ final class MeetingsController {
     /// many as fit in `budget` characters.
     func ask(_ question: String, budget: Int = 300_000) async throws -> String {
         var context = ""
+        var used = 0
         for meeting in library.meetings {
-            guard let notes = library.notes(of: meeting) ?? library.transcript(of: meeting) else { continue }
-            let entry = "<meeting title=\"\(meeting.title)\" date=\"\(meeting.date.formatted(date: .abbreviated, time: .shortened))\">\n\(notes)\n</meeting>\n\n"
-            guard context.count + entry.count <= budget else { break }
+            let notes = library.notes(of: meeting).map(ProtocolGenerator.withoutFullTranscript)
+            guard let text = notes ?? library.transcript(of: meeting) else { continue }
+            let date = meeting.date.formatted(date: .abbreviated, time: .shortened)
+            let entry = "<meeting title=\"\(meeting.title)\" date=\"\(date)\">\n\(text)\n</meeting>\n\n"
+            used += entry.count
+            guard used <= budget else { break }
             context += entry
         }
         guard !context.isEmpty else { throw MeetingsError.noMeetings }
-        try? FileManager.default.createDirectory(at: AppPaths.dataDir, withIntermediateDirectories: true)
-        try Self.askPrompt.write(to: Self.askPromptURL, atomically: true, encoding: .utf8)
+        if (try? String(contentsOf: Self.askPromptURL, encoding: .utf8)) != Self.askPrompt {
+            try? FileManager.default.createDirectory(at: AppPaths.dataDir, withIntermediateDirectories: true)
+            try Self.askPrompt.write(to: Self.askPromptURL, atomically: true, encoding: .utf8)
+        }
         return try await generator(promptURL: Self.askPromptURL).generate(
             transcript: context + "Question: \(question)", title: "Ask", diarized: false, meetingStartTime: nil,
         )
@@ -124,9 +140,10 @@ final class MeetingsController {
         return try await calendar.addReminders(items, meetingTitle: meeting.title)
     }
 
-    /// The people with a voice profile, most recently heard first.
-    func people() -> [String] {
-        SpeakerMatcher.factory(dbPath: pipeline.speakersDB, notifier: SilentNotifier())().allSpeakerNames()
+    /// The people with a voice profile, most recently heard first. Cached by
+    /// the queue, which refreshes it on every change to the voice profiles.
+    var people: [String] {
+        pipeline.queue.knownSpeakerNames
     }
 
     /// The meetings whose transcript has a line spoken by `person`.

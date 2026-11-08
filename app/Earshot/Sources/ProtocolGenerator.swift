@@ -98,6 +98,24 @@ enum ProtocolGenerator {
         """
     }
 
+    /// Whether the transcript names its speakers: a line in the
+    /// `[MM:SS] Speaker: text` shape `TimestampedSegment.formattedLine` writes.
+    static func isDiarized(_ transcript: String) -> Bool {
+        transcript.range(of: #"(?m)^\[[\d:]+\] [^:\n]{1,40}: "#, options: .regularExpression) != nil
+    }
+
+    /// Meeting notes with the transcript appended under the heading Notion
+    /// export turns into a toggle (`MarkdownToNotionBlocks`).
+    static func withFullTranscript(_ notes: String, transcript: String) -> String {
+        notes + "\n\n---\n\n## Full Transcript\n\n" + transcript
+    }
+
+    /// Meeting notes without the transcript `withFullTranscript` appended.
+    static func withoutFullTranscript(_ markdown: String) -> String {
+        guard let range = markdown.range(of: "\n## Full Transcript") else { return markdown }
+        return markdown[..<range.lowerBound].trimmingCharacters(in: CharacterSet(charactersIn: "-\n "))
+    }
+
     /// Replaces supported protocol-prompt variables with meeting-specific values.
     ///
     /// Dates and times use stable, locale-independent formats so users can

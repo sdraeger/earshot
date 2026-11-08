@@ -5,10 +5,11 @@ final class ProtocolTemplatesTests: XCTestCase {
     private func makeFolder() -> URL {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("templates-\(UUID())")
         addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
+        ProtocolTemplates.seedIfMissing(folder)
         return folder
     }
 
-    func testFirstReadSeedsThePresetsAfterDefault() {
+    func testSeedingWritesThePresetsAfterDefault() {
         let folder = makeFolder()
 
         let names = ProtocolTemplates.names(in: folder)
@@ -19,7 +20,6 @@ final class ProtocolTemplatesTests: XCTestCase {
 
     func testDefaultAndMissingTemplatesReadTheSettingsPrompt() {
         let folder = makeFolder()
-        _ = ProtocolTemplates.names(in: folder)
 
         XCTAssertEqual(ProtocolTemplates.url(for: ProtocolTemplates.defaultName, in: folder), AppPaths.customPromptFile)
         XCTAssertEqual(ProtocolTemplates.url(for: "Gone", in: folder), AppPaths.customPromptFile)
@@ -31,6 +31,20 @@ final class ProtocolTemplatesTests: XCTestCase {
             XCTAssertTrue(prompt.contains("## Action Items"), name)
             XCTAssertTrue(prompt.hasSuffix("Transcript:"), name)
         }
+    }
+
+    func testTimestampedSpeakerLinesMarkATranscriptDiarized() {
+        XCTAssertTrue(ProtocolGenerator.isDiarized("[00:05] Me: hi\n[1:02:03] Roman Li: ok"))
+        XCTAssertFalse(ProtocolGenerator.isDiarized("[00:05] hello there\n[00:09] [Music]"))
+    }
+
+    func testTheFullTranscriptComesOffAgain() {
+        let notes = "# Sync\n\n## Summary\nShipped."
+        let full = ProtocolGenerator.withFullTranscript(notes, transcript: "[00:01] Ann: hi")
+
+        XCTAssertTrue(MarkdownToNotionBlocks.hasFullTranscriptHeading(in: full))
+        XCTAssertEqual(ProtocolGenerator.withoutFullTranscript(full), notes)
+        XCTAssertEqual(ProtocolGenerator.withoutFullTranscript(notes), notes)
     }
 
     func testUserNotesGoAheadOfTheTranscript() {

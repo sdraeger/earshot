@@ -18,6 +18,9 @@ final class MeetingLibrary {
     }
 
     private(set) var meetings: [Meeting] = []
+    /// File contents read since the last `reload`, so search and the People
+    /// view read each file once.
+    @ObservationIgnored private var texts: [URL: String] = [:]
     /// The `protocols` folder under the current output folder, read on every
     /// reload so a changed output folder shows its own meetings.
     private let folder: () -> URL
@@ -27,6 +30,7 @@ final class MeetingLibrary {
     }
 
     func reload() {
+        texts = [:]
         let folder = folder()
         let files = (try? FileManager.default.contentsOfDirectory(
             at: folder, includingPropertiesForKeys: [.creationDateKey],
@@ -41,7 +45,7 @@ final class MeetingLibrary {
             }
         }
         meetings = byName.map { name, files in
-            let notes = files.notes.flatMap { try? String(contentsOf: $0, encoding: .utf8) }
+            let notes = files.notes.flatMap(text(at:))
             return Meeting(
                 id: name,
                 title: notes.flatMap { ProtocolGenerator.extractTitle(from: $0) } ?? Self.title(fromFileName: name),
@@ -54,11 +58,18 @@ final class MeetingLibrary {
     }
 
     func notes(of meeting: Meeting) -> String? {
-        meeting.notesURL.flatMap { try? String(contentsOf: $0, encoding: .utf8) }
+        meeting.notesURL.flatMap(text(at:))
     }
 
     func transcript(of meeting: Meeting) -> String? {
-        meeting.transcriptURL.flatMap { try? String(contentsOf: $0, encoding: .utf8) }
+        meeting.transcriptURL.flatMap(text(at:))
+    }
+
+    private func text(at url: URL) -> String? {
+        if let text = texts[url] { return text }
+        let text = try? String(contentsOf: url, encoding: .utf8)
+        texts[url] = text
+        return text
     }
 
     /// Whether the title or either file's text contains `query`, ignoring case.

@@ -73,7 +73,7 @@ struct MeetingsView: View {
     }
 
     @ViewBuilder private var peopleSection: some View {
-        let people = meetings.people()
+        let people = meetings.people
         if !people.isEmpty {
             Section("People") {
                 ForEach(people, id: \.self) { person in
@@ -312,7 +312,7 @@ private struct MeetingDetailView: View {
             }
         } label: { Label("Rewrite Notes", systemImage: "wand.and.stars") }
             .help("Write the notes again with a template")
-            .disabled(meeting.transcriptURL == nil || working != nil)
+            .disabled(meeting.transcriptURL == nil || working != nil || meetings.rewriting.contains(meeting.id))
         Button {
             run("Adding tasks to Reminders…") {
                 let count = try await meetings.addTasksToReminders(meeting)
@@ -361,7 +361,7 @@ private struct NotesText: View {
     let markdown: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        LazyVStack(alignment: .leading, spacing: 8) {
             ForEach(Array(markdown.components(separatedBy: "\n").enumerated()), id: \.offset) { _, line in
                 row(line.trimmingCharacters(in: .whitespaces))
             }

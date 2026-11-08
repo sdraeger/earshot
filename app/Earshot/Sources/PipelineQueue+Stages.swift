@@ -1044,13 +1044,10 @@ extension PipelineQueue {
         updateJobState(id: jobID, to: .generatingProtocol)
         let protocolMD: String
         do {
-            let diarized = transcript.range(
-                of: #"\[\w[\w\s]*\]"#, options: .regularExpression,
-            ) != nil
             protocolMD = try await generator.generate(
                 transcript: ProtocolGenerator.input(transcript: transcript, userNotes: job.userNotes),
                 title: title,
-                diarized: diarized,
+                diarized: ProtocolGenerator.isDiarized(transcript),
                 meetingStartTime: meetingStartTime,
             )
         } catch {
@@ -1090,7 +1087,7 @@ extension PipelineQueue {
         }
 
         let markdown = outputOptions.includeFullTranscriptInProtocol
-            ? protocolMD + "\n\n---\n\n## Full Transcript\n\n" + transcript
+            ? ProtocolGenerator.withFullTranscript(protocolMD, transcript: transcript)
             : protocolMD
 
         let configuration = resolveNotionExport(jobID: jobID).configuration

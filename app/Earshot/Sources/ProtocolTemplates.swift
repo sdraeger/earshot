@@ -7,11 +7,15 @@ import Foundation
 enum ProtocolTemplates {
     static let defaultName = "Default"
 
-    static let folder = AppPaths.dataDir.appendingPathComponent("templates", isDirectory: true)
+    /// Created with the presets the first time it is read.
+    static let folder: URL = {
+        let folder = AppPaths.dataDir.appendingPathComponent("templates", isDirectory: true)
+        seedIfMissing(folder)
+        return folder
+    }()
 
     /// Every template, "Default" first, then the files in `folder` by name.
     static func names(in folder: URL = folder) -> [String] {
-        seedIfMissing(folder)
         let files = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
         let names = files.filter { $0.pathExtension == "md" }
             .map { $0.deletingPathExtension().lastPathComponent }
@@ -30,7 +34,7 @@ enum ProtocolTemplates {
         return file
     }
 
-    private static func seedIfMissing(_ folder: URL) {
+    static func seedIfMissing(_ folder: URL) {
         guard !FileManager.default.fileExists(atPath: folder.path) else { return }
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         for (name, prompt) in presets {

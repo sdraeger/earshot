@@ -338,7 +338,6 @@ struct OutputSettingsView: View {
                 ForEach(ProtocolTemplates.names(), id: \.self) { Text($0).tag($0) }
             }
             Button("Open Templates Folder") {
-                _ = ProtocolTemplates.names()
                 NSWorkspace.shared.open(ProtocolTemplates.folder)
             }
         }
