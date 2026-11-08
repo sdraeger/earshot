@@ -30,23 +30,23 @@ final class UpdateCheckerTests: XCTestCase {
     // MARK: - Version Parsing
 
     func testParseVersionValid() {
-        XCTAssertEqual(UpdateChecker.parseVersion("1.2.3")?.0, 1)
-        XCTAssertEqual(UpdateChecker.parseVersion("1.2.3")?.1, 2)
-        XCTAssertEqual(UpdateChecker.parseVersion("1.2.3")?.2, 3)
+        XCTAssertEqual(UpdateChecker.parseVersion("1.2.3")?.major, 1)
+        XCTAssertEqual(UpdateChecker.parseVersion("1.2.3")?.minor, 2)
+        XCTAssertEqual(UpdateChecker.parseVersion("1.2.3")?.patch, 3)
     }
 
     func testParseVersionWithPrefix() {
         let v = UpdateChecker.parseVersion("v0.4.0")
-        XCTAssertEqual(v?.0, 0)
-        XCTAssertEqual(v?.1, 4)
-        XCTAssertEqual(v?.2, 0)
+        XCTAssertEqual(v?.major, 0)
+        XCTAssertEqual(v?.minor, 4)
+        XCTAssertEqual(v?.patch, 0)
     }
 
     func testParseVersionWithPreReleaseSuffix() {
         let v = UpdateChecker.parseVersion("v1.2.3-beta.1")
-        XCTAssertEqual(v?.0, 1)
-        XCTAssertEqual(v?.1, 2)
-        XCTAssertEqual(v?.2, 3)
+        XCTAssertEqual(v?.major, 1)
+        XCTAssertEqual(v?.minor, 2)
+        XCTAssertEqual(v?.patch, 3)
     }
 
     func testParseVersionInvalid() {
@@ -68,32 +68,45 @@ final class UpdateCheckerTests: XCTestCase {
 
     // MARK: - Version Comparison
 
+    private func v(_ major: Int, _ minor: Int, _ patch: Int, _ pre: String? = nil) -> ReleaseVersion {
+        ReleaseVersion(major: major, minor: minor, patch: patch, prerelease: pre)
+    }
+
+    func testPreReleasesOrderBeforeTheirReleaseAndByNumber() {
+        XCTAssertGreaterThan(v(0, 6, 0, "rc2"), v(0, 6, 0, "rc1"))
+        XCTAssertGreaterThan(v(0, 6, 0, "rc10"), v(0, 6, 0, "rc2"))
+        XCTAssertGreaterThan(v(0, 6, 0), v(0, 6, 0, "rc2"))
+        XCTAssertGreaterThan(v(0, 6, 1, "rc1"), v(0, 6, 0))
+        XCTAssertEqual(UpdateChecker.parseVersion("v0.6.0-rc1"), v(0, 6, 0, "rc1"))
+    }
+
     func testIsNewerMajor() {
-        XCTAssertTrue(UpdateChecker.isNewer((2, 0, 0), than: (1, 0, 0)))
-        XCTAssertFalse(UpdateChecker.isNewer((1, 0, 0), than: (2, 0, 0)))
+        XCTAssertTrue(v(2, 0, 0) > v(1, 0, 0))
+        XCTAssertFalse(v(1, 0, 0) > v(2, 0, 0))
     }
 
     func testIsNewerMinor() {
-        XCTAssertTrue(UpdateChecker.isNewer((1, 3, 0), than: (1, 2, 0)))
-        XCTAssertFalse(UpdateChecker.isNewer((1, 2, 0), than: (1, 3, 0)))
+        XCTAssertTrue(v(1, 3, 0) > v(1, 2, 0))
+        XCTAssertFalse(v(1, 2, 0) > v(1, 3, 0))
     }
 
     func testIsNewerPatch() {
-        XCTAssertTrue(UpdateChecker.isNewer((1, 2, 4), than: (1, 2, 3)))
-        XCTAssertFalse(UpdateChecker.isNewer((1, 2, 3), than: (1, 2, 4)))
+        XCTAssertTrue(v(1, 2, 4) > v(1, 2, 3))
+        XCTAssertFalse(v(1, 2, 3) > v(1, 2, 4))
     }
 
     func testIsNewerSameVersion() {
-        XCTAssertFalse(UpdateChecker.isNewer((1, 2, 3), than: (1, 2, 3)))
+        let same = v(1, 2, 3)
+        XCTAssertFalse(v(1, 2, 3) > same)
     }
 
     // MARK: - ReleaseInfo version
 
     func testReleaseInfoVersionParsed() {
         let info = makeRelease(tag: "v1.5.2")
-        XCTAssertEqual(info.version?.0, 1)
-        XCTAssertEqual(info.version?.1, 5)
-        XCTAssertEqual(info.version?.2, 2)
+        XCTAssertEqual(info.version?.major, 1)
+        XCTAssertEqual(info.version?.minor, 5)
+        XCTAssertEqual(info.version?.patch, 2)
     }
 
     func testReleaseInfoDMGURLNilWhenNoAsset() {

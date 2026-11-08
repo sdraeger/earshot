@@ -10,8 +10,29 @@ struct ReleaseInfo: Equatable {
     let htmlURL: URL
     let dmgURL: URL?
 
-    var version: (Int, Int, Int)? {
+    var version: ReleaseVersion? {
         UpdateChecker.parseVersion(tagName)
+    }
+}
+
+/// `major.minor.patch` with an optional pre-release tag, ordered as semver
+/// orders them: a pre-release comes before its release, and pre-releases of
+/// one version compare by their tag with numbers read as numbers (rc2 < rc10).
+struct ReleaseVersion: Comparable {
+    let major: Int
+    let minor: Int
+    let patch: Int
+    let prerelease: String?
+
+    static func < (lhs: Self, rhs: Self) -> Bool {
+        if (lhs.major, lhs.minor, lhs.patch) != (rhs.major, rhs.minor, rhs.patch) {
+            return (lhs.major, lhs.minor, lhs.patch) < (rhs.major, rhs.minor, rhs.patch)
+        }
+        switch (lhs.prerelease, rhs.prerelease) {
+        case let (left?, right?): return left.compare(right, options: .numeric) == .orderedAscending
+        case (.some, nil): return true
+        default: return false
+        }
     }
 }
 
@@ -117,7 +138,7 @@ final class UpdateChecker {
     let installedCask: String?
 
     private let provider: any UpdateProviding
-    private let currentVersion: (Int, Int, Int)
+    private let currentVersion: ReleaseVersion
     private var checkTask: Task<Void, Never>?
     private var periodicTask: Task<Void, Never>?
 
@@ -129,7 +150,7 @@ final class UpdateChecker {
         self.installedCask = installedCask
         let version =
             Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
-        self.currentVersion = Self.parseVersion(version) ?? (0, 0, 0)
+        self.currentVersion = Self.parseVersion(version) ?? ReleaseVersion(major: 0, minor: 0, patch: 0, prerelease: nil)
     }
 
     /// How `update` should be installed on this machine.
@@ -156,11 +177,11 @@ final class UpdateChecker {
                     let all = try await provider.allReleases()
                     release = all.first { r in
                         guard let remote = r.version else { return false }
-                        return Self.isNewer(remote, than: currentVersion)
+                        return remote > currentVersion
                     }
                 } else {
                     let latest = try await provider.latestRelease()
-                    if let remote = latest.version, Self.isNewer(remote, than: currentVersion) {
+                    if let remote = latest.version, remote > currentVersion {
                         release = latest
                     } else {
                         release = nil
@@ -192,23 +213,17 @@ final class UpdateChecker {
 
     // MARK: - Version Utilities
 
-    nonisolated static func parseVersion(_ string: String) -> (Int, Int, Int)? {
+    /// `1.2.3`, `v1.2.3` or `v1.2.3-rc1`; nil for anything else.
+    nonisolated static func parseVersion(_ string: String) -> ReleaseVersion? {
         var s = string
         if s.hasPrefix("v") { s = String(s.dropFirst()) }
-        // Strip pre-release suffix (e.g. "1.2.3-beta" → "1.2.3")
+        var prerelease: String?
         if let dash = s.firstIndex(of: "-") {
+            prerelease = String(s[s.index(after: dash)...])
             s = String(s[s.startIndex ..< dash])
         }
         let parts = s.split(separator: ".").compactMap { Int($0) }
         guard parts.count == 3 else { return nil }
-        return (parts[0], parts[1], parts[2])
-    }
-
-    nonisolated static func isNewer(
-        _ remote: (Int, Int, Int), than local: (Int, Int, Int),
-    ) -> Bool {
-        if remote.0 != local.0 { return remote.0 > local.0 }
-        if remote.1 != local.1 { return remote.1 > local.1 }
-        return remote.2 > local.2
+        return ReleaseVersion(major: parts[0], minor: parts[1], patch: parts[2], prerelease: prerelease)
     }
 }
