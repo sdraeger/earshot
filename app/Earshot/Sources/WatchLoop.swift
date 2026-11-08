@@ -410,6 +410,16 @@ class WatchLoop {
             try? await sleepProvider(10)
         }
 
+        // Back to watching first, also between two calls: leaving `.recording`
+        // is what runs the end-of-recording hooks (caption flush, channel
+        // health), and entering it again runs the next one's start hooks.
+        if !Task.isCancelled {
+            update { next in
+                next.phase = .watching
+                next.currentMeeting = nil
+            }
+        }
+
         // After a split the next call is already live. Neither the cooldown
         // nor a reset applies: the app's confirmation count still stands
         // from the detection that started this recording, so this poll
@@ -422,13 +432,6 @@ class WatchLoop {
             detector.reset()
         } else {
             detector.reset(appName: meeting.pattern.appName)
-        }
-
-        if !Task.isCancelled {
-            update { next in
-                next.phase = .watching
-                next.currentMeeting = nil
-            }
         }
         return false
     }

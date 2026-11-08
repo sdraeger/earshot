@@ -199,6 +199,8 @@ final class WatchLoopTimingTests: XCTestCase {
             return recorder
         }
         loop.permissionChecker = { .allHealthy }
+        var recordingEntries = 0
+        loop.onStateChange = { _, new in if new == .recording { recordingEntries += 1 } }
 
         loop.start()
         // Wall-clock bail-out: a watch task that exits or parks outside
@@ -210,6 +212,7 @@ final class WatchLoopTimingTests: XCTestCase {
         loop.stop()
 
         XCTAssertEqual(recorders.count, 2, "each call must get its own recording")
+        XCTAssertEqual(recordingEntries, 2, "each recording enters .recording, so its start and stop hooks run")
         XCTAssertTrue(recorders.allSatisfy(\.stopCalled))
         if recordingStarts.count == 2 {
             XCTAssertGreaterThan(recordingStarts[1], 1.2)

@@ -301,7 +301,7 @@ final class LiveTranscriptionCoordinatorTests: XCTestCase {
 
         // Back to idle + flush → the deferred rebuild applies.
         recording = false
-        await coordinator.flush()
+        await coordinator.flush().value
         XCTAssertEqual(buildCount(), 2, "the deferred rebuild applies at the next idle flush")
     }
 

@@ -560,7 +560,7 @@ final class WatchingController {
             // before this transition fires); the buffered tail lives in the
             // streaming actors, not the recorder, so it survives the stop.
             if oldState == .recording {
-                Task { @MainActor in await self?.liveTranscription.flush() }
+                self?.liveTranscription.flush()
             }
             switch newState {
             case .recording:

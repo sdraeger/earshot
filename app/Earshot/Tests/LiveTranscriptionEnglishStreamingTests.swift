@@ -253,7 +253,7 @@ final class LiveTranscriptionEnglishStreamingTests: XCTestCase {
         let prefix = Array(samples.prefix(4096 * 5))
         controller.micSink(buffer16k(prefix))
         await waitFor(!captions.hypothesisMic.isEmpty, timeout: .seconds(30))
-        await controller.flush()
+        await controller.flush().value
         await waitFor(!captions.recentFinals.isEmpty, timeout: .seconds(2))
         XCTAssertEqual(
             captions.recentFinals.first { $0.channel == .mic }?.text,
@@ -299,7 +299,7 @@ final class LiveTranscriptionEnglishStreamingTests: XCTestCase {
         XCTAssertFalse(captions.hypothesisMic.isEmpty, "the mock partial must surface before flushing")
 
         // Kick the stop-time flush; it parks inside finish().
-        let flushTask = Task { await controller.flush() }
+        let flushTask = Task { await controller.flush().value }
         await gate.waitUntilFinishEntered()
 
         // Start the next recording's reset on a child task and observe whether it

@@ -304,9 +304,11 @@ final class LiveTranscriptionController {
     /// recording's `prepareForNextRecording()` can await it: a kept EOU session
     /// is reused across recordings, so a slow `asr.finish()` here must finish
     /// before the next recording ingests into the same actor. Awaiting the task's
-    /// value keeps `flush()`'s own callers (e.g. the stop-transition handler)
-    /// synchronous with completion, exactly as before.
-    func flush() async {
+    /// task is stored before this returns, so a recording that starts right
+    /// after a stop (two back-to-back calls) still waits for it; await the
+    /// returned task's value to know the flush finished.
+    @discardableResult
+    func flush() -> Task<Void, Never> {
         let task = Task { [weak self] in
             guard let self else { return }
             await self.retireFeeds()
@@ -315,7 +317,7 @@ final class LiveTranscriptionController {
             _ = await (mic, app)
         }
         pendingFlush = task
-        await task.value
+        return task
     }
 
     /// Prepare accumulated state for the next recording. Awaits any in-flight

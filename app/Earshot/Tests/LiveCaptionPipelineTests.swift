@@ -109,7 +109,7 @@ final class LiveCaptionPipelineTests: XCTestCase {
         // No speechEnd yet → nothing finalised before flush.
         XCTAssertTrue(captions.recentFinals.isEmpty, "no final should appear before flush")
 
-        await controller.flush()
+        await controller.flush().value
         await waitFor(!captions.recentFinals.isEmpty, timeout: .seconds(2))
 
         let micFinals = captions.recentFinals.filter { $0.channel == .mic }
@@ -204,7 +204,7 @@ final class LiveCaptionPipelineTests: XCTestCase {
         XCTAssertFalse(captions.hypothesisApp.isEmpty, "ingestion must surface a partial before flushing")
         XCTAssertTrue(captions.recentFinals.isEmpty, "no final should appear before flush")
 
-        await controller.flush()
+        await controller.flush().value
         await waitFor(!captions.recentFinals.isEmpty, timeout: .seconds(2))
 
         let appFinals = captions.recentFinals.filter { $0.channel == .app }

@@ -40,7 +40,7 @@ final class LiveCaptionFeedTests: XCTestCase {
         for i in 0 ..< count {
             controller.micSink(buffer(value: Float(i)))
         }
-        await controller.flush()
+        await controller.flush().value
 
         let appended = await factory.mic.appendedFirstSamples
         XCTAssertEqual(
@@ -64,7 +64,7 @@ final class LiveCaptionFeedTests: XCTestCase {
         await controller.prepare()
 
         controller.micSink(buffer(value: 1))
-        await controller.flush()
+        await controller.flush().value
         let before = await factory.mic.appendedFirstSamples.count
 
         controller.micSink(buffer(value: 99))
@@ -98,7 +98,7 @@ final class LiveCaptionFeedTests: XCTestCase {
             controller.micSink(buffer(value: Float(i)))
         }
         await factory.mic.releaseProcess()
-        await controller.flush()
+        await controller.flush().value
 
         let appended = await factory.mic.appendedFirstSamples
         XCTAssertLessThan(
@@ -132,7 +132,7 @@ final class LiveCaptionFeedTests: XCTestCase {
         await controller.prepare()
 
         controller.micSink(buffer(value: 1))
-        await controller.flush()
+        await controller.flush().value
         let before = await factory.mic.appendedFirstSamples.count
 
         await controller.prepareForNextRecording()

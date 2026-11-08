@@ -172,12 +172,18 @@ final class LiveTranscriptionCoordinator {
     /// pipelines already flushed finds nothing pending and emits nothing. Also
     /// applies any re-warm deferred by a mid-recording settings change (see
     /// `handleSettingsChange`), now that we are idle.
-    func flush() async {
-        await controller?.flush()
-        // Now idle: apply any re-warm deferred by a mid-recording settings change.
-        // Skip while an `attachSinks` is mid-flight — swapping the controller then
-        // would orphan the one it is binding (fast manual stop→restart).
-        if needsRewarmWhenIdle, !isRecording(), !attachInFlight {
+    ///
+    /// The flush is registered before this returns, so a recording starting
+    /// right after waits for it; await the returned task to know it is done.
+    @discardableResult
+    func flush() -> Task<Void, Never> {
+        let pending = controller?.flush()
+        return Task { [weak self] in
+            await pending?.value
+            // Now idle: apply any re-warm deferred by a mid-recording settings change.
+            // Skip while an `attachSinks` is mid-flight — swapping the controller then
+            // would orphan the one it is binding (fast manual stop→restart).
+            guard let self, needsRewarmWhenIdle, !isRecording(), !attachInFlight else { return }
             needsRewarmWhenIdle = false
             controller = nil
             prewarmIfEligible()
