@@ -79,7 +79,7 @@ final class ArtifactRenamePlanTests: XCTestCase {
     func testMovesCoverEveryArtifactThatExists() {
         let old = "20261014_1800_google_chrome_ab12cd34"
         let names: Set = [
-            "/out/protocols/\(old).md", "/out/protocols/\(old).txt",
+            "/out/protocols/\(old).md", "/out/protocols/\(old).txt", "/out/protocols/\(old).usernotes",
             "/out/recordings/\(old)_mix.wav", "/out/recordings/\(old)_app.wav", "/out/recordings/\(old)_mic.wav",
             "/out/recordings/\(old)_16k.wav", "/out/recordings/\(old)_app_16k.wav",
             "/out/recordings/\(old)_mic_16k.wav", "/out/recordings/\(old)_segments.json",

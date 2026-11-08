@@ -44,4 +44,20 @@ final class MeetingLibraryTests: XCTestCase {
         let parts = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: date)
         XCTAssertEqual([parts.year, parts.month, parts.day, parts.hour, parts.minute], [2026, 3, 10, 9, 0])
     }
+
+    func testTypedNotesBelongToTheirMeetingAndGoToTheTrashWithIt() throws {
+        let folder = try makeFolder()
+        let stem = "20260312_1430_daily_standup_00ff11aa"
+        try "[00:00] Bob: Hey".write(to: folder.appendingPathComponent("\(stem).txt"), atomically: true, encoding: .utf8)
+        try ProtocolGenerator.saveUserNotes("ship friday", basename: stem, dir: folder)
+        let library = MeetingLibrary { folder }
+        library.reload()
+        let meeting = try XCTUnwrap(library.meetings.first)
+
+        XCTAssertEqual(library.meetings.count, 1, "typed notes are no meeting of their own")
+        XCTAssertEqual(library.userNotes(of: meeting), "ship friday")
+
+        try library.delete(meeting)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.appendingPathComponent("\(stem).usernotes").path))
+    }
 }

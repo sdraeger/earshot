@@ -935,6 +935,10 @@ extension PipelineQueue {
         let protocolsDir = outputDir.appendingPathComponent("protocols")
         let txtPath = try ProtocolGenerator.saveTranscript(diarization.transcript, basename: ctx.slug, dir: protocolsDir)
         logger.info("[\(ctx.shortID, privacy: .public)] transcript_saved file=\(txtPath.lastPathComponent, privacy: .private)")
+        if let notes = job(withID: ctx.jobID)?.userNotes {
+            // Best effort: the notes also reach the model from the job itself.
+            try? ProtocolGenerator.saveUserNotes(notes, basename: ctx.slug, dir: protocolsDir)
+        }
 
         if let idx = jobs.firstIndex(where: { $0.id == ctx.jobID }) {
             jobs[idx].transcriptPath = txtPath

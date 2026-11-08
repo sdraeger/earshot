@@ -65,6 +65,15 @@ final class MeetingLibrary {
         meeting.transcriptURL.flatMap(text(at:))
     }
 
+    /// What the user typed during the meeting, when they typed anything.
+    func userNotes(of meeting: Meeting) -> String? {
+        text(at: userNotesURL(of: meeting))
+    }
+
+    private func userNotesURL(of meeting: Meeting) -> URL {
+        folder().appendingPathComponent(meeting.id).appendingPathExtension(ProtocolGenerator.userNotesExtension)
+    }
+
     private func text(at url: URL) -> String? {
         if let text = texts[url] { return text }
         let text = try? String(contentsOf: url, encoding: .utf8)
@@ -91,9 +100,11 @@ final class MeetingLibrary {
         reload()
     }
 
-    /// Moves the meeting's notes and transcript to the Trash.
+    /// Moves the meeting's notes, transcript and typed notes to the Trash.
     func delete(_ meeting: Meeting) throws {
-        for url in [meeting.notesURL, meeting.transcriptURL].compactMap(\.self) {
+        let typed = userNotesURL(of: meeting)
+        let typedIfAny = FileManager.default.fileExists(atPath: typed.path) ? typed : nil
+        for url in [meeting.notesURL, meeting.transcriptURL, typedIfAny].compactMap(\.self) {
             try FileManager.default.trashItem(at: url, resultingItemURL: nil)
         }
         reload()

@@ -220,6 +220,18 @@ enum ProtocolGenerator {
         return url
     }
 
+    /// The extension of the notes the user typed during a meeting, saved next
+    /// to its transcript so its notes can be rewritten around them later.
+    static let userNotesExtension = "usernotes"
+
+    /// Save the notes the user typed beside the transcript (`basename.usernotes`).
+    static func saveUserNotes(_ notes: String, basename: String, dir: URL) throws {
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent(basename).appendingPathExtension(userNotesExtension)
+        try notes.write(to: url, atomically: true, encoding: .utf8)
+        try FileManager.default.restrictToOwner(url)
+    }
+
     /// Save a protocol to a Markdown file.
     ///
     /// `basename` is the job's precomputed, meeting-start-anchored stem (shared

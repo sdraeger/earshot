@@ -88,8 +88,8 @@ final class MeetingsController {
 
     // MARK: - Finished meetings
 
-    /// Writes new notes for `meeting` from its transcript with `template`,
-    /// keeping the appended transcript when Settings asks for it. Nothing is
+    /// Writes new notes for `meeting` from its transcript and the notes typed
+    /// during it with `template`, keeping the appended transcript when Settings asks for it. Nothing is
     /// written for a meeting deleted while the model was writing.
     func regenerate(_ meeting: MeetingLibrary.Meeting, template: String) async throws {
         guard let transcript = library.transcript(of: meeting), let transcriptURL = meeting.transcriptURL
@@ -98,7 +98,8 @@ final class MeetingsController {
         defer { rewriting.remove(meeting.id) }
         let generator = try generator(promptURL: ProtocolTemplates.url(for: template))
         let notes = try await generator.generate(
-            transcript: transcript, title: meeting.title, diarized: ProtocolGenerator.isDiarized(transcript),
+            transcript: ProtocolGenerator.input(transcript: transcript, userNotes: library.userNotes(of: meeting)),
+            title: meeting.title, diarized: ProtocolGenerator.isDiarized(transcript),
             meetingStartTime: MeetingLibrary.date(fromFileName: meeting.id),
         )
         guard FileManager.default.fileExists(atPath: transcriptURL.path) else { return }
