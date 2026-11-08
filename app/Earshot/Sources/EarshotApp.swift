@@ -108,6 +108,7 @@ struct EarshotApp: App {
         _appState = State(initialValue: state)
         AppDelegate.install(state)
         AppPaths.migrateIfNeeded()
+        SpeakerMatcher.migrateIfNeeded(dbPath: AppPaths.speakersDB)
         NotificationManager.shared.setUp()
         // The meeting card asks instead of a notification.
         NotificationManager.shared.asksOnScreen = true

@@ -471,6 +471,24 @@ final class SpeakerMatcherTests: XCTestCase {
         XCTAssertEqual(loaded[0].name, "Speaker A")
     }
 
+    /// The voice closest to a stored speaker is named first. Picking in label
+    /// order let "S0", a stranger 0.30 from Alice, take her name before
+    /// "S1", Alice herself, could.
+    func testTheClosestVoiceGetsTheNameFirst() {
+        let matcher = SpeakerMatcher(dbPath: dbPath)
+        matcher.saveDB([
+            StoredSpeaker(name: "Alice", embeddings: [[1, 0, 0]]),
+            StoredSpeaker(name: "Bob", embeddings: [[0, 1, 0]]),
+            StoredSpeaker(name: "Carol", embeddings: [[0, 0, 1]]),
+        ])
+        let stranger: [Float] = [0.7, 0.45, 0.5545]
+
+        let names = matcher.match(embeddings: ["S0": stranger, "S1": [1, 0, 0]])
+
+        XCTAssertEqual(names["S1"], "Alice")
+        XCTAssertEqual(names["S0"], "S0")
+    }
+
     // MARK: - Migration
 
     func testMigrateOldFormatResetsDB() throws {
@@ -859,9 +877,9 @@ final class SpeakerMatcherTests: XCTestCase {
         XCTAssertEqual(result["SPEAKER_2"], "SPEAKER_2", "Third speaker should stay unmatched")
     }
 
-    func testMatchIsDeterministicByKey() {
-        // Two speakers both close to the same stored speaker.
-        // Sorted by key, SPEAKER_0 < SPEAKER_1, so SPEAKER_0 claims the match first.
+    func testTheCloserOfTwoVoicesClaimsTheName() {
+        // Two speakers both close to the same stored speaker. The closer one
+        // claims it, whatever its label; equal distances go by label.
         let matcher = SpeakerMatcher(dbPath: dbPath, threshold: 0.40, confidenceMargin: 0.0)
         let stored = [StoredSpeaker(name: "Speaker A", embeddings: [[1, 0, 0]])]
         matcher.saveDB(stored)
@@ -872,9 +890,11 @@ final class SpeakerMatcherTests: XCTestCase {
         ]
         let result = matcher.match(embeddings: embeddings)
 
-        // SPEAKER_0 is processed first (alphabetical) and claims "Speaker A"
-        XCTAssertEqual(result["SPEAKER_0"], "Speaker A", "First key alphabetically should win the match")
-        XCTAssertEqual(result["SPEAKER_1"], "SPEAKER_1", "Second speaker left unmatched")
+        XCTAssertEqual(result["SPEAKER_1"], "Speaker A", "the closer voice wins the name")
+        XCTAssertEqual(result["SPEAKER_0"], "SPEAKER_0", "the other is left unmatched")
+
+        let tie = matcher.match(embeddings: ["SPEAKER_1": [0.95, 0.1, 0], "SPEAKER_0": [0.95, 0.1, 0]])
+        XCTAssertEqual(tie["SPEAKER_0"], "Speaker A", "a tie goes to the first label")
     }
 
     // MARK: - matchVerbose

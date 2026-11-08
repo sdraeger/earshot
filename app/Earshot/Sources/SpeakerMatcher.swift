@@ -55,7 +55,6 @@ class SpeakerMatcher {
         self.confidenceMargin = confidenceMargin
         self.settleBeforeReread = settleBeforeReread
         self.onDBProblem = onDBProblem
-        Self.migrateIfNeeded(dbPath: self.dbPath)
     }
 
     /// Atomic read-modify-write against `speakers.json`. Holds the
@@ -157,6 +156,7 @@ class SpeakerMatcher {
     }
 
     /// Reset old pyannote-format speakers.json (incompatible embeddings).
+    /// Run once at launch.
     /// Old format: `{ "name": [[float]] }` dict.
     /// New format: `[{ "name": str, "embedding": [float] }]` array.
     static func migrateIfNeeded(dbPath: URL) {
@@ -211,9 +211,16 @@ class SpeakerMatcher {
         var result: [String: VerboseMatch] = [:]
         var usedNames: Set<String> = []
 
-        let sorted = embeddings.sorted { $0.key < $1.key }
+        // The label closest to any stored voice picks first, so a weaker match
+        // cannot take a name and push the voice it belongs to onto the next
+        // best one. Ties go by label.
+        let sorted = embeddings
+            .map { label, embedding in
+                (label, embedding, stored.map { Self.distance(query: embedding, speaker: $0) }.min() ?? .greatestFiniteMagnitude)
+            }
+            .sorted { ($0.2, $0.0) < ($1.2, $1.0) }
 
-        for (label, embedding) in sorted {
+        for (label, embedding, _) in sorted {
             let scored = stored
                 .filter { !usedNames.contains($0.name) }
                 .map { speaker -> TopCandidate in
