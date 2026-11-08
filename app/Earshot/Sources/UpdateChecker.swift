@@ -28,7 +28,7 @@ struct GitHubReleaseProvider: UpdateProviding {
     /// Not `private` — `AboutSettingsView`'s GitHub link is built from the same
     /// two constants, so the repo identity has a single home.
     static let owner = "sdraeger"
-    static let repo = "meeting-transcriber"
+    static let repo = "earshot"
 
     private struct GitHubRelease: Codable {
         let tagName: String

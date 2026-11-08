@@ -72,7 +72,7 @@ final class AboutSettingsViewTests: XCTestCase {
         XCTAssertNoThrow(try body.find(text: "GitHub"))
         XCTAssertEqual(
             try body.find(ViewType.Link.self).url(),
-            URL(string: "https://github.com/sdraeger/meeting-transcriber"),
+            URL(string: "https://github.com/sdraeger/earshot"),
         )
     }
 
