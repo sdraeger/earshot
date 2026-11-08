@@ -173,10 +173,6 @@ class WatchLoop {
         self.denyListStore = denyListStore
     }
 
-    nonisolated static var defaultOutputDir: URL {
-        AppPaths.downloadsProtocolsDir
-    }
-
     nonisolated static func defaultDetector() -> any MeetingDetecting {
         PowerAssertionDetector()
     }
@@ -282,13 +278,8 @@ class WatchLoop {
             throw RecorderError.permissionDenied(refusal)
         }
 
-        // Stop auto-watch if active
-        watchTask?.cancel()
-        watchTask = nil
-        // Same reason as in `stop()`: with the poll loop gone there is nothing
-        // left to act on an answer, so the question must not stay open.
-        declineParkedConsent()
-
+        // No auto-watch to stop here: `WatchingController` stops the watching
+        // loop (declining its parked prompt) and records on a fresh one.
         let recorder = await recorderFactory()
         // The quit may have begun while the recorder was being built.
         guard !finishingForQuit else { throw CancellationError() }
@@ -574,16 +565,6 @@ class WatchLoop {
             return String(title.dropLast(suffix.count))
         }
         return title
-    }
-
-    /// Map WatchLoop state to TranscriberState for compatibility with existing UI.
-    var transcriberState: TranscriberState {
-        switch state {
-        case .idle: .idle
-        case .watching: .watching
-        case .recording: .recording
-        case .error: .error
-        }
     }
 }
 

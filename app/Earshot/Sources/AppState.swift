@@ -472,7 +472,7 @@ final class AppState {
         return BadgeKind.compute(
             watchLoopActive: loop?.isActive == true,
             watchLoopState: loop?.state ?? .idle,
-            transcriberState: loop?.transcriberState ?? .idle,
+            transcriberState: loop?.state ?? .idle,
             activeJobState: pipeline.queue.activeJobs.first?.state,
             updateAvailable: updateChecker.availableUpdate != nil,
             permissionProblem: permissions.health?.isHealthy == false,
@@ -482,7 +482,7 @@ final class AppState {
 
     var currentStateLabel: String {
         if let loop = watching.watchLoop, loop.isActive {
-            return loop.transcriberState.label
+            return loop.state.label
         }
         return "Idle"
     }
@@ -563,6 +563,6 @@ final class AppState {
             }
         }
 
-        return TranscriberStatus(state: loop.transcriberState, meeting: meeting, error: loop.lastError)
+        return TranscriberStatus(state: loop.state, meeting: meeting, error: loop.lastError)
     }
 }

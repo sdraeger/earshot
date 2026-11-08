@@ -6,28 +6,16 @@ struct TranscriberStatus {
     let error: String?
 }
 
-/// The watch loop's state as the panel presents it (`WatchLoop.transcriberState`).
-enum TranscriberState {
-    case idle
-    case watching
-    case recording
-    case error
+/// The watch loop's state, as the panel names it.
+typealias TranscriberState = WatchLoop.State
 
+extension WatchLoop.State {
     var label: String {
         switch self {
         case .idle: "Idle"
         case .watching: "Watching for meetings…"
         case .recording: "Recording"
         case .error: "Error"
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .idle: "waveform.circle"
-        case .watching: "eye.fill"
-        case .recording: "record.circle.fill"
-        case .error: "exclamationmark.triangle.fill"
         }
     }
 }

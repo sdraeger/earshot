@@ -45,11 +45,4 @@ enum JobOpenTarget: Equatable {
         case .file: "Open last notes"
         }
     }
-
-    var systemImage: String {
-        switch self {
-        case .notion: "arrow.up.right.square"
-        case .file: "doc.text"
-        }
-    }
 }

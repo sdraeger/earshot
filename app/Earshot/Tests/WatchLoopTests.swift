@@ -110,19 +110,12 @@ final class WatchLoopTests: XCTestCase {
         let loop = makeLoop()
 
         // idle
-        XCTAssertEqual(loop.transcriberState, .idle)
+        XCTAssertEqual(loop.state, .idle)
 
         // watching
         loop.start()
-        XCTAssertEqual(loop.transcriberState, .watching)
+        XCTAssertEqual(loop.state, .watching)
         loop.stop()
-    }
-
-    // MARK: - Default Output Dir
-
-    func testDefaultOutputDir() {
-        let dir = WatchLoop.defaultOutputDir
-        XCTAssertTrue(dir.path.contains("Downloads/Earshot"))
     }
 
     // MARK: - Meeting End Detection

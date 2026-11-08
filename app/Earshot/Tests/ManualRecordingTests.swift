@@ -250,17 +250,4 @@ final class ManualRecordingTests: XCTestCase {
         XCTAssertEqual(loop.manualRecordingInfo?.pid, 1234, "the running app recording must survive")
         loop.stop()
     }
-
-    // MARK: - Auto-watch interaction
-
-    func testStartManualRecordingStopsAutoWatch() async throws {
-        let (loop, _) = makeLoop()
-        loop.start()
-        XCTAssertEqual(loop.state, .watching)
-
-        try await loop.startManualRecording(pid: 1234, appName: "Chrome", title: "Meeting")
-        XCTAssertEqual(loop.state, .recording)
-        XCTAssertTrue(loop.isManualRecording)
-        loop.stop()
-    }
 }

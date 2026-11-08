@@ -19,22 +19,4 @@ final class TranscriberStatusTests: XCTestCase {
     func testErrorLabel() {
         XCTAssertEqual(TranscriberState.error.label, "Error")
     }
-
-    // MARK: - State Icons
-
-    func testIdleIcon() {
-        XCTAssertEqual(TranscriberState.idle.icon, "waveform.circle")
-    }
-
-    func testWatchingIcon() {
-        XCTAssertEqual(TranscriberState.watching.icon, "eye.fill")
-    }
-
-    func testRecordingIcon() {
-        XCTAssertEqual(TranscriberState.recording.icon, "record.circle.fill")
-    }
-
-    func testErrorIcon() {
-        XCTAssertEqual(TranscriberState.error.icon, "exclamationmark.triangle.fill")
-    }
 }
