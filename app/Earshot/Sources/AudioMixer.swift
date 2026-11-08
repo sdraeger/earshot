@@ -40,9 +40,24 @@ enum AudioMixer {
         micDelay: TimeInterval = 0,
         sampleRate: Int = AudioConstants.targetSampleRate,
     ) throws {
-        var appSamples = try loadAudioFileAsFloat32(url: appAudioPath)
-        var micSamples = try loadAudioFileAsFloat32(url: micAudioPath)
+        try mix(
+            appSamples: loadAudioFileAsFloat32(url: appAudioPath),
+            micSamples: loadAudioFileAsFloat32(url: micAudioPath),
+            outputPath: outputPath, micDelay: micDelay, sampleRate: sampleRate,
+        )
+    }
 
+    /// `mix` over tracks already in memory, as the recorder holds them when
+    /// it stops: the same result without reading both files back.
+    static func mix(
+        appSamples: [Float],
+        micSamples: [Float],
+        outputPath: URL,
+        micDelay: TimeInterval,
+        sampleRate: Int,
+    ) throws {
+        var appSamples = appSamples
+        var micSamples = micSamples
         let clampedDelay = clampMicDelay(micDelay)
 
         // Apply echo suppression

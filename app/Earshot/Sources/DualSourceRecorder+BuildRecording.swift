@@ -221,11 +221,12 @@ extension DualSourceRecorder {
             throw RecorderError.noAudioData
         }
         try writeMixAtomically(to: mixPath) { staging in
-            if let app = appPath, let mic = micPath {
-                // Delegate mute masking, echo suppression, delay alignment, and mixing
+            if appPath != nil, micPath != nil {
+                // Delegate echo suppression, delay alignment and mixing, from
+                // the tracks just written: both are still in memory.
                 try AudioMixer.mix(
-                    appAudioPath: app,
-                    micAudioPath: mic,
+                    appSamples: appSamples16k,
+                    micSamples: micSamples,
                     outputPath: staging,
                     micDelay: normalisation.reportedDelay,
                     sampleRate: mixRate,
