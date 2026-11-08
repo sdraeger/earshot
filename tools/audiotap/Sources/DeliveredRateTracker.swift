@@ -108,9 +108,7 @@ struct DeliveredRateTracker: Equatable {
     ///
     /// `hostSeconds` is the presentation time of the buffer's *first* frame, so
     /// the frames of the buffer being observed lie after its stamp and belong to
-    /// the window that stamp opens. That is the opposite convention from the app
-    /// module's `SampleRateDriftDetector`, whose stamps are taken after capture
-    /// and which therefore drops its first entry instead of its last.
+    /// the window that stamp opens.
     mutating func observe(frames: Int, hostSeconds: Double, current: Int) -> Int? {
         guard frames > 0, hostSeconds.isFinite else { return nil }
         guard var open = window, open.publishedRate == current else {

@@ -12,10 +12,8 @@ private let logger = Logger(subsystem: AppPaths.logSubsystem, category: "Streami
 /// and calls `engine.transcribeSamples` once per ~800 ms while speaking
 /// (partial) and once per detected speech end / 5 s force-flush (final).
 ///
-/// Both mic and app channels are supported. App-channel buffers are
-/// normalized to 16 kHz mono upstream (capture-time resampling, plus
-/// `LiveAudioResampler` in the controller's feed for the fallback path)
-/// before they reach `ingest`, so this actor always sees that format.
+/// Both mic and app channels are supported. Both arrive 16 kHz mono from
+/// capture-time resampling, so this actor always sees that format.
 ///
 /// Conforms to `LiveCaptionPipeline` — the VAD-driven strategy behind that
 /// seam. Calls are serialized by the driver (see the protocol contract), so
@@ -84,9 +82,8 @@ actor StreamingTranscriber: LiveCaptionPipeline {
 
     /// Feed a captured buffer into the streaming pipeline. Buffers that don't
     /// match the expected 16 kHz mono shape are dropped silently. Both mic and
-    /// app channels are normalized to that shape upstream (mic via
-    /// `MicCaptureHandler`, app via `LiveAudioResampler` in
-    /// `LiveTranscriptionController`) before reaching here.
+    /// app channels are resampled to that shape at capture (mic via
+    /// `MicCaptureHandler`, app via `AppAudioCapture`).
     func ingest(_ buffer: LiveAudioBuffer) async {
         guard buffer.channelCount == 1, buffer.sampleRate == 16000 else { return }
         inputAccumulator.append(contentsOf: buffer.samples)

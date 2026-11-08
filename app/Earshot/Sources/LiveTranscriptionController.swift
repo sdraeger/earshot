@@ -11,11 +11,9 @@ private let logger = Logger(subsystem: AppPaths.logSubsystem, category: "LiveTra
 /// into the observable `LiveCaptionsState` that backs the caption-bar overlay.
 ///
 /// Scope:
-///   - mic + app channels supported. Buffers normally arrive 16 kHz mono
-///     from capture-time resampling (mic via `MicCaptureHandler`, app via
-///     `AppAudioCapture`'s `StreamingMonoResampler`); the app feed still runs
-///     `LiveAudioResampler` for the resampler-nil fallback path, where raw
-///     device-rate buffers come through (16 kHz mono passes through unchanged).
+///   - mic + app channels supported. Buffers arrive 16 kHz mono from
+///     capture-time resampling (mic via `MicCaptureHandler`, app via
+///     `AppAudioCapture`'s `StreamingMonoResampler`).
 ///   - one engine instance shared by both channels.
 ///
 /// Dataflow: each channel is a bounded `AsyncStream<LiveAudioBuffer>` feed.
@@ -120,10 +118,7 @@ final class LiveTranscriptionController {
 
     /// App-channel live sink. Hand this to `DualSourceRecorder.appLiveSink`
     /// before `recorder.start(...)`. Buffers arrive on the CATap IOProc
-    /// thread, normally already capture-time resampled to 16 kHz mono (raw
-    /// device rate only on the resampler-nil fallback) — the feed's consumer
-    /// runs them through `LiveAudioResampler`, which passes 16 kHz mono
-    /// through unchanged.
+    /// thread, already capture-time resampled to 16 kHz mono.
     var appSink: LiveAudioSink {
         appFeed.sink
     }
@@ -341,9 +336,7 @@ final class LiveTranscriptionController {
     ///     rebuild the cheap re-transcribe actors so no stale VAD/transcriber
     ///     state carries across recordings.
     ///
-    /// `bindFeeds()` re-arms one fresh feed per existing pipeline (the app
-    /// feed gets a fresh `LiveAudioResampler`, replacing the old per-recording
-    /// reset of a shared instance).
+    /// `bindFeeds()` re-arms one fresh feed per existing pipeline.
     func prepareForNextRecording() async {
         await pendingFlush?.value
         pendingFlush = nil
@@ -376,19 +369,16 @@ final class LiveTranscriptionController {
 
     /// (Re)arm one bounded feed per built pipeline, retiring any previous
     /// feeds first (also for channels whose pipeline is nil, so no stale
-    /// consumer survives a build-less reset). The app feed's consumer runs a
-    /// fresh `LiveAudioResampler` per recording, replacing the old shared
-    /// instance + per-recording reset.
+    /// consumer survives a build-less reset). Both channels arrive as 16 kHz
+    /// mono: the mic from `MicCaptureHandler`, the app from `AppAudioCapture`'s
+    /// capture-time resampler.
     private func bindFeeds() async {
         await retireFeeds()
         if let micPipeline {
             await micFeed.bind(to: micPipeline)
         }
         if let appPipeline {
-            await appFeed.bind(to: appPipeline) {
-                let resampler = LiveAudioResampler()
-                return { resampler.resample($0) }
-            }
+            await appFeed.bind(to: appPipeline)
         }
     }
 
@@ -477,10 +467,6 @@ final class LiveTranscriptionController {
 /// just stopped.
 @MainActor
 private final class CaptionChannelFeed {
-    /// Per-buffer normalization run inside the consumer task. Returning nil
-    /// drops the buffer.
-    typealias Transform = (LiveAudioBuffer) -> LiveAudioBuffer?
-
     /// Bounded feed capacity, in buffers. Capture delivers roughly 10–50
     /// buffers/s per channel, so this is tens of seconds of headroom — far
     /// more than a healthy pipeline ever queues in real time, but a hard
@@ -536,14 +522,8 @@ private final class CaptionChannelFeed {
     }
 
     /// Arm a fresh feed into `pipeline`, retiring any previous one first so
-    /// exactly one consumer exists. `makeTransform` is invoked inside the
-    /// consumer task, so a stateful non-Sendable transform (the app channel's
-    /// `LiveAudioResampler`) stays confined to it — and is fresh per feed ==
-    /// per recording.
-    func bind(
-        to pipeline: any LiveCaptionPipeline,
-        makeTransform: @escaping @Sendable () -> Transform = { \.self },
-    ) async {
+    /// exactly one consumer exists.
+    func bind(to pipeline: any LiveCaptionPipeline) async {
         await retire()
         let (stream, continuation) = AsyncStream.makeStream(
             of: LiveAudioBuffer.self,
@@ -551,10 +531,8 @@ private final class CaptionChannelFeed {
         )
         slot.withLock { $0 = continuation }
         let consumer = Task.detached(priority: .userInitiated) {
-            let transform = makeTransform()
             for await buffer in stream {
-                guard let normalized = transform(buffer) else { continue }
-                await pipeline.ingest(normalized)
+                await pipeline.ingest(buffer)
             }
         }
         consumerBox.withLock { $0 = consumer }

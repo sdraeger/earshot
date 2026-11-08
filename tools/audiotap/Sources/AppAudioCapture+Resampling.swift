@@ -10,16 +10,14 @@ import Foundation
 /// `AppAudioCapture+LiveSink.swift`.
 @available(macOS 14.2, *)
 extension AppAudioCapture {
-    /// Format of the data actually written to the output fd: 16 kHz mono when
-    /// the resampler is active (the normal case), else the raw device input
-    /// (`actualSampleRate`/`actualChannels`) as a fallback. Read by
-    /// `AudioCaptureSession` to describe the produced file.
+    /// Format of the data written to the output fd: always 16 kHz mono. Read
+    /// by `AudioCaptureSession` to describe the produced file.
     var outputSampleRate: Int {
-        resampler != nil ? Int(speechSampleRate) : actualSampleRate
+        Int(speechSampleRate)
     }
 
     var outputChannels: Int {
-        resampler != nil ? 1 : actualChannels
+        1
     }
 
     /// The buffer's hardware presentation time in mach ticks, for wall-clock
@@ -35,19 +33,12 @@ extension AppAudioCapture {
     /// converter is rebuilt on a mid-recording rate change. The resampler buffers
     /// internally, so a buffer that yields no output yet (converter priming) is
     /// simply not written — its samples emerge on a later call, no data lost.
-    /// Falls back to the raw native-rate write *and* raw-format live-sink forward
-    /// only if no resampler was built (not expected for a 16 kHz target).
     /// `hostTicks` is the buffer's hardware presentation time, used to fill
     /// device-restart gaps with silence so the track stays aligned to wall-clock.
     /// Runs on `writeQueue`.
     internal func writeCapturedBuffer(
         fd: Int32, data: UnsafeMutableRawPointer, byteCount: Int, hostTicks: UInt64,
     ) {
-        guard resampler != nil else {
-            writeAllToFileHandle(fd, data, count: byteCount)
-            forwardToLiveSink(data: data, byteCount: byteCount)
-            return
-        }
         let floatCount = byteCount / MemoryLayout<Float>.size
         let channels = max(actualChannels, 1)
         // A rate change is followed from the buffer that confirms it, not from
@@ -67,11 +58,10 @@ extension AppAudioCapture {
     /// it's drivable without a live CATap. Resamples to 16 kHz mono, fills any
     /// device-restart gap with silence (file only — the live path doesn't need
     /// gap-fill), writes the resampled samples to `fd`, and forwards those same
-    /// samples to the live sink. Caller guarantees `resampler != nil`.
+    /// samples to the live sink.
     internal func resampleForwardAndWrite(
         fd: Int32, interleaved: [Float], inputRate: Int, inputChannels: Int, hostTicks: UInt64,
     ) {
-        guard let resampler else { return }
         let mono16k = resampler.process(
             interleaved, inputRate: inputRate, inputChannels: inputChannels,
         )

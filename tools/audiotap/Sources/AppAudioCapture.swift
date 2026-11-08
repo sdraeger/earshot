@@ -32,9 +32,7 @@ class AppAudioCapture: @unchecked Sendable {
     /// Resamples + downmixes each captured buffer to 16 kHz mono in the IOProc
     /// (issue #379 follow-up — see `writeCapturedBuffer` in `+Resampling`).
     /// `internal` (not `private`) so that cross-file extension can reach it.
-    /// `nil` only if a 16 kHz output format couldn't be built (not expected);
-    /// the write then falls back to the raw native-rate path.
-    let resampler: StreamingMonoResampler?
+    let resampler: StreamingMonoResampler
     /// Wall-clock anchoring so an output-device-restart gap becomes silence in
     /// the file instead of an under-run that drifts against the mic track (issue
     /// #379 follow-up — see `writeCapturedBuffer` in `+Resampling`). `internal`
@@ -120,8 +118,8 @@ class AppAudioCapture: @unchecked Sendable {
 
     /// Actual channel count detected from first IOProc callback.
     private(set) var actualChannels: Int = 0
-    // `outputSampleRate` / `outputChannels` (the format actually written to the
-    // fd, 16 kHz mono after the in-IOProc resample) live in `+Resampling`.
+    // The file holds 16 kHz mono (`outputSampleRate` / `outputChannels` in
+    // `+Resampling`), whatever the device delivers.
 
     private var didLogFormat = false
     /// Pure state machine that decides when/what to dispatch on device-change events.

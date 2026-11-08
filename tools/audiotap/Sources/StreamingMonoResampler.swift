@@ -14,8 +14,7 @@ private let logger = Logger(subsystem: "com.earshot.audiotap", category: "Stream
 /// (issue #379 "tape-stop" drift: a 24 kHz span played as 48 kHz comes out 2×
 /// too fast and an octave low). Converting each buffer at the rate that was live
 /// when it arrived keeps the written track at true real-time duration. Mirrors
-/// the in-callback resampling `MicCaptureHandler` already does for the mic track
-/// and the app module's `LiveAudioResampler` does for live captions.
+/// the in-callback resampling `MicCaptureHandler` already does for the mic track.
 ///
 /// Channels are folded to mono by averaging *before* the converter (matching
 /// `DualSourceRecorder.downmixToMono` — `AVAudioConverter`'s own stereo→mono
@@ -29,10 +28,10 @@ final class StreamingMonoResampler {
     private var converter: AVAudioConverter?
     private var inputRate = 0
 
-    init?(targetRate: Int) {
+    init(targetRate: Int) {
         guard targetRate > 0, let output = AVAudioFormat(
             standardFormatWithSampleRate: Double(targetRate), channels: 1,
-        ) else { return nil }
+        ) else { preconditionFailure("no mono Float32 format at \(targetRate) Hz") }
         outputFormat = output
     }
 
@@ -98,8 +97,7 @@ final class StreamingMonoResampler {
 /// `.noDataNow` so the converter stops asking. Reference-typed because the
 /// converter's input callback is `@Sendable` and would reject a mutating-var
 /// capture. `internal` — `MicCaptureHandler`'s tap converter uses the same
-/// provider (the app module's `LiveAudioResampler` keeps its own copy across
-/// the package boundary).
+/// provider.
 final class FeedOnce: @unchecked Sendable {
     private let buffer: AVAudioPCMBuffer
     private var fed = false

@@ -4,13 +4,13 @@ import XCTest
 final class StreamingMonoResamplerTests: XCTestCase {
     // MARK: - Basic conversion
 
-    func testEmptyInputReturnsEmpty() throws {
-        let resampler = try XCTUnwrap(StreamingMonoResampler(targetRate: 16000))
+    func testEmptyInputReturnsEmpty() {
+        let resampler = StreamingMonoResampler(targetRate: 16000)
         XCTAssertEqual(resampler.process([], inputRate: 48000, inputChannels: 2), [])
     }
 
-    func testDownmixesAndResamplesStereo() throws {
-        let resampler = try XCTUnwrap(StreamingMonoResampler(targetRate: 16000))
+    func testDownmixesAndResamplesStereo() {
+        let resampler = StreamingMonoResampler(targetRate: 16000)
         // 1 s of 48 kHz interleaved stereo, L=0.4 R=0.6 → mono average 0.5.
         var stereo = [Float]()
         stereo.reserveCapacity(48000 * 2)
@@ -33,8 +33,8 @@ final class StreamingMonoResamplerTests: XCTestCase {
     /// for the new rate; a stale 48 kHz converter fed a 24 kHz span produces
     /// only ~8000 samples (2× too fast / an octave low — the slowed, low-pitched
     /// speaker-naming clips jhavez reported). Each span must map 1 s → 1 s.
-    func testRebuildsConverterWhenInputRateChanges() throws {
-        let resampler = try XCTUnwrap(StreamingMonoResampler(targetRate: 16000))
+    func testRebuildsConverterWhenInputRateChanges() {
+        let resampler = StreamingMonoResampler(targetRate: 16000)
 
         let first = resampler.process([Float](repeating: 0.5, count: 48000), inputRate: 48000, inputChannels: 1)
         XCTAssertEqual(first.count, 16000, accuracy: 300, "1 s @48 kHz → 1 s @16 kHz")
@@ -50,8 +50,8 @@ final class StreamingMonoResamplerTests: XCTestCase {
 
     /// A channel-count change across a device swap (2ch → 1ch) must also rebuild
     /// the converter rather than misread the interleaving.
-    func testRebuildsConverterWhenChannelCountChanges() throws {
-        let resampler = try XCTUnwrap(StreamingMonoResampler(targetRate: 16000))
+    func testRebuildsConverterWhenChannelCountChanges() {
+        let resampler = StreamingMonoResampler(targetRate: 16000)
 
         let stereo = [Float](repeating: 0.5, count: 48000 * 2) // 1 s stereo
         let firstStereo = resampler.process(stereo, inputRate: 48000, inputChannels: 2)
@@ -76,15 +76,15 @@ final class StreamingMonoResamplerTests: XCTestCase {
     /// recordings. Comparing the streamed total against the single-shot total cancels
     /// AVAudioConverter's one-time (OS-version-dependent) filter latency, so the tight
     /// bound catches per-call drift without flaking across macOS releases.
-    func testConservesTotalSampleCountAcrossManySmallBuffers() throws {
+    func testConservesTotalSampleCountAcrossManySmallBuffers() {
         let totalFrames = 48000 // 1 s @ 48 kHz mono
         let chunkSize = 480 // 10 ms
         let signal = [Float](repeating: 0.3, count: totalFrames)
 
-        let singleShot = try XCTUnwrap(StreamingMonoResampler(targetRate: 16000))
+        let singleShot = StreamingMonoResampler(targetRate: 16000)
             .process(signal, inputRate: 48000, inputChannels: 1).count
 
-        let streamer = try XCTUnwrap(StreamingMonoResampler(targetRate: 16000))
+        let streamer = StreamingMonoResampler(targetRate: 16000)
         var streamed = 0
         for start in stride(from: 0, to: totalFrames, by: chunkSize) {
             let chunk = Array(signal[start ..< min(start + chunkSize, totalFrames)])
