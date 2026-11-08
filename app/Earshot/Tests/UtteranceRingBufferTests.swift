@@ -150,4 +150,16 @@ final class UtteranceRingBufferTests: XCTestCase {
         buffer.append([])
         XCTAssertEqual(buffer.extract(fromMs: 0, toMs: 10), ramp(start: 0, count: 10 * samplesPerMs))
     }
+
+    /// Trimming is batched, so between trims more than the capacity is held;
+    /// only the newest `capacitySamples` may come back.
+    func testOnlyTheNewestCapacityIsServedBetweenTrims() {
+        var buffer = UtteranceRingBuffer(capacitySamples: 320)
+        for chunk in 0 ..< 30 {
+            buffer.append(ramp(start: chunk * 16, count: 16))
+        }
+        // 480 appended, 320 retained: absolute samples 160..<480, i.e. 10..<30 ms.
+        XCTAssertEqual(buffer.extract(fromMs: 0, toMs: 30), ramp(start: 160, count: 320))
+        XCTAssertEqual(buffer.extract(fromMs: 0, toMs: 10), [])
+    }
 }

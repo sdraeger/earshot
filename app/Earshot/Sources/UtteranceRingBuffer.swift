@@ -22,11 +22,12 @@ struct UtteranceRingBuffer {
     /// Maximum number of samples retained. Older samples scroll out on append.
     private let capacitySamples: Int
 
-    /// The retained samples, oldest first. Length never exceeds `capacitySamples`.
+    /// The held samples, oldest first: up to twice `capacitySamples`, of which
+    /// only the newest `capacitySamples` count as retained.
     private var samples: [Float] = []
 
     /// Total samples ever appended, across all calls. The absolute index of the
-    /// first retained sample is `totalAppended - samples.count`.
+    /// first retained sample is `totalAppended - min(samples.count, capacitySamples)`.
     private var totalAppended = 0
 
     /// - Parameter capacitySamples: how many of the most recent samples to keep.
@@ -36,15 +37,17 @@ struct UtteranceRingBuffer {
         self.capacitySamples = capacitySamples
     }
 
-    /// Appends `newSamples`, advancing the absolute counter, and drops the
-    /// oldest samples so at most `capacitySamples` are retained.
+    /// Appends `newSamples`, advancing the absolute counter. The oldest
+    /// samples are dropped in one go once twice `capacitySamples` are held,
+    /// not on every append: trimming each time copied the whole 30 s buffer
+    /// per audio buffer. `extract` serves only the newest `capacitySamples`
+    /// either way.
     mutating func append(_ newSamples: [Float]) {
         guard !newSamples.isEmpty else { return }
         totalAppended += newSamples.count
         samples.append(contentsOf: newSamples)
-        let overflow = samples.count - capacitySamples
-        if overflow > 0 {
-            samples.removeFirst(overflow)
+        if samples.count >= 2 * capacitySamples {
+            samples.removeFirst(samples.count - capacitySamples)
         }
     }
 
@@ -60,7 +63,7 @@ struct UtteranceRingBuffer {
         let desiredEnd = toMs * samplesPerMs
 
         // Absolute index of the oldest retained sample.
-        let bufferedStart = totalAppended - samples.count
+        let bufferedStart = totalAppended - min(samples.count, capacitySamples)
         let bufferedEnd = totalAppended
 
         // Clamp the desired range to what is actually buffered.
@@ -69,8 +72,9 @@ struct UtteranceRingBuffer {
         guard start < end else { return [] }
 
         // Translate absolute indices into offsets within `samples`.
-        let lo = start - bufferedStart
-        let hi = end - bufferedStart
+        let firstHeld = totalAppended - samples.count
+        let lo = start - firstHeld
+        let hi = end - firstHeld
         return Array(samples[lo ..< hi])
     }
 }
