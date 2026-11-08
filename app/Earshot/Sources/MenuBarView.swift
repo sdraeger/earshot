@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// The menu-bar menu: what the app is doing, the few actions that start or
-/// stop it, and the meetings it is working on. A native menu
+/// The menu-bar menu, kept to what someone reaches for from the menu bar:
+/// start or stop a recording, open the app, settings, quit. Status, prompts
+/// and jobs appear only while there is something to show. A native menu
 /// (`.menuBarExtraStyle(.menu)`), read when it opens.
 struct MenuBarView: View {
     let status: TranscriberStatus?
@@ -9,20 +10,20 @@ struct MenuBarView: View {
     let pipelineQueue: PipelineQueue
     var updateChecker: UpdateChecker?
     let onStartStop: () -> Void
+    /// Records the call (the app using the microphone) or, with none, the
+    /// microphone. `WatchingController.startRecording` picks.
+    let onStartRecording: () -> Void
+    /// Opens the app picker. Shown as the Option-key alternate of Start Recording.
     let onRecordApp: () -> Void
-    let onRecordMicrophone: () -> Void
-    /// Whether the user set "No Microphone (app audio only)". Only reaches the
-    /// microphone item, which it disables with a reason.
-    let noMic: Bool
     /// The *wide* predicate: a manual recording that is running, or a start that
     /// has registered and not yet built its loop. `state == .recording` misses
-    /// that second window, and the microphone item would sit enabled through it
-    /// handing back a dead click, which is what `AppPickerStartState` was built
-    /// to avoid on the picker.
+    /// that second window, and Start Recording would sit enabled through it
+    /// handing back a dead click.
     let manualRecordingPendingOrActive: Bool
-    let onStopManualRecording: (() -> Void)?
+    /// Ends the running recording, manual or detected; nil when none runs.
+    let onStopRecording: (() -> Void)?
+    var stopRecordingTitle = "Stop Recording"
     let onOpenProtocol: (JobOpenTarget) -> Void
-    let onOpenProtocolsFolder: () -> Void
     let onOpenSettings: () -> Void
     /// Opens the naming window, on the given job or, for nil, the first one
     /// waiting. The row offering it shows while any job waits for names.
@@ -46,28 +47,21 @@ struct MenuBarView: View {
         status?.state ?? .idle
     }
 
-    private var microphoneAvailability: MicrophoneRecordingAvailability {
-        .resolve(
-            isRecording: manualRecordingPendingOrActive || state == .recording,
-            noMic: noMic,
-        )
-    }
-
     // Sections are separate properties so each is type-checked on its own
     // budget (the analyze build fails a getter over 300 ms).
     var body: some View {
         statusItems
         consentItems
-        Divider()
         actions
-        processingQueue
-        updateItem
         Divider()
-        Button("Meetings…", action: onOpenMeetings)
+        Button("Open Earshot", action: onOpenMeetings)
             .keyboardShortcut("j")
-        Button("Open Notes Folder", action: onOpenProtocolsFolder)
+        Button("Transcribe Files…", action: onProcessFiles)
+            .keyboardShortcut("p")
         Button("Settings…", action: onOpenSettings)
             .keyboardShortcut(",")
+        processingQueue
+        updateItem
         Divider()
         Button("Quit Earshot", action: onQuit)
             .keyboardShortcut("q")
@@ -75,55 +69,61 @@ struct MenuBarView: View {
 
     // MARK: - Body sections
 
-    /// What the app is doing, as disabled lines at the top of the menu.
+    /// What is being recorded, or what went wrong, as disabled lines. Idle and
+    /// watching need none: the Watch item's checkmark says which it is.
     @ViewBuilder private var statusItems: some View {
-        Text(state.label)
         if let meeting = status?.meeting {
             Text("\(meeting.title) · \(meeting.app)")
         }
         if let error = status?.error, state == .error {
             Text(error)
         }
-        if let onStopManualRecording {
-            Button("Stop Recording", action: onStopManualRecording)
-                .keyboardShortcut(".")
+        if status?.meeting != nil || state == .error {
+            Divider()
         }
     }
 
     @ViewBuilder private var consentItems: some View {
         if let app = pendingConsentApp {
-            Divider()
             Text("Record the meeting in \(app)?")
             Button("Record") { onAnswerPendingConsent(true) }
                 .accessibilityIdentifier(A11yID.menuRecordPendingConsent)
             Button("Don't record") { onAnswerPendingConsent(false) }
                 .accessibilityIdentifier(A11yID.menuDeclinePendingConsent)
+            Divider()
         }
     }
 
     @ViewBuilder private var actions: some View {
+        if let onStopRecording {
+            Button(stopRecordingTitle, action: onStopRecording)
+                .keyboardShortcut(".")
+        } else {
+            startItems
+        }
+
         Toggle("Watch for Meetings", isOn: Binding(get: { isWatching }, set: { _ in onStartStop() }))
             .keyboardShortcut("s")
 
         if !pipelineQueue.pendingSpeakerNamingJobs.isEmpty {
-            Button("Name speakers…") { onNameSpeakers(nil) }
+            Button("Name Speakers…") { onNameSpeakers(nil) }
                 .keyboardShortcut("n")
         }
+    }
 
-        if onStopManualRecording == nil, state != .recording {
-            Button("Record microphone", action: onRecordMicrophone)
-                .keyboardShortcut("m")
-                .disabled(!microphoneAvailability.allowsStart)
-            Button("Record an app…", action: onRecordApp)
-                .keyboardShortcut("r")
-        }
-
-        Button("Transcribe files…", action: onProcessFiles)
-            .keyboardShortcut("p")
-
-        if let target = JobOpenTarget.resolve(for: pipelineQueue.completedJobs.last, preferNotion: notionExportEnabled) {
-            Button(target.lastProtocolLabel) { onOpenProtocol(target) }
-                .keyboardShortcut("o")
+    /// Start Recording, with Record an App… as its Option-key alternate where
+    /// the system supports that (macOS 15), and as a second item before.
+    @ViewBuilder private var startItems: some View {
+        let start = Button("Start Recording", action: onStartRecording)
+            .keyboardShortcut("r")
+            .disabled(manualRecordingPendingOrActive)
+        let recordApp = Button("Record an App…", action: onRecordApp)
+            .keyboardShortcut("r", modifiers: [.command, .option])
+        if #available(macOS 15, *) {
+            start.modifierKeyAlternate(.option) { recordApp }
+        } else {
+            start
+            recordApp
         }
     }
 

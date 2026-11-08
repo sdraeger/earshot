@@ -298,8 +298,8 @@ state rather than failing.
 ### POST /v1/record
 
 Record the system microphone with no app audio, for a meeting happening in the
-room rather than in an app. The same thing the menu bar's *Record Microphone*
-item does.
+room rather than in an app. The same thing the menu bar's *Start Recording*
+item does when no app is using the microphone.
 
 ```bash
 curl -sS -X POST "$BASE/v1/record" \

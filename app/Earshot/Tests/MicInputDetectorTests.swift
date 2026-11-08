@@ -318,3 +318,40 @@ final class MicInputDetectorTests: XCTestCase {
         XCTAssertNil(makeDetector().mainAppPIDProvider("com.example.not-installed"))
     }
 }
+
+// MARK: - Call app for a one-click start
+
+extension MicInputDetectorTests {
+    private static let chrome = RunningApp(id: 10, name: "Google Chrome", bundleIdentifier: "com.google.Chrome", icon: nil)
+    private static let zoom = RunningApp(id: 20, name: "zoom.us", bundleIdentifier: "us.zoom.xos", icon: nil)
+
+    private func callApp(_ processes: [MicInputDetector.AudioProcessSnapshot]) -> RunningApp? {
+        MicInputDetector.callApp(in: processes, apps: [Self.chrome, Self.zoom], ownBundleID: "app.earshot.dev")
+    }
+
+    func testAHelperUsingTheMicMapsToItsApp() {
+        XCTAssertEqual(callApp([snapshot("com.google.Chrome.helper", pid: 11)]), Self.chrome)
+    }
+
+    func testAnAppUsingTheMicItselfIsPicked() {
+        XCTAssertEqual(callApp([snapshot("us.zoom.xos", pid: 20)]), Self.zoom)
+    }
+
+    func testAProcessNotUsingTheMicIsSkipped() {
+        XCTAssertNil(callApp([snapshot("us.zoom.xos", pid: 20, running: false)]))
+    }
+
+    func testEarshotsOwnCaptureIsSkipped() {
+        XCTAssertNil(callApp([snapshot("app.earshot.dev", pid: 1)]))
+    }
+
+    func testABundlePrefixWithoutADotIsNotAHelper() {
+        XCTAssertNil(callApp([snapshot("com.google.ChromeRemoteDesktop", pid: 12)]))
+    }
+
+    func testFaceTimesConferenceDaemonIsRecordedItself() {
+        let app = callApp([snapshot("com.apple.avconferenced", pid: 30)])
+        XCTAssertEqual(app?.id, 30)
+        XCTAssertEqual(app?.name, "FaceTime")
+    }
+}

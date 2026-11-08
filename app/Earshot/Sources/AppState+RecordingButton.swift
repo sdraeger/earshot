@@ -19,11 +19,11 @@ extension AppState {
 
     /// What the button's Stop item does: end a manual recording, or stop
     /// watching, which ends an auto-detected one.
-    var recordingButtonStopTitle: String {
+    var stopRecordingTitle: String {
         isManualRecording ? "Stop Recording" : "Stop Recording and Watching"
     }
 
-    func stopFromRecordingButton() {
+    func stopRecording() {
         if isManualRecording {
             watching.stopManualRecording()
         } else if isWatching {

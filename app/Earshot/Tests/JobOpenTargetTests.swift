@@ -15,7 +15,6 @@ final class JobOpenTargetTests: XCTestCase {
 
         XCTAssertEqual(target, try .notion(XCTUnwrap(URL(string: "https://www.notion.so/page-1"))))
         XCTAssertEqual(target?.jobActionLabel, "Open in Notion")
-        XCTAssertEqual(target?.lastProtocolLabel, "Open last notes in Notion")
     }
 
     func testLocalFileWinsWhenNotionIsDisabled() {

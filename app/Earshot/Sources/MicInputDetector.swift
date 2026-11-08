@@ -86,6 +86,32 @@ class MicInputDetector: MeetingDetecting {
         MicPattern(appName: "Slack", bundleIDs: ["com.tinyspeck.slackmacgap"], matchesHelpers: true),
     ]
 
+    /// The app to record for a call happening now: the first app using the
+    /// microphone. A helper process (a browser tab, an Electron renderer) maps
+    /// to the app whose bundle ID prefixes its own; a daemon a built-in pattern
+    /// names (FaceTime's `avconferenced`) is recorded itself. Nil when no app
+    /// other than this one is using the microphone.
+    static func callApp(
+        in processes: [AudioProcessSnapshot],
+        apps: [RunningApp],
+        ownBundleID: String? = Bundle.main.bundleIdentifier,
+    ) -> RunningApp? {
+        for process in processes where process.isRunningInput && process.bundleID != ownBundleID {
+            let owners = apps.filter { app in
+                guard let id = app.bundleIdentifier else { return false }
+                return process.bundleID == id || process.bundleID.hasPrefix(id + ".")
+            }
+            if let app = owners.max(by: { ($0.bundleIdentifier?.count ?? 0) < ($1.bundleIdentifier?.count ?? 0) }) {
+                return app
+            }
+            if let pattern = defaultPatterns.first(where: { $0.matches(bundleID: process.bundleID) }) {
+                let name = pattern.meetingPattern.appName
+                return RunningApp(id: process.pid, name: name, bundleIdentifier: process.bundleID, icon: nil)
+            }
+        }
+        return nil
+    }
+
     /// The `defaultPatterns` subset selected by the user's "Apps to Watch"
     /// toggles — same contract as `PowerAssertionDetector.patterns(watching:)`.
     /// Custom bundle IDs a selected built-in already matches are dropped, so

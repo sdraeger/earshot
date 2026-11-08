@@ -237,6 +237,8 @@ If a permission problem coexists, the red exclamation badge takes precedence ove
 
 Launch the app — it sits in your menu bar. When a supported meeting is detected, recording starts automatically. When the meeting ends, the pipeline runs in the background: transcription → diarization → meeting notes generation.
 
+To record by hand, choose **Start Recording** (⌘R) in the menu bar menu. Earshot records the app that is using the microphone (your call) together with the microphone, or only the microphone when no app is using it. Hold Option to pick an app instead.
+
 You can also batch-process existing audio and video files via the menu (⌘P) — supported formats: WAV, MP3, M4A, MP4, FLAC, AMR, 3GP/3G2 and OPUS/OGG (and MKV, WebM when ffmpeg is installed). Smartphone call recordings (AMR, 3GP) and voice messages (OPUS) need no extra tools.
 
 ---

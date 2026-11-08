@@ -167,15 +167,12 @@ struct EarshotApp: App {
             pipelineQueue: appState.pipelineQueue,
             updateChecker: appState.updateChecker,
             onStartStop: { appState.watching.toggleWatching() },
+            onStartRecording: { appState.watching.startRecording() },
             onRecordApp: { bringWindowToFront(id: "record-app") },
-            onRecordMicrophone: { appState.watching.startMicrophoneRecording() },
-            noMic: appState.settings.noMic,
             manualRecordingPendingOrActive: appState.watching.isManualRecording,
-            onStopManualRecording: appState.isManualRecording ? {
-                appState.watching.stopManualRecording()
-            } : nil,
+            onStopRecording: appState.watching.isRecording ? { appState.stopRecording() } : nil,
+            stopRecordingTitle: appState.stopRecordingTitle,
             onOpenProtocol: openProtocol,
-            onOpenProtocolsFolder: openProtocolsFolder,
             onOpenSettings: {
                 bringWindowToFront(id: "settings")
             },
@@ -263,8 +260,8 @@ struct EarshotApp: App {
         let state = appState
         let panel = recordingButton ?? RecordingButtonPanel(
             level: { state.recordingLevelDBFS },
-            stopTitle: { state.recordingButtonStopTitle },
-            onStop: { state.stopFromRecordingButton() },
+            stopTitle: { state.stopRecordingTitle },
+            onStop: { state.stopRecording() },
             onHide: { state.settings.recordingButtonEnabled = false },
             onOpenTranscript: { bringWindowToFront(id: "meetings") },
         )
@@ -302,7 +299,7 @@ struct EarshotApp: App {
                 captions: appState.liveCaptions,
                 isRecording: appState.isRecording,
                 completedJobCount: appState.completedJobCount,
-                onStopRecording: appState.stopFromRecordingButton,
+                onStopRecording: appState.stopRecording,
             )
             .background(WindowAccessor { $0.sharingType = .none })
         }
@@ -482,14 +479,6 @@ struct EarshotApp: App {
         for window in NSApp.windows where window.identifier?.rawValue == id {
             window.close()
         }
-    }
-
-    private func openProtocolsFolder() {
-        let protocols = appState.settings.effectiveOutputDir
-        let accessing = protocols.startAccessingSecurityScopedResource()
-        defer { if accessing { protocols.stopAccessingSecurityScopedResource() } }
-        try? FileManager.default.createDirectory(at: protocols, withIntermediateDirectories: true)
-        NSWorkspace.shared.open(protocols)
     }
 
     /// Only asks to terminate: stopping watching and finishing a recording

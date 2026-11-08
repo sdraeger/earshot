@@ -357,6 +357,17 @@ final class WatchingController {
 
     // MARK: - Manual recording
 
+    /// The menu's one-click start: the app using the microphone (the call)
+    /// with the microphone, or the microphone alone when no app is using it.
+    func startRecording() {
+        let apps = SystemRunningAppsProvider().runningApps()
+        if let call = MicInputDetector.callApp(in: MicInputDetector.systemAudioProcesses(), apps: apps) {
+            startManualRecording(pid: call.id, appName: call.name, title: call.name)
+        } else {
+            startMicrophoneRecording()
+        }
+    }
+
     func startManualRecording(pid: pid_t, appName: String, title: String) {
         beginManualRecording(.app(pid: pid, appName: appName, title: title))
     }
@@ -364,16 +375,15 @@ final class WatchingController {
     /// Record the system microphone with no app audio, for a meeting happening
     /// in the room (issue #633). Same ownership rules as the app path.
     ///
-    /// Refused outright while "No Microphone (app audio only)" is set. The menu
-    /// disables the item for the same reason, but a disabled control cannot be
-    /// the enforcement: every other entry point onto this path (the automation
-    /// API, a future shortcut) would otherwise record the one thing that setting
-    /// exists to keep off tape, with no compile error and nothing failing.
+    /// Refused outright while "No Microphone (app audio only)" is set: every
+    /// entry point onto this path (Start Recording with no call, the automation
+    /// API) would otherwise record the one thing that setting exists to keep
+    /// off tape.
     func startMicrophoneRecording() {
         guard !settings.noMic else {
             notifier.notify(
                 title: "Can't record the microphone",
-                body: MicrophoneRecordingAvailability.blockedByNoMicSetting.disabledReason ?? "",
+                body: "Turn off \"No Microphone\" in Settings to record the microphone",
             )
             return
         }
