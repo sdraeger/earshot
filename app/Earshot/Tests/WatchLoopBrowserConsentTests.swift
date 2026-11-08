@@ -208,6 +208,7 @@ final class WatchLoopBrowserConsentTests: XCTestCase {
         spy: any AppNotifying,
         consentPolicy: BrowserConsentPolicy = BrowserConsentPolicy(),
         denyListStore: any ConsentDenyListStoring = InMemoryConsentDenyListStore(),
+        askBeforeRecording: Bool = false,
         nowProvider: @escaping () -> Date = Date.init,
     ) -> (WatchLoop, MockRecorder) {
         let recorder = MockRecorder()
@@ -217,6 +218,7 @@ final class WatchLoopBrowserConsentTests: XCTestCase {
             recorderFactory: { recorder },
             pollInterval: 0.05,
             endGracePeriod: 0.05,
+            askBeforeRecording: { askBeforeRecording },
             notifier: spy,
             nowProvider: nowProvider,
             consentPolicy: consentPolicy,
@@ -279,6 +281,32 @@ final class WatchLoopBrowserConsentTests: XCTestCase {
         await waitFor(recorder.startCalled)
         XCTAssertTrue(recorder.startCalled, "native meetings keep auto-start")
         XCTAssertEqual(spy.calls, 0, "native meetings must never consult the consent prompt")
+        loop.stop()
+    }
+
+    /// With "ask before recording" on, a native meeting waits for the answer
+    /// like a browser one, and a no records nothing.
+    func testNativeMeetingAsksWhenAskBeforeRecordingIsOn() async {
+        let spy = ConsentSpy(answer: .declined)
+        let (loop, recorder) = makeLoop(
+            detector: FixedDetector(nativeMeeting()), spy: spy, askBeforeRecording: true,
+        )
+        loop.start()
+        await waitFor(spy.calls >= 1)
+        XCTAssertGreaterThanOrEqual(spy.calls, 1, "the native meeting was not asked about")
+        XCTAssertFalse(recorder.startCalled, "a declined native meeting must not record")
+        loop.stop()
+    }
+
+    func testNativeMeetingRecordsOnYesWhenAskBeforeRecordingIsOn() async {
+        let spy = ConsentSpy(answer: .granted)
+        let (loop, recorder) = makeLoop(
+            detector: FixedDetector(nativeMeeting()), spy: spy, askBeforeRecording: true,
+        )
+        loop.start()
+        await waitFor(recorder.startCalled)
+        XCTAssertTrue(recorder.startCalled)
+        XCTAssertEqual(spy.calls, 1)
         loop.stop()
     }
 

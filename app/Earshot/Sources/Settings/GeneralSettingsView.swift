@@ -24,6 +24,17 @@ struct GeneralSettingsView: View {
         )
     }
 
+    /// Turning the calendar on asks for access and stays off when refused.
+    private var calendarBinding: Binding<Bool> {
+        Binding(
+            get: { settings.calendarEnabled },
+            set: { on in
+                guard on else { settings.calendarEnabled = false; return }
+                Task { @MainActor in settings.calendarEnabled = await MeetingCalendar().requestCalendarAccess() }
+            },
+        )
+    }
+
     var body: some View {
         // swiftlint:disable:next closure_body_length
         Form {
@@ -38,11 +49,22 @@ struct GeneralSettingsView: View {
             }
 
             Section {
+                Toggle("Ask before recording a detected meeting", isOn: $settings.askBeforeRecording)
+                    .accessibilityIdentifier(A11yID.askBeforeRecordingToggle)
+                    .settingsNote("A card at the top right asks you to start. Browser meetings always ask.")
                 Toggle("Show floating recording button", isOn: $settings.recordingButtonEnabled)
                     .accessibilityIdentifier(A11yID.recordingButtonToggle)
                     .settingsNote("A small button at the right edge of the screen that moves with your voice. Drag it up or down; click it to stop.")
             } header: {
                 SettingsHeader("While recording")
+            }
+
+            Section {
+                Toggle("Use my calendar", isOn: calendarBinding)
+                    .accessibilityIdentifier(A11yID.calendarToggle)
+                    .settingsNote("Names meetings after their calendar event, adds the attendees, and asks to record when an in-person meeting starts.")
+            } header: {
+                SettingsHeader("Calendar")
             }
 
             Section {

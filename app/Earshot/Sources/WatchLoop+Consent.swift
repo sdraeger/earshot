@@ -3,9 +3,10 @@ import os.log
 
 private let logger = Logger(subsystem: AppPaths.logSubsystem, category: "WatchLoopConsent")
 
-/// Browser-meeting recording-consent gate (issue #503), split out of `WatchLoop`
-/// to keep its body under the line-length cap. Only patterns with
-/// `requiresRecordingConsent` reach it; native meetings auto-start unchanged.
+/// Recording-consent gate, split out of `WatchLoop` to keep its body under the
+/// line-length cap. Patterns with `requiresRecordingConsent` (browser meetings,
+/// issue #503) always reach it; every other meeting does while
+/// `askBeforeRecording` is on, and otherwise starts at once.
 ///
 /// The answer is awaited in its own task rather than inline in the poll loop
 /// (issue #543). Inline, `detector.checkOnce()` was not called at all while a
@@ -22,7 +23,7 @@ extension WatchLoop {
     /// decline still suppresses the question" — both reasons to skip the
     /// meeting, neither a reason to ask again.
     func requestConsentIfNeeded(for meeting: DetectedMeeting) -> Bool {
-        guard meeting.pattern.requiresRecordingConsent else { return false }
+        guard meeting.pattern.requiresRecordingConsent || askBeforeRecording() else { return false }
         // One question at a time. The WebRTC assertion re-detects the same call
         // every poll, so without this the loop would post a fresh prompt every
         // few seconds while the first one is still on screen.
@@ -36,20 +37,20 @@ extension WatchLoop {
             return true
         }
 
-        pendingConsentApp = app
-        logger.info("Browser meeting in \(app, privacy: .public) detected, asking for consent")
+        pendingConsentMeeting = meeting
+        logger.info("Meeting in \(app, privacy: .public) detected, asking for consent")
         // `app` is already the concrete browser: a browser meeting is carried
         // under the process that held the assertion, so the debounce above and
         // the name below refer to the same one browser. `ownerName` is kept as
         // the source with a fallback because it is the value the detector read
         // straight off the assertion, and an empty identity would otherwise
         // produce a prompt naming nothing at all.
-        let browserName = meeting.ownerName.isEmpty ? app : meeting.ownerName
+        let appName = meeting.ownerName.isEmpty ? app : meeting.ownerName
         consentTask = Task { [weak self] in
             guard let self else { return }
             let answer = await notifier.askToRecord(
-                title: "Record browser meeting?",
-                body: "A meeting is active in \(browserName).",
+                title: "Record this meeting?",
+                body: "A meeting is active in \(appName).",
             )
             finishConsent(for: meeting, answer: answer)
         }

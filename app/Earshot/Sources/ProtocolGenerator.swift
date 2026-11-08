@@ -78,6 +78,26 @@ enum ProtocolGenerator {
     In the Topics Discussed section, attribute key statements to speakers.
     """
 
+    /// The model's input: the notes the user typed during the meeting, when
+    /// there are any, ahead of the transcript, so the summary is built around
+    /// what the user marked as important.
+    static func input(transcript: String, userNotes: String?) -> String {
+        guard let notes = userNotes?.trimmingCharacters(in: .whitespacesAndNewlines), !notes.isEmpty else {
+            return transcript
+        }
+        return """
+        The user's own notes, typed during the meeting. Treat them as what the user found \
+        important: cover every point in them, keep their wording where it is precise, and \
+        fill in the details from the transcript.
+
+        <user_notes>
+        \(notes)
+        </user_notes>
+
+        \(transcript)
+        """
+    }
+
     /// Replaces supported protocol-prompt variables with meeting-specific values.
     ///
     /// Dates and times use stable, locale-independent formats so users can

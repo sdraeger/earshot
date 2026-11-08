@@ -168,6 +168,8 @@ final class AppState {
     /// when live transcription is on AND a recording is active. Owned here (read
     /// by the overlay window + RPC snapshot) and injected into `liveTranscription`.
     let liveCaptions: LiveCaptionsState = .init()
+    /// The notepad, the calendar and the finished meetings.
+    let meetings: MeetingsController
 
     /// Live-transcription controller lifecycle (lazy creation against the active
     /// engine, pre-warm, per-recording sink installation), extracted into its own
@@ -276,6 +278,7 @@ final class AppState {
             permissions: permissions,
             liveTranscription: liveTranscription,
         )
+        self.meetings = MeetingsController(settings: settings, pipeline: pipeline, watching: watching)
 
         #if !APPSTORE
             // Not trailing-closure: `isEnabled` is the first param (the other two
@@ -295,6 +298,7 @@ final class AppState {
         )
         pipeline.activate { [weak self] in self?.engines.activeTranscriptionEngine }
         watching.activate { [weak self] in self?.engines.syncEngineSettings() }
+        watching.meetingContext = { [weak self] in self?.meetings.context(at: $0) ?? MeetingContext() }
 
         #if !APPSTORE
             applyForcedChannelFlagsFromEnvironment()

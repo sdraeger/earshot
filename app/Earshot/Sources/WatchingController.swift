@@ -29,6 +29,10 @@ import Observation
 final class WatchingController {
     var watchLoop: WatchLoop?
 
+    /// See `WatchLoop.meetingContext`. Set by `AppState`, which owns the
+    /// calendar and the notepad.
+    var meetingContext: (Date) -> MeetingContext = { _ in MeetingContext() }
+
     /// Set when a manual recording stopped a running auto-watch loop, so the
     /// end of that recording turns watching back on.
     private var resumeWatchingAfterManual = false
@@ -524,6 +528,8 @@ final class WatchingController {
             endGracePeriod: settings.endGrace,
             noMic: { [settings] in settings.noMic },
             micDeviceUID: { [settings] in settings.micDeviceUIDOrNil },
+            askBeforeRecording: { [settings] in settings.askBeforeRecording },
+            meetingContext: { [weak self] in self?.meetingContext($0) ?? MeetingContext() },
             recordOnly: { [settings] in settings.recordOnly },
             // Decided per write, not per poll: the loop calls this once when a
             // record-only recording is persisted, so a folder that cannot be

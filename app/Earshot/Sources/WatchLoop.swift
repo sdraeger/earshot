@@ -85,12 +85,26 @@ class WatchLoop {
     var consentPolicy: BrowserConsentPolicy
     let denyListStore: any ConsentDenyListStoring
 
-    /// The app whose consent prompt is currently parked, nil when no question
-    /// is open. The answer is awaited in `consentTask` rather than inline, so
-    /// this is what keeps a second prompt from going out on every poll while
-    /// the first one waits. Internal (not `private(set)`) because
+    /// The meeting whose consent prompt is currently parked, nil when no
+    /// question is open. The answer is awaited in `consentTask` rather than
+    /// inline, so this is what keeps a second prompt from going out on every
+    /// poll while the first one waits. Internal (not `private(set)`) because
     /// `WatchLoop+Consent.swift` owns the transitions.
-    var pendingConsentApp: String?
+    var pendingConsentMeeting: DetectedMeeting?
+
+    /// The app the parked prompt asks about.
+    var pendingConsentApp: String? {
+        pendingConsentMeeting?.pattern.appName
+    }
+
+    /// Whether every detected meeting waits for the user's yes, not only the
+    /// patterns that always do (browser meetings). Read per detection.
+    let askBeforeRecording: () -> Bool
+
+    /// What the app knows about a recording that started at the given time,
+    /// asked once when it ends: the calendar event's title and attendees and
+    /// the notes the user typed. Asking takes the notes.
+    let meetingContext: (Date) -> MeetingContext
 
     /// A meeting the user approved, waiting for the loop to pick it up.
     /// Recordings start in the loop and nowhere else, so an answer arriving
@@ -103,7 +117,7 @@ class WatchLoop {
     /// Forget the open question. Not a decline: `WatchLoop+Consent` decides
     /// what an answer (or the lack of one) means.
     func clearConsentState() {
-        pendingConsentApp = nil
+        pendingConsentMeeting = nil
         approvedConsentMeeting = nil
         consentTask = nil
     }
@@ -122,6 +136,8 @@ class WatchLoop {
         maxDuration: TimeInterval = 14400,
         noMic: @escaping () -> Bool = { false },
         micDeviceUID: @escaping () -> String? = { nil },
+        askBeforeRecording: @escaping () -> Bool = { false },
+        meetingContext: @escaping (Date) -> MeetingContext = { _ in MeetingContext() },
         recordOnly: @escaping () -> Bool = { false },
         recordOnlyDestination: @escaping () -> RecordOnlyDestination = {
             .unscoped(AppPaths.recordingsDir)
@@ -144,6 +160,8 @@ class WatchLoop {
         self.maxDuration = maxDuration
         self.noMic = noMic
         self.micDeviceUID = micDeviceUID
+        self.askBeforeRecording = askBeforeRecording
+        self.meetingContext = meetingContext
         self.recordOnly = recordOnly
         self.recordOnlyDestination = recordOnlyDestination
         self.recordOnlyFileTransfer = recordOnlyFileTransfer
@@ -357,8 +375,9 @@ class WatchLoop {
             if let approved = takeApprovedConsentMeeting(), detector.isMeetingActive(approved) {
                 if await runMeeting(approved) { return }
             } else if let meeting = detector.checkOnce() {
-                // Browser meetings (issue #503) ask before recording; native
-                // meetings skip this (flag false). See WatchLoop+Consent.swift.
+                // Browser meetings (issue #503) ask before recording, and so
+                // does every meeting while "ask before recording" is on. See
+                // WatchLoop+Consent.swift.
                 // Asking does NOT block this loop — that is the whole point:
                 // an unanswered prompt used to stop `checkOnce()` from running
                 // for a full minute, so a Teams or Zoom call starting in that
@@ -486,6 +505,9 @@ class WatchLoop {
         trigger: RecordingSidecar.Trigger,
         participants: [String] = [],
     ) {
+        let context = meetingContext(recording.recordingStartDate)
+        let title = context.title ?? title
+        let participants = participants + context.attendees.filter { !participants.contains($0) }
         if recordOnly() {
             do {
                 try writeRecordOnlySidecar(
@@ -506,6 +528,7 @@ class WatchLoop {
             micDelay: recording.micDelay,
             participants: participants,
             meetingStartTime: recording.recordingStartDate,
+            userNotes: context.userNotes,
         )
         pipelineQueue?.enqueue(job)
         logger.info("Enqueued pipeline job for: \(title, privacy: .private)")
@@ -559,4 +582,11 @@ class WatchLoop {
         case .error: .error
         }
     }
+}
+
+/// See `WatchLoop.meetingContext`.
+struct MeetingContext {
+    var title: String?
+    var attendees: [String] = []
+    var userNotes: String?
 }

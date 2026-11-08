@@ -346,6 +346,10 @@ struct PipelineJob: Identifiable, Codable {
     /// build reading a newer snapshot ignores the key.
     var namingStartedAt: Date?
 
+    /// What the user typed in the notepad during the meeting; the summary is
+    /// built around it. Optional so older snapshots decode.
+    var userNotes: String?
+
     init(
         meetingTitle: String,
         appName: String,
@@ -362,6 +366,7 @@ struct PipelineJob: Identifiable, Codable {
         saveRawTranscriptSeparately: Bool? = nil,
         // swiftlint:disable:next discouraged_optional_boolean
         useAITitleForFilenames: Bool? = nil,
+        userNotes: String? = nil,
     ) {
         self.id = UUID()
         self.meetingTitle = meetingTitle
@@ -385,6 +390,7 @@ struct PipelineJob: Identifiable, Codable {
         self.useAITitleForFilenames = useAITitleForFilenames
         self.usedDiarizerMode = nil
         self.autoSkipNaming = autoSkipNaming
+        self.userNotes = userNotes
     }
 
     /// When the stale-naming cleanup starts counting for this job: when it

@@ -20,6 +20,7 @@ final class RecordingButtonPanel {
     private let stopTitle: @MainActor () -> String
     private let onStop: @MainActor () -> Void
     private let onHide: @MainActor () -> Void
+    private let onOpenTranscript: @MainActor () -> Void
     private let defaults: UserDefaults
     private var grabOffset: CGFloat?
 
@@ -28,12 +29,14 @@ final class RecordingButtonPanel {
         stopTitle: @escaping @MainActor () -> String,
         onStop: @escaping @MainActor () -> Void,
         onHide: @escaping @MainActor () -> Void,
+        onOpenTranscript: @escaping @MainActor () -> Void,
         defaults: UserDefaults = .standard,
     ) {
         self.level = level
         self.stopTitle = stopTitle
         self.onStop = onStop
         self.onHide = onHide
+        self.onOpenTranscript = onOpenTranscript
         self.defaults = defaults
     }
 
@@ -116,6 +119,7 @@ final class RecordingButtonPanel {
     private func showMenu() {
         guard let view = panel?.contentView else { return }
         let menu = NSMenu()
+        menu.addItem(ClosureMenuItem("Open Transcript", action: onOpenTranscript))
         menu.addItem(ClosureMenuItem(stopTitle(), action: onStop))
         menu.addItem(.separator())
         menu.addItem(ClosureMenuItem("Don't Show This Button", action: onHide))

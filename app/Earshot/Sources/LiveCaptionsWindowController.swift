@@ -180,6 +180,8 @@ final class LiveCaptionsWindowController {
         // (mirrors the SwiftUI `Window(id:)` scenes). Not yet exposed to the
         // debug `/ui/tree` allowlist — it can surface meeting content.
         panel.identifier = Self.panelIdentifier
+        // Captions are for the user, not for the people watching a screen share.
+        panel.sharingType = .none
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = false

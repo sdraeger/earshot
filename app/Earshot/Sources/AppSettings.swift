@@ -340,6 +340,13 @@ final class AppSettings { // swiftlint:disable:this type_body_length
         didSet { defaults.set(recordingButtonEnabled, forKey: "recordingButtonEnabled") }
     }
 
+    /// Whether a detected meeting waits for a click on the meeting card
+    /// instead of recording at once. Browser meetings always wait. Missing
+    /// key reads as true.
+    var askBeforeRecording: Bool {
+        didSet { defaults.set(askBeforeRecording, forKey: "askBeforeRecording") }
+    }
+
     /// Whether a notification that needs an answer plays a sound. Status
     /// notifications are always silent. `NotificationManager` reads the same key.
     var notificationSounds: Bool {
@@ -644,6 +651,17 @@ final class AppSettings { // swiftlint:disable:this type_body_length
         didSet { defaults.set(protocolProvider.rawValue, forKey: "protocolProvider") }
     }
 
+    /// The meeting-notes template new meetings use (`ProtocolTemplates`).
+    var protocolTemplate: String {
+        didSet { defaults.set(protocolTemplate, forKey: "protocolTemplate") }
+    }
+
+    /// Whether calendar events name meetings, add attendees and announce
+    /// in-person meetings. Off until the user grants calendar access.
+    var calendarEnabled: Bool {
+        didSet { defaults.set(calendarEnabled, forKey: "calendarEnabled") }
+    }
+
     var protocolLanguage: String {
         didSet { defaults.set(protocolLanguage, forKey: "protocolLanguage") }
     }
@@ -876,6 +894,7 @@ final class AppSettings { // swiftlint:disable:this type_body_length
         liveTranscriptionEnabled = defaults.bool(forKey: "liveTranscriptionEnabled", default: false)
         liveCaptionsOverlayEnabled = defaults.bool(forKey: "liveCaptionsOverlayEnabled", default: true)
         recordingButtonEnabled = defaults.bool(forKey: "recordingButtonEnabled", default: true)
+        askBeforeRecording = defaults.bool(forKey: "askBeforeRecording", default: true)
         notificationSounds = defaults.bool(forKey: NotificationManager.soundsDefaultsKey, default: true)
         liveCaptionsSize = defaults.string(forKey: "liveCaptionsSize")
             .flatMap(LiveCaptionsSize.init(rawValue:)) ?? .medium
@@ -940,6 +959,8 @@ final class AppSettings { // swiftlint:disable:this type_body_length
             claudeBin = defaults.object(forKey: "claudeBin") as? String ?? "claude"
         #endif
         protocolLanguage = defaults.string(forKey: "protocolLanguage") ?? "German"
+        protocolTemplate = defaults.string(forKey: "protocolTemplate") ?? ProtocolTemplates.defaultName
+        calendarEnabled = defaults.bool(forKey: "calendarEnabled")
         includeFullTranscriptInProtocol = defaults.bool(forKey: "includeFullTranscriptInProtocol", default: true)
         saveRawTranscriptSeparately = defaults.bool(forKey: "saveRawTranscriptSeparately", default: true)
         useAITitleForFilenames = defaults.bool(forKey: "useAITitleForFilenames", default: false)

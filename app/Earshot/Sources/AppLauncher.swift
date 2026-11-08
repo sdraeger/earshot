@@ -30,6 +30,11 @@ enum AppLauncher {
             ) {
                 exit(LocalVQESelftest.run(mode))
             }
+            // A stdio server for Claude; builds no app state either.
+            if let folder = MeetingsMCPServer.folder(arguments: CommandLine.arguments) {
+                MeetingsMCPServer.run(folder: folder)
+                exit(0)
+            }
         #endif
         // Before anything else is constructed. `EarshotApp.init`
         // builds `AppState` and starts the diagnostic log, and that is the

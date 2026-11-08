@@ -30,6 +30,10 @@
     <string>Earshot needs microphone access to record meeting audio for transcription.</string>
     <key>NSScreenCaptureUsageDescription</key>
     <string>Earshot needs Screen Recording permission to detect active meetings by reading window titles.</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>Earshot names meetings after your calendar events, suggests their attendees as speakers, and asks to record when an in-person meeting starts.</string>
+    <key>NSRemindersFullAccessUsageDescription</key>
+    <string>Earshot adds the tasks from your meeting notes to Reminders when you ask it to.</string>
     <key>NSAccessibilityUsageDescription</key>
     <string>Earshot uses Accessibility to detect mute state and read meeting participants.</string>
 </dict>

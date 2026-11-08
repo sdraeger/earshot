@@ -357,6 +357,7 @@ final class LiveTranscriptionController {
         }
         await bindFeeds()
         captions.clear()
+        captions.clearTranscript()
         if verboseDiagnostics() {
             logger.info("Live transcription reset for new recording")
         }

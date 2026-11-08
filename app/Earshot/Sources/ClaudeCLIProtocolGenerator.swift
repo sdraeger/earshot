@@ -18,6 +18,9 @@
         /// previously-working install (both measured — see PR #692 review).
         let anthropicAPIKey: String?
 
+        /// The prompt file (a template, or the Settings prompt).
+        let promptURL: URL
+
         /// How long one run may take before the CLI is stopped and the run
         /// fails with `ProtocolError.timeout`. Production uses
         /// `timeoutSeconds`; tests pass a short one.
@@ -43,6 +46,7 @@
             claudeBin: String,
             language: String,
             anthropicAPIKey: String? = nil,
+            promptURL: URL = AppPaths.customPromptFile,
             timeout: TimeInterval = Self.timeoutSeconds,
             terminationGrace: TimeInterval = BoundedProcess.defaultTerminationGrace,
             outputDrainGrace: TimeInterval = ProcessOutput.defaultDrainGrace,
@@ -52,6 +56,7 @@
             self.claudeBin = claudeBin
             self.language = language
             self.anthropicAPIKey = anthropicAPIKey
+            self.promptURL = promptURL
             self.timeout = timeout
             self.terminationGrace = terminationGrace
             self.outputDrainGrace = outputDrainGrace
@@ -77,7 +82,9 @@
             diarized: Bool,
             meetingStartTime: Date?,
         ) async throws -> String {
-            let prompt = ProtocolGenerator.buildSystemPrompt(diarized: diarized, language: language, meetingStartTime: meetingStartTime) + transcript
+            let prompt = ProtocolGenerator.buildSystemPrompt(
+                diarized: diarized, language: language, meetingStartTime: meetingStartTime, promptURL: promptURL,
+            ) + transcript
             let launch = await launchConfiguration()
             try Task.checkCancellation()
             do {

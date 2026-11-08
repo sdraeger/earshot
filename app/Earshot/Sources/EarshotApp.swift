@@ -84,6 +84,7 @@ struct EarshotApp: App {
     @State private var appState: AppState
     @State private var captionsWindow: LiveCaptionsWindowController?
     @State private var recordingButton: RecordingButtonPanel?
+    @State private var meetingCard: MeetingCardPanel?
     @Environment(\.openWindow)
     private var openWindow
 
@@ -108,7 +109,10 @@ struct EarshotApp: App {
         AppDelegate.install(state)
         AppPaths.migrateIfNeeded()
         NotificationManager.shared.setUp()
+        // The meeting card asks instead of a notification.
+        NotificationManager.shared.asksOnScreen = true
         state.pipeline.restorePendingNotionExports()
+        state.meetings.startCalendarWatch()
         // The verdict was taken in `AppLauncher.main()`, before `AppState` was
         // built. It is reported here because this is the first point at which
         // the notification centre is set up (issue #703).
@@ -150,6 +154,7 @@ struct EarshotApp: App {
         speakerNamingWindow
         settingsWindow
         recordAppWindow
+        meetingsWindow
     }
 
     // MARK: - Menu Bar
@@ -179,6 +184,8 @@ struct EarshotApp: App {
             pendingConsentApp: appState.pendingConsentApp,
             onAnswerPendingConsent: appState.answerPendingConsent,
             notionExportEnabled: appState.settings.notionExportEnabled,
+            // swiftlint:disable:next trailing_closure
+            onOpenMeetings: { bringWindowToFront(id: "meetings") },
         )
     }
 
@@ -242,6 +249,8 @@ struct EarshotApp: App {
         .onChange(of: appState.shouldShowRecordingButton, initial: true) { _, visible in
             toggleRecordingButton(visible: visible)
         }
+        .onChange(of: appState.pendingConsentMeeting, initial: true) { _, _ in updateMeetingCard() }
+        .onChange(of: appState.meetings.calendarCard) { _, _ in updateMeetingCard() }
         // Not `initial: true`: the controller is created with the current
         // preset above, and a hidden bar picks the preset up on `show()`.
         .onChange(of: appState.settings.liveCaptionsSize) { _, size in
@@ -256,6 +265,7 @@ struct EarshotApp: App {
             stopTitle: { state.recordingButtonStopTitle },
             onStop: { state.stopFromRecordingButton() },
             onHide: { state.settings.recordingButtonEnabled = false },
+            onOpenTranscript: { bringWindowToFront(id: "meetings") },
         )
         recordingButton = panel
         if visible {
@@ -265,7 +275,37 @@ struct EarshotApp: App {
         }
     }
 
+    /// The card for a meeting waiting for a yes, hidden when none is.
+    /// Starting opens the Meetings window on the notepad.
+    private func updateMeetingCard() {
+        let state = appState
+        let card = meetingCard ?? MeetingCardPanel(settings: state.settings) { start in
+            state.answerMeetingCard(start: start)
+            if start { bringWindowToFront(id: "meetings") }
+        }
+        meetingCard = card
+        if let content = state.meetingCardContent {
+            card.show(heading: content.heading, title: content.title)
+        } else {
+            card.hide()
+        }
+    }
+
     // MARK: - Windows
+
+    /// Every window keeps out of screen shares and screenshots of other apps.
+    private var meetingsWindow: some Scene {
+        Window("Meetings", id: "meetings") {
+            MeetingsView(
+                meetings: appState.meetings,
+                captions: appState.liveCaptions,
+                isRecording: appState.isRecording,
+                completedJobCount: appState.completedJobCount,
+                onStopRecording: appState.stopFromRecordingButton,
+            )
+            .background(WindowAccessor { $0.sharingType = .none })
+        }
+    }
 
     private var speakerNamingWindow: some Scene {
         Window("Name speakers", id: "speaker-naming") {
@@ -275,7 +315,10 @@ struct EarshotApp: App {
                 // user works in other apps instead of vanishing on focus loss
                 // (issue #504). Applied via the hosting NSWindow because macOS 14
                 // has no scene-level window-level / collection-behavior modifier.
-                .background(WindowAccessor { NamingWindowPolicy.apply(to: $0) })
+                .background(WindowAccessor { window in
+                    NamingWindowPolicy.apply(to: window)
+                    window.sharingType = .none
+                })
                 .onAppear {
                     // Close restored window if no naming data available (macOS state restoration)
                     if appState.pipeline.queue.pendingSpeakerNamingJobs.isEmpty {
@@ -305,6 +348,7 @@ struct EarshotApp: App {
                 stageTimingLog: appState.pipeline.stageTimingLog,
                 speakerEditing: appState.speakerDBEditing,
             )
+            .background(WindowAccessor { $0.sharingType = .none })
         }
         .windowResizability(.contentSize)
     }

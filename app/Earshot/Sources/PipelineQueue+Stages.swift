@@ -1048,7 +1048,7 @@ extension PipelineQueue {
                 of: #"\[\w[\w\s]*\]"#, options: .regularExpression,
             ) != nil
             protocolMD = try await generator.generate(
-                transcript: transcript,
+                transcript: ProtocolGenerator.input(transcript: transcript, userNotes: job.userNotes),
                 title: title,
                 diarized: diarized,
                 meetingStartTime: meetingStartTime,

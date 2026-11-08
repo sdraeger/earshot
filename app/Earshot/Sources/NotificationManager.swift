@@ -248,12 +248,25 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate, App
         }
     }
 
-    /// Post an actionable "record this browser meeting?" prompt and await the
-    /// user's choice (issue #503). Returns `.declined` when notifications can't
-    /// be delivered (no bundle / not set up) so we never record without a
-    /// visible prompt, `.expired` when nobody answered in time.
+    /// Set once by the app when its own meeting card shows the question. No
+    /// system notification is posted then: the card is visible whatever the
+    /// notification settings are, and a second prompt would ask twice.
+    /// `nonisolated(unsafe)`: written once at launch before any prompt.
+    nonisolated(unsafe) var asksOnScreen = false
+
+    /// Ask "record this meeting?" and await the user's choice (issue #503):
+    /// on the app's own card when `asksOnScreen`, else as an actionable
+    /// notification. Returns `.declined` when a notification can't be
+    /// delivered (no bundle / not set up) so we never record without a visible
+    /// prompt, `.expired` when nobody answered in time.
     @MainActor
     func askToRecord(title: String, body: String) async -> ConsentAnswer {
+        if asksOnScreen {
+            #if !APPSTORE
+                recentNotificationsLog.record(title: title, body: body, posted: false)
+            #endif
+            return await consentCoordinator.awaitDecision(id: UUID().uuidString) {}
+        }
         let deliverable = deliverableOrLogDrop()
 
         #if !APPSTORE

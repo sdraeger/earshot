@@ -105,11 +105,31 @@ struct OutputSettingsView: View {
                 }
 
                 promptControls
+
+                templateControls
             } header: {
                 SettingsHeader("Meeting notes")
             }
             .accessibilityIdentifier(A11yID.protocolSection)
             .recordOnlyDisabled(settings.recordOnly)
+
+            #if !APPSTORE
+                Section {
+                    LabeledContent("Command") {
+                        Text(Self.mcpCommand)
+                            .font(.callout.monospaced())
+                            .textSelection(.enabled)
+                            .lineLimit(2)
+                    }
+                    .settingsNote("Run it once in Terminal. Claude can then list, search and read your meetings.")
+                    Button("Copy Command") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(Self.mcpCommand, forType: .string)
+                    }
+                } header: {
+                    SettingsHeader("Your meetings in Claude")
+                }
+            #endif
         }
         .formStyle(.grouped)
         .onAppear {
@@ -309,6 +329,27 @@ struct OutputSettingsView: View {
             }
         }
     }
+
+    /// The default template and the folder the templates live in, one
+    /// Markdown prompt per file.
+    private var templateControls: some View {
+        HStack {
+            Picker("Template", selection: $settings.protocolTemplate) {
+                ForEach(ProtocolTemplates.names(), id: \.self) { Text($0).tag($0) }
+            }
+            Button("Open Templates Folder") {
+                _ = ProtocolTemplates.names()
+                NSWorkspace.shared.open(ProtocolTemplates.folder)
+            }
+        }
+        .settingsNote("Default uses the prompt above. Each Markdown file in the templates folder is a template; copy one to make your own.")
+    }
+
+    #if !APPSTORE
+        static var mcpCommand: String {
+            "claude mcp add earshot -- \"\(Bundle.main.executablePath ?? "/Applications/Earshot.app/Contents/MacOS/Earshot")\" --mcp"
+        }
+    #endif
 
     // MARK: - Helpers
 

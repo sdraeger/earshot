@@ -471,11 +471,10 @@ poll_state 10 1 state_is '(.pendingConsentApp // "") == ""' \
     || fail "$(state_why $? "consent was answered but /state still reports a parked prompt for
        $(jq -r '.pendingConsentApp // "?"' <<<"$STATE_BODY") — the gate never took the answer")"
 
-poll_state 10 1 state_is '[.notifications[]? | select(.title == "Record browser meeting?" and .posted == true)] | length > 0' \
-    || fail "$(state_why $? "consent was answered over RPC, but the app never posted a deliverable
-       consent notification — a real user would have seen nothing. Check
-       NotificationManager.askToRecord and its ring-buffer record.")"
-log "Consent notification was posted and flagged deliverable"
+poll_state 10 1 state_is '[.notifications[]? | select(.title == "Record this meeting?")] | length > 0' \
+    || fail "$(state_why $? "consent was answered over RPC, but the app never raised the consent
+       question. Check NotificationManager.askToRecord and its ring-buffer record.")"
+log "Consent question was raised"
 
 log "Waiting for recording to start (watchState == recording)"
 poll_state "$DETECT_TIMEOUT_S" 2 state_is '.watchState == "recording"' \

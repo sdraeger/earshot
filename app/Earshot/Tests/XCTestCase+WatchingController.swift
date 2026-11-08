@@ -82,6 +82,9 @@ extension XCTestCase {
         )
         settings.watchTeams = watchTeams
         settings.noMic = noMic
+        // These tests drive a detected meeting straight into a recording, as
+        // nobody is there to click the meeting card.
+        settings.askBeforeRecording = false
         let pipeline = PipelineController(
             settings: settings,
             notifier: notifier,

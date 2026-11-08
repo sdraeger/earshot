@@ -11,6 +11,8 @@ struct OpenAIProtocolGenerator: ProtocolGenerating {
     let apiKeyPlacement: OpenAIAPIKeyPlacement
     let apiKeyHeaderName: String
     let language: String
+    /// The prompt file (a template, or the Settings prompt).
+    let promptURL: URL
     /// Idle timeout (`URLRequest.timeoutInterval`): max time *between* received
     /// bytes. Catches a fully-stalled connection, but does NOT bound total time —
     /// a slow-but-trickling stream resets it on every byte. See `maxTotalSeconds`.
@@ -47,6 +49,7 @@ struct OpenAIProtocolGenerator: ProtocolGenerating {
         endpoint: URL,
         model: String,
         language: String,
+        promptURL: URL = AppPaths.customPromptFile,
         apiKey: String? = nil,
         apiKeyPlacement: OpenAIAPIKeyPlacement = .bearerToken,
         apiKeyHeaderName: String = OpenAIAPIKeyPlacement.defaultHeaderName,
@@ -60,6 +63,7 @@ struct OpenAIProtocolGenerator: ProtocolGenerating {
         self.endpoint = endpoint
         self.model = model
         self.language = language
+        self.promptURL = promptURL
         self.apiKey = apiKey
         self.apiKeyPlacement = apiKeyPlacement
         self.apiKeyHeaderName = apiKeyHeaderName
@@ -81,6 +85,7 @@ struct OpenAIProtocolGenerator: ProtocolGenerating {
             diarized: diarized,
             language: language,
             meetingStartTime: meetingStartTime,
+            promptURL: promptURL,
         )
 
         let messages: [[String: Any]] = [

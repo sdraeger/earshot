@@ -61,6 +61,11 @@ final class LiveCaptionsState {
     /// Capped at `maxFinalsKept`.
     private(set) var recentFinals: [LiveCaptionLine] = []
 
+    /// Every finalized line of the current recording, for the Meetings
+    /// window. Unlike `recentFinals` it is neither capped nor cleared when
+    /// the bar fades; `clearTranscript()` empties it when a recording starts.
+    private(set) var transcript: [LiveCaptionLine] = []
+
     /// Timestamp of the last event (partial or final). Drives fade-out on
     /// silence — the overlay can compare against `Date()` to dim or hide.
     private(set) var lastEventAt: Date = .distantPast
@@ -116,7 +121,9 @@ final class LiveCaptionsState {
         case .mic: hypothesisMic = ""
         case .app: hypothesisApp = ""
         }
-        recentFinals.append(LiveCaptionLine(channel: channel, text: text, speaker: speaker))
+        let line = LiveCaptionLine(channel: channel, text: text, speaker: speaker)
+        recentFinals.append(line)
+        transcript.append(line)
         if recentFinals.count > Self.maxFinalsKept {
             recentFinals.removeFirst(recentFinals.count - Self.maxFinalsKept)
         }
@@ -135,6 +142,10 @@ final class LiveCaptionsState {
         case .mic: micLabel
         case .app: appLabel
         }
+    }
+
+    func clearTranscript() {
+        transcript.removeAll()
     }
 
     func clear() {

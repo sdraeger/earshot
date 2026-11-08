@@ -346,14 +346,16 @@ final class PipelineController {
     // extraction — they encode real behavior (provider selection, notification
     // routing) that is unit-tested directly, same altitude as the other wiring
     // methods above.
-    func makeProtocolGenerator() -> (any ProtocolGenerating)? {
-        switch settings.protocolProvider {
+    func makeProtocolGenerator(promptURL: URL? = nil) -> sending (any ProtocolGenerating)? {
+        let promptURL = promptURL ?? ProtocolTemplates.url(for: settings.protocolTemplate)
+        return switch settings.protocolProvider {
         #if !APPSTORE
             case .claudeCLI:
                 ClaudeCLIProtocolGenerator(
                     claudeBin: settings.claudeBin,
                     language: settings.protocolLanguage,
                     anthropicAPIKey: settings.claudeAPIKey.isEmpty ? nil : settings.claudeAPIKey,
+                    promptURL: promptURL,
                 )
         #endif
 
@@ -364,6 +366,7 @@ final class PipelineController {
                     ?? URL(string: AppSettings.defaultOpenAIEndpoint)!,
                 model: settings.openAIModel,
                 language: settings.protocolLanguage,
+                promptURL: promptURL,
                 apiKey: settings.openAIAPIKey.isEmpty ? nil : settings.openAIAPIKey,
                 apiKeyPlacement: settings.openAIAPIKeyPlacement,
                 apiKeyHeaderName: settings.openAIAPIKeyHeaderName,

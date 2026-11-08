@@ -127,6 +127,13 @@ State writes to `AppPaths.dataDir`; IPC + queue snapshots to `ipcDir`.
 | `LiveCaptionsOverlay.swift` | SwiftUI caption-bar content (recent finals + per-channel hypotheses) hosted in `LiveCaptionsWindow` |
 | `LiveCaptionsWindowController.swift` | Borderless click-through NSPanel hosting the caption overlay (⌥-drag to reposition; origin persisted) |
 | `RecordingButtonPanel.swift` | Floating pill at the right screen edge while recording: voice-activity bars from the louder channel's dBFS, vertical drag (height persisted), click menu to stop; `sharingType = .none` keeps it out of screen shares |
+| `MeetingCardPanel.swift` | The card asking whether to record a detected meeting or an in-person calendar meeting (Start, Not now, live-transcript switch, notes template); top right, hidden from screen shares |
+| `MeetingLibrary.swift` | The meetings in the notes folder (notes `.md` + transcript `.txt` paired by file name), newest first; search, rename (title heading), move to Trash |
+| `MeetingsView.swift` | The Meetings window: notepad and live transcript while recording, Ask your meetings, each meeting's notes or transcript (copy, open, Finder, rename, delete, rewrite with a template, tasks to Reminders), and People |
+| `MeetingsController.swift` | The notepad a recording takes when it ends, the calendar watch for in-person meetings, and the Meetings window's actions (regenerate, ask, Reminders, people from voice profiles) |
+| `MeetingCalendar.swift` | EventKit: the calendar event a recording belongs to (`CalendarMeeting.current`), in-person meeting starts, and `ActionItem.parse` + adding tasks to a Reminders list named Earshot |
+| `ProtocolTemplates.swift` | Named notes templates: Default (the Settings prompt) plus one Markdown prompt per file in `dataDir/templates`, seeded with presets on first read |
+| `MeetingsMCPServer.swift` | `Earshot --mcp [folder]`: stdio MCP server with `list_meetings` and `get_meeting` over the notes folder, started from `AppLauncher` before any app state (`#if !APPSTORE`) |
 | `AppState+Naming.swift` | Which job the naming window shows (`shownNamingJobID`, `showNaming`) and where an answer leads (`answerNaming` → refused / shows next / finished) |
 | `SpeakerDBEditing.swift` | One value carrying what Settings needs to edit the speaker database (matcher, enrollment diarizer, naming/busy flags, refresh after an edit); `AppState.speakerDBEditing` builds it |
 | `DetectionConfirmation.swift` | Shared confirmation rule of both meeting detectors: seen in N consecutive polls, cooldown after a meeting ends |

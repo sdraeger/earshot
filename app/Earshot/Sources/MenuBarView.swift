@@ -39,6 +39,8 @@ struct MenuBarView: View {
     /// before the setting was turned off still falls back to it when no local
     /// file exists; `JobOpenTarget` owns that rule.
     var notionExportEnabled: Bool = false
+    /// Opens the Meetings window.
+    var onOpenMeetings: () -> Void = {}
 
     private var state: TranscriberState {
         status?.state ?? .idle
@@ -61,6 +63,8 @@ struct MenuBarView: View {
         processingQueue
         updateItem
         Divider()
+        Button("Meetings…", action: onOpenMeetings)
+            .keyboardShortcut("j")
         Button("Open Notes Folder", action: onOpenProtocolsFolder)
         Button("Settings…", action: onOpenSettings)
             .keyboardShortcut(",")

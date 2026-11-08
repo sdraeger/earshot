@@ -12,6 +12,22 @@ final class LiveCaptionsStateTests: XCTestCase {
         XCTAssertEqual(state.lastEventAt, .distantPast)
     }
 
+    /// The Meetings window shows every line of the recording: the transcript
+    /// keeps what the two-line bar drops and what its fade clears.
+    func testTranscriptKeepsEveryFinalUntilANewRecording() {
+        let state = LiveCaptionsState()
+        for index in 0 ..< 5 {
+            state.applyFinalized("line \(index)", channel: .app, speaker: "Alice")
+        }
+        state.clear()
+
+        XCTAssertEqual(state.transcript.map(\.text), (0 ..< 5).map { "line \($0)" })
+        XCTAssertEqual(state.recentFinals.count, 0)
+
+        state.clearTranscript()
+        XCTAssertTrue(state.transcript.isEmpty)
+    }
+
     func testApplyPartialMicSetsHypothesisOnlyForMic() {
         let state = LiveCaptionsState()
         state.applyPartial("hello", channel: .mic)
