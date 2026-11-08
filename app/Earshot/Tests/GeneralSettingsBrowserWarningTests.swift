@@ -100,8 +100,8 @@ final class GeneralSettingsBrowserWarningTests: XCTestCase {
             engines: .forTesting(settings: settings),
             updateChecker: nil,
             permissions: permissions,
-            recognitionStatsLog: RecognitionStatsLog(),
-            stageTimingLog: StageTimingLog(),
+            recognitionStatsLog: RecognitionStatsLog(path: FileManager.default.temporaryDirectory.appendingPathComponent("recognition-\(UUID()).jsonl")),
+            stageTimingLog: StageTimingLog(path: FileManager.default.temporaryDirectory.appendingPathComponent("timing-\(UUID()).jsonl")),
         )
         let warning = try view.inspect()
             .find(viewWithAccessibilityIdentifier: A11yID.browserConsentWarning)

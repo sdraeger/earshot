@@ -201,8 +201,8 @@ final class HelpBadgeTests: XCTestCase {
             ("Audio", AudioSettingsView(settings: settings).inspect()),
             ("Speakers", SpeakersSettingsView(
                 settings: settings,
-                recognitionStatsLog: RecognitionStatsLog(),
-                stageTimingLog: StageTimingLog(),
+                recognitionStatsLog: RecognitionStatsLog(path: FileManager.default.temporaryDirectory.appendingPathComponent("recognition-\(UUID()).jsonl")),
+                stageTimingLog: StageTimingLog(path: FileManager.default.temporaryDirectory.appendingPathComponent("timing-\(UUID()).jsonl")),
             ).inspect()),
         ] {
             for tooltipped in view.findAll(where: { (try? $0.help()) != nil }) {

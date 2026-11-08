@@ -22,14 +22,20 @@ typealias RecognitionStatsLog = JSONLLog<RecognitionEvent>
 typealias StageTimingLog = JSONLLog<StageTimingEvent>
 
 /// Append-only JSONL writer. One file per app install, owner-readable (chmod
-/// 0600 on first creation). Production callers use `init()`; tests pass an
-/// explicit `path:` to avoid polluting the real log.
+/// 0600 on first creation). The first append of each instance drops events
+/// older than `retention`, the widest window the stats views offer, so the
+/// file does not grow forever.
 actor JSONLLog<Event: JSONLLogEvent> {
     static var defaultPath: URL {
         AppPaths.dataDir.appendingPathComponent(Event.logFileName)
     }
 
+    static var retention: TimeInterval {
+        90 * 24 * 3600
+    }
+
     private let path: URL
+    private var pruned = false
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
 
@@ -42,12 +48,12 @@ actor JSONLLog<Event: JSONLLogEvent> {
         decoder.dateDecodingStrategy = .iso8601
     }
 
-    init() {
-        self.init(path: Self.defaultPath)
-    }
-
-    func append(_ events: [Event]) {
+    func append(_ events: [Event], now: Date = Date()) {
         guard !events.isEmpty else { return }
+        if !pruned {
+            pruned = true
+            prune(before: now.addingTimeInterval(-Self.retention))
+        }
         do {
             try FileManager.default.createDirectory(
                 at: path.deletingLastPathComponent(), withIntermediateDirectories: true,
@@ -67,6 +73,24 @@ actor JSONLLog<Event: JSONLLogEvent> {
             try handle.synchronize()
         } catch {
             logger.error("Failed to append \(Event.logFileName, privacy: .public) events: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Rewrites the file without events older than `cutoff`, when it has any.
+    /// Lines that do not decode are kept.
+    private func prune(before cutoff: Date) {
+        guard let data = try? Data(contentsOf: path), let text = String(data: data, encoding: .utf8) else { return }
+        let lines = text.split(separator: "\n")
+        let kept = lines.filter { line in
+            (try? decoder.decode(Event.self, from: Data(line.utf8))).map { $0.ts >= cutoff } ?? true
+        }
+        guard kept.count < lines.count else { return }
+        let rewritten = kept.map { $0 + "\n" }.joined()
+        do {
+            try Data(rewritten.utf8).write(to: path, options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path.path)
+        } catch {
+            logger.error("Failed to prune \(Event.logFileName, privacy: .public): \(error.localizedDescription, privacy: .public)")
         }
     }
 

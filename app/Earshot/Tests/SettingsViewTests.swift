@@ -45,8 +45,8 @@ final class SettingsViewTests: XCTestCase { // swiftlint:disable:this type_body_
             settings: settings,
             engines: .forTesting(settings: settings),
             updateChecker: updateChecker,
-            recognitionStatsLog: RecognitionStatsLog(),
-            stageTimingLog: StageTimingLog(),
+            recognitionStatsLog: RecognitionStatsLog(path: FileManager.default.temporaryDirectory.appendingPathComponent("recognition-\(UUID()).jsonl")),
+            stageTimingLog: StageTimingLog(path: FileManager.default.temporaryDirectory.appendingPathComponent("timing-\(UUID()).jsonl")),
         )
     }
 
@@ -71,8 +71,8 @@ final class SettingsViewTests: XCTestCase { // swiftlint:disable:this type_body_
     ) -> SpeakersSettingsView {
         SpeakersSettingsView(
             settings: settings ?? makeSettings(),
-            recognitionStatsLog: RecognitionStatsLog(),
-            stageTimingLog: StageTimingLog(),
+            recognitionStatsLog: RecognitionStatsLog(path: FileManager.default.temporaryDirectory.appendingPathComponent("recognition-\(UUID()).jsonl")),
+            stageTimingLog: StageTimingLog(path: FileManager.default.temporaryDirectory.appendingPathComponent("timing-\(UUID()).jsonl")),
             editing: SpeakerDBEditing(makeMatcher: matcherFactory),
         )
     }

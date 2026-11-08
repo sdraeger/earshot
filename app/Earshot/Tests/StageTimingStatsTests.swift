@@ -19,6 +19,21 @@ final class StageTimingStatsTests: XCTestCase {
         )
     }
 
+    // MARK: - Log retention
+
+    func testTheFirstAppendDropsEventsPastRetention() async {
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent("timing-\(UUID()).jsonl")
+        addTeardownBlock { try? FileManager.default.removeItem(at: path) }
+        let now = Date()
+        let old = now.addingTimeInterval(-StageTimingLog.retention - 3600)
+        await StageTimingLog(path: path).append([event(.transcribing, wall: 1, audio: 1, ts: old)], now: old)
+
+        await StageTimingLog(path: path).append([event(.diarizing, wall: 2, audio: 2, ts: now)], now: now)
+
+        let kept = await StageTimingLog(path: path).loadRecent(within: 10 * StageTimingLog.retention, now: now)
+        XCTAssertEqual(kept.map(\.stage), [.diarizing])
+    }
+
     // MARK: - Per-config aggregation
 
     func testAggregateByConfigSeparatesEngineAndMode() {
