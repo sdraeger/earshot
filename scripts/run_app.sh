@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Launch the Earshot menu bar app.
-# Builds an .app bundle so macOS APIs (notifications, etc.) work correctly.
+# Build the Earshot menu bar app, install it as /Applications/Earshot Dev.app
+# and launch it. Builds an .app bundle so macOS APIs (notifications, etc.) work
+# correctly. Set EARSHOT_DEV_INSTALL_DIR to install somewhere else.
 #
 # --build-only: Build the bundle but skip `open -W`. Used by the Pattern-C
 #   E2E driver (scripts/e2e-app.sh) which deploys the bundle to a stable
@@ -159,10 +160,17 @@ if [ "$BUILD_ONLY" = true ]; then
     exit 0
 fi
 
+# Install the build as "Earshot Dev" in /Applications, so the latest build also
+# opens from Spotlight, Launchpad or the Dock without this script. rsync into the
+# same folder each time keeps the path, and with it the permission grants, stable.
+INSTALLED_BUNDLE="${EARSHOT_DEV_INSTALL_DIR:-/Applications}/Earshot Dev.app"
+mkdir -p "$INSTALLED_BUNDLE"
+rsync -a --delete "$APP_BUNDLE/" "$INSTALLED_BUNDLE/"
+echo "Installed: $INSTALLED_BUNDLE"
+
 echo "Starting Earshot..."
 echo "  TRANSCRIBER_ROOT=$TRANSCRIBER_ROOT"
 
 # Launch via `open` so macOS LaunchServices properly registers the app
 # (required for notification permissions, etc.).
-# The app discovers the project root by walking up from the executable.
-open -W "$APP_BUNDLE"
+open -W "$INSTALLED_BUNDLE"

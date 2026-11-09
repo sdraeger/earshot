@@ -47,7 +47,8 @@ Single-source: Audio/Video → 16kHz mono (AVAudioFile → AVAsset → ffmpeg fa
 ## Setup
 
 ```bash
-# Run menu bar app (builds automatically, including AudioTapLib):
+# Build, install as /Applications/Earshot Dev.app and run (includes AudioTapLib).
+# Afterwards "Earshot Dev" also opens from Spotlight, Launchpad or the Dock:
 ./scripts/run_app.sh
 ```
 
